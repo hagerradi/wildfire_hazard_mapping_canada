@@ -65,14 +65,16 @@ def build_ignition_conditional_prob_grid(ignition_grid_folder_path: str, zone_gr
     ignition_raster_files = [f for f in os.listdir(ignition_grid_folder_path) if f.endswith(".asc")]
     out_ignition_grids = []
     
+    # loop over all ignition grids (across causes/seasons)
     for file_name in ignition_raster_files:
+        ignition_raster = load_raster(os.path.join(ignition_grid_folder_path, file_name))
+
         matched = re.match(r"ign_s(\d+)_(\w)\.asc", file_name)
         if not matched:
             print(f"Warning: filename '{file_name}' does not match expected pattern, skipping.")
             continue
         season = int(matched.group(1))
         cause = matched.group(2)
-        ignition_raster = load_raster(os.path.join(ignition_grid_folder_path, file_name))
 
         zone_prob_mapping = load_ignition_distribution_zone_mapping(ignition_distribution_file_path=ignition_distribution_file_path, cause=fire_cause_mapping[cause], season=season)
         reweighted_raster = project_zone_distribution_over_grid(ignition_raster=ignition_raster, zone_raster=zone_raster, zone_prob_mapping=zone_prob_mapping)
