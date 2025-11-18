@@ -1,16 +1,11 @@
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
-from pathlib import Path
-from typing import Optional
+from sklearn.preprocessing import MinMaxScaler, StandardScaler
+from utils import load_raster, selected_weather_features
+from visualize import visualize_weather_params
 
-import rasterio
-from rasterio.plot import plotting_extent
-
-import matplotlib.pyplot as plt
-
-from sklearn.preprocessing import StandardScaler, MinMaxScaler
-
-from utils import selected_weather_features, load_raster, visualize_weather_params
 
 def wind_direction_to_sincos(wd:np.array)-> tuple[np.array, np.array]:
     """Convert Wind Direction to Sin/Cos for normalization"""
@@ -39,16 +34,13 @@ def preprocess_weather_list(weather_list:pd.DataFrame)->pd.DataFrame:
     weather_list["wd_sin"], weather_list["wd_cos"] = wd_sin, wd_cos
     return weather_list
 
-def load_weather_list(weather_list_file_path:str, season: Optional[int] = None)->pd.DataFrame:
+def load_weather_list(weather_list_file_path:str, season: int | None = None)->pd.DataFrame:
     """Load and preprocess the weather list csv"""
     path = Path(weather_list_file_path)
     if not path.exists():
         raise FileNotFoundError(f"Weather list file not found: {path}")
     weather_list = pd.read_csv(weather_list_file_path)
-    if season:
-        weather_list_subset = weather_list[weather_list["season"]==season].copy()
-    else:
-        weather_list_subset = weather_list.copy()
+    weather_list_subset = weather_list[weather_list["season"] == season].copy() if season else weather_list.copy()
     weather_list_preprocessed = preprocess_weather_list(weather_list_subset)
     return weather_list_preprocessed
 
