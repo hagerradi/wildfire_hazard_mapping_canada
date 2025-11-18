@@ -35,7 +35,6 @@ def preprocess_weather_list(weather_list:pd.DataFrame)->pd.DataFrame:
     
     wd_sin, wd_cos = wind_direction_to_sincos(np.array(weather_list["wd"]))
     weather_list["wd_sin"], weather_list["wd_cos"] = wd_sin, wd_cos
-    # weather_list.drop(columns=['wd'], inplace=True)
     return weather_list
 
 def load_weather_list(weather_list_file_path:str, season: Optional[int] = None)->pd.DataFrame:
@@ -64,13 +63,19 @@ def weather_list_to_grid(weather_list:pd.DataFrame, fire_weather_zone_grid: np.m
     
     for zone in fwz:
         weather_zone_subset = weather_list[weather_list["wx_zone"]==zone][selected_features]
+        #Randomly sample 1 row from the given weather list (1xlen(selected_features))
         if sampling=="random":
             value = np.array(weather_zone_subset.sample(1, random_state=42) )
+        #array of means for all the variables (1xlen(selected_features))
+        elif sampling=="mean":
+            value = weather_zone_subset.mean().values
+        #array of mean, var for all the variables (1x2*len(selected_features))
         elif sampling=="dist":
             value = np.vstack([weather_zone_subset.mean(), weather_zone_subset.std()]).T.flatten()
+        #default to distribution (mean, var)
         else:
-            print("NO WEATHER SAMPLING SELECTED; USING RANDOM SAMPLING")
-            value = np.array(weather_zone_subset.sample(1, random_state=42))
+            print("NO WEATHER SAMPLING SELECTED; USING DIST SAMPLING")
+            value =  np.vstack([weather_zone_subset.mean(), weather_zone_subset.std()]).T.flatten()
         
         out[fire_weather_zone_grid.data==zone] = value
     return out
