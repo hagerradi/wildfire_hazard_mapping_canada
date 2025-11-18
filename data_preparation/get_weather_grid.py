@@ -81,3 +81,10 @@ if __name__=="__main__":
              "mapped_inputs",  "outputs"]
     season = 1
     weather_csv = load_weather_list(data_folder + "/" + folders[0] + "/" + "hex_05_weather_list.csv", season)
+    path = data_folder + "/" + folders[3] + "/cfrs.asc"
+    with rasterio.open(path) as src:
+        data = src.read(1, masked=True)
+
+    out = weather_list_to_grid(weather_csv, data, "dist")
+    print(out.shape)
+    print(np.unique_counts(out))
