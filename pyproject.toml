@@ -1,0 +1,51 @@
+[project]
+name = "nrcan-wildfireriskmapping"
+version = "0.1.0"
+authors = [
+    {name = "Hager Radi", email = "hager.radi@mila.quebec"},
+    {name = "Chirag Goel", email = "chirag.goel@mila.quebec"},
+]
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "matplotlib>=3.10.7",
+    "numpy>=2.3.5",
+    "pandas>=2.3.3",
+    "rasterio>=1.4.3",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.14.5",
+    "pytest>=8.1.1",
+]
+
+[tool.uv]
+package = true
+
+# Ruff config
+[tool.ruff]
+indent-width = 4
+line-length = 140
+
+[tool.ruff.lint]
+select = [
+    "E4",  # whitespace/formatting errors
+    "E7",  # syntax issues
+    "E9",  # runtime errors
+    "F",   # pyflakes (unused imports, undefined vars)
+    "I",   # import sorting
+    "B",   # bugbear (best bug-prevention rules)
+    "UP",  # pyupgrade
+    "SIM", # simplify code
+    "PT",  # pytest style checks
+]
+ignore = [
+    "E203",  # compatible with Black-style formatting
+    "B008",  # do not flag function argument default factory
+]
+
+# pytest config
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
