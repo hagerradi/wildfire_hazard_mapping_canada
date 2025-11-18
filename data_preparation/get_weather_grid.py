@@ -53,7 +53,7 @@ def load_weather_list(weather_list_file_path:str, season: Optional[int] = None)-
 def weather_list_to_grid(weather_list:pd.DataFrame, fire_weather_zone_grid: np.ma.MaskedArray, sampling: str="random")->np.array:
     """Project weather list onto the Fire Weather Zones"""
 
-    fwz = weather_list["wx_zone"].unique()
+    fire_weather_zones = weather_list["wx_zone"].unique()
     selected_features = ['temp', 'rh', 'ws','wd_sin', 'wd_cos', 'prec', 'ffmc', 'dmc','dc', 'isi', 'bui']
     
     if sampling=="dist":
@@ -61,7 +61,7 @@ def weather_list_to_grid(weather_list:pd.DataFrame, fire_weather_zone_grid: np.m
     else:
         out = np.repeat(fire_weather_zone_grid.data[..., np.newaxis], len(selected_features), axis=-1).astype("float32")
     
-    for zone in fwz:
+    for zone in fire_weather_zones:
         weather_zone_subset = weather_list[weather_list["wx_zone"]==zone][selected_features]
         #Randomly sample 1 row from the given weather list (1xlen(selected_features))
         if sampling=="random":
