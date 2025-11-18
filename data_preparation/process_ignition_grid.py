@@ -4,16 +4,7 @@ import re
 import numpy as np
 import pandas as pd
 import rasterio
-from utils import fire_cause_mapping, visualize_raster
-
-
-def load_raster(path: str) -> np.ma.MaskedArray:
-    """ Load raster from given path"""
-    with rasterio.open(path) as src:
-        raster = src.read(1, masked=True) # mask out the nodata (-9999 values)
-
-    return raster
-
+from utils import fire_cause_mapping, visualize_raster, load_raster
 
 def load_ignition_distribution_zone_mapping(ignition_distribution_file_path:str, cause: int, season: int) -> dict[int, float]:
     """ Load ignition distribution file and return zone to probability mapping for given cause and season"""
