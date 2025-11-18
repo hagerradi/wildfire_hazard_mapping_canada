@@ -10,6 +10,10 @@ import matplotlib.pyplot as plt
 
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 
+from utils import load_raster, visualize_weather_params
+
+selected_weather_features = ['temp', 'rh', 'ws','wd_sin', 'wd_cos', 'prec', 'ffmc', 'dmc','dc', 'isi', 'bui']
+
 def wind_direction_to_sincos(wd:np.array)-> tuple[np.array, np.array]:
     """Convert Wind Direction to Sin/Cos for normalization"""
     # Since wd is circular, we cannot directly normalize so need to use it as sin/cos
@@ -54,22 +58,21 @@ def weather_list_to_grid(weather_list:pd.DataFrame, fire_weather_zone_grid: np.m
     """Project weather list onto the Fire Weather Zones"""
 
     fire_weather_zones = weather_list["wx_zone"].unique()
-    selected_features = ['temp', 'rh', 'ws','wd_sin', 'wd_cos', 'prec', 'ffmc', 'dmc','dc', 'isi', 'bui']
     
     if sampling=="dist":
-        out = np.repeat(fire_weather_zone_grid.data[..., np.newaxis], (len(selected_features))*2, axis=-1).astype("float32")
+        out = np.repeat(fire_weather_zone_grid.data[..., np.newaxis], (len(selected_weather_features))*2, axis=-1).astype("float32")
     else:
-        out = np.repeat(fire_weather_zone_grid.data[..., np.newaxis], len(selected_features), axis=-1).astype("float32")
+        out = np.repeat(fire_weather_zone_grid.data[..., np.newaxis], len(selected_weather_features), axis=-1).astype("float32")
     
     for zone in fire_weather_zones:
-        weather_zone_subset = weather_list[weather_list["wx_zone"]==zone][selected_features]
-        #Randomly sample 1 row from the given weather list (1xlen(selected_features))
+        weather_zone_subset = weather_list[weather_list["wx_zone"]==zone][selected_weather_features]
+        #Randomly sample 1 row from the given weather list (1xlen(selected_weather_features))
         if sampling=="random":
             value = np.array(weather_zone_subset.sample(1, random_state=42) )
-        #array of means for all the variables (1xlen(selected_features))
+        #array of means for all the variables (1xlen(selected_weather_features))
         elif sampling=="mean":
             value = weather_zone_subset.mean().values
-        #array of mean, var for all the variables (1x2*len(selected_features))
+        #array of mean, var for all the variables (1x2*len(selected_weather_features))
         elif sampling=="dist":
             value = np.vstack([weather_zone_subset.mean(), weather_zone_subset.std()]).T.flatten()
         #default to distribution (mean, var)
@@ -80,16 +83,25 @@ def weather_list_to_grid(weather_list:pd.DataFrame, fire_weather_zone_grid: np.m
         out[fire_weather_zone_grid.data==zone] = value
     return out
 
+def build_weather_grid(weather_list_file_path:str, zone_grid_file_path: str, season: int=1, sampling:str="dist"):
+    """Single function to run the weather grid creation"""
+    weather_csv = load_weather_list(data_folder + "/" + folders[0] + "/" + "hex_05_weather_list.csv", season)
+    data = load_raster(data_folder + "/" + folders[3] + "/cfrs.asc")
+
+    out = weather_list_to_grid(weather_csv, data, sampling)
+    return out 
+
+#TODO: DELETE LATER
 if __name__=="__main__":
     data_folder = "../yan_bp3/hex05"
     folders = ["burning_conditions_module", "dictionary", "ignitions_module",
              "mapped_inputs",  "outputs"]
-    season = 1
-    weather_csv = load_weather_list(data_folder + "/" + folders[0] + "/" + "hex_05_weather_list.csv", season)
-    path = data_folder + "/" + folders[3] + "/cfrs.asc"
-    with rasterio.open(path) as src:
-        data = src.read(1, masked=True)
+    sampling="dist"
+    out = build_weather_grid(weather_list_file_path=data_folder + "/" + folders[0] + "/" + "hex_05_weather_list.csv",
+                    zone_grid_file_path=data_folder + "/" + folders[3] + "/cfrs.asc", 
+                    season=1,
+                    sampling=sampling)
 
-    out = weather_list_to_grid(weather_csv, data, "dist")
     print(out.shape)
     print(np.unique_counts(out))
+    visualize_weather_params(out, sampling=sampling)
