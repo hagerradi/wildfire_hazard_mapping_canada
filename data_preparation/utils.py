@@ -32,7 +32,7 @@ def visualize_ignition_raster(raster: np.array, cause: int, season: int):
     ax.set_title(f"Ignition Grid for season {season} : Cause: {cause}")
     plt.show()
 
-def visualize_weather_params(weather_cube: np.array, param_names: list, cols=3):
+def visualize_weather_params(weather_cube: np.array, sampling:str="dist", cols:int=3):
     """
     Visualizes multiple weather parameters in a subplot grid.
     
@@ -41,6 +41,20 @@ def visualize_weather_params(weather_cube: np.array, param_names: list, cols=3):
         param_names: List of strings matching the 3rd dimension of weather_cube
         cols: Number of columns desired in the grid
     """
+    if sampling=="dist":
+        param_names = ['temp_mean','temp_std',
+        'rh_mean', 'rh_std', 
+        'ws_mean','ws_std',
+        'wd_sin_mean','wd_sin_std', 
+        'wd_cos_mean', 'wd_cos_std',
+        'prec_mean', 'prec_std',
+        'ffmc_mean', 'ffmc_std', 
+        'dmc_mean','dmc_std',
+        'dc_mean', 'dc_std', 
+        'isi_mean', 'isi_std', 
+        'bui_mean','bui_std']
+    else:
+        param_names = ['temp', 'rh', 'ws','wd_sin', 'wd_cos', 'prec', 'ffmc', 'dmc','dc', 'isi', 'bui']
     num_params = len(param_names)
     
     # 1. Calculate Grid Size
