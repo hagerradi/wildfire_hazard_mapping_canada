@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
 
 fire_cause_mapping = {"h": 1, "l": 2}
+selected_weather_features = ['temp', 'rh', 'ws','wd_sin', 'wd_cos', 'prec', 'ffmc', 'dmc','dc', 'isi', 'bui']
 
 def load_raster(path: str) -> np.ma.MaskedArray:
     """ Load raster from given path"""

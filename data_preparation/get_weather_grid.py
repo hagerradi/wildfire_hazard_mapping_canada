@@ -10,9 +10,7 @@ import matplotlib.pyplot as plt
 
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 
-from utils import load_raster, visualize_weather_params
-
-selected_weather_features = ['temp', 'rh', 'ws','wd_sin', 'wd_cos', 'prec', 'ffmc', 'dmc','dc', 'isi', 'bui']
+from utils import selected_weather_features, load_raster, visualize_weather_params
 
 def wind_direction_to_sincos(wd:np.array)-> tuple[np.array, np.array]:
     """Convert Wind Direction to Sin/Cos for normalization"""
@@ -54,7 +52,7 @@ def load_weather_list(weather_list_file_path:str, season: Optional[int] = None)-
     weather_list_preprocessed = preprocess_weather_list(weather_list_subset)
     return weather_list_preprocessed
 
-def weather_list_to_grid(weather_list:pd.DataFrame, fire_weather_zone_grid: np.ma.MaskedArray, sampling: str="random")->np.array:
+def weather_list_to_grid(weather_list:pd.DataFrame, fire_weather_zone_grid: np.ma.MaskedArray, sampling: str="dist")->np.array:
     """Project weather list onto the Fire Weather Zones"""
 
     fire_weather_zones = weather_list["wx_zone"].unique()
@@ -74,12 +72,7 @@ def weather_list_to_grid(weather_list:pd.DataFrame, fire_weather_zone_grid: np.m
             value = weather_zone_subset.mean().values
         #array of mean, var for all the variables (1x2*len(selected_weather_features))
         elif sampling=="dist":
-            value = np.vstack([weather_zone_subset.mean(), weather_zone_subset.std()]).T.flatten()
-        #default to distribution (mean, var)
-        else:
-            print("NO WEATHER SAMPLING SELECTED; USING DIST SAMPLING")
-            value =  np.vstack([weather_zone_subset.mean(), weather_zone_subset.std()]).T.flatten()
-        
+            value = np.vstack([weather_zone_subset.mean(), weather_zone_subset.std()]).T.flatten()        
         out[fire_weather_zone_grid.data==zone] = value
     return out
 
