@@ -1,5 +1,7 @@
 import numpy as np
 import pandas as pd
+from pathlib import Path
+from typing import Optional
 
 import rasterio
 from rasterio.plot import plotting_extent
@@ -36,11 +38,23 @@ def preprocess_weather_list(weather_list:pd.DataFrame)->pd.DataFrame:
     # weather_list.drop(columns=['wd'], inplace=True)
     return weather_list
 
+def load_weather_list(weather_list_file_path:str, season: Optional[int] = None)->pd.DataFrame:
+    """Load and preprocess the weather list csv"""
+    path = Path(weather_list_file_path)
+    if not path.exists():
+        raise FileNotFoundError(f"Weather list file not found: {path}")
+    weather_list = pd.read_csv(weather_list_file_path)
+    if season:
+        weather_list_subset = weather_list[weather_list["season"]==season].copy()
+    else:
+        weather_list_subset = weather_list.copy()
+    weather_list_preprocessed = preprocess_weather_list(weather_list_subset)
+    return weather_list_preprocessed
+
 def weather_list_to_grid(weather_list:pd.DataFrame, fire_weather_zone_grid: np.ma.MaskedArray, sampling: str="random")->np.array:
     """Project weather list onto the Fire Weather Zones"""
 
     fwz = weather_list["wx_zone"].unique()
-    weather_list_preprocessed = preprocess_weather_list(weather_list)
     selected_features = ['temp', 'rh', 'ws','wd_sin', 'wd_cos', 'prec', 'ffmc', 'dmc','dc', 'isi', 'bui']
     
     if sampling=="dist":
@@ -49,7 +63,7 @@ def weather_list_to_grid(weather_list:pd.DataFrame, fire_weather_zone_grid: np.m
         out = np.repeat(fire_weather_zone_grid.data[..., np.newaxis], len(selected_features), axis=-1).astype("float32")
     
     for zone in fwz:
-        weather_zone_subset = weather_list_preprocessed[weather_list_preprocessed["wx_zone"]==zone][selected_features]
+        weather_zone_subset = weather_list[weather_list["wx_zone"]==zone][selected_features]
         if sampling=="random":
             value = np.array(weather_zone_subset.sample(1, random_state=42) )
         elif sampling=="dist":
@@ -60,3 +74,10 @@ def weather_list_to_grid(weather_list:pd.DataFrame, fire_weather_zone_grid: np.m
         
         out[fire_weather_zone_grid.data==zone] = value
     return out
+
+if __name__=="__main__":
+    data_folder = "../yan_bp3/hex05"
+    folders = ["burning_conditions_module", "dictionary", "ignitions_module",
+             "mapped_inputs",  "outputs"]
+    season = 1
+    weather_csv = load_weather_list(data_folder + "/" + folders[0] + "/" + "hex_05_weather_list.csv", season)
