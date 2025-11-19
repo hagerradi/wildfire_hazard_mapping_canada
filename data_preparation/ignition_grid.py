@@ -3,8 +3,9 @@ import re
 
 import numpy as np
 import pandas as pd
-import rasterio
-from utils import fire_cause_mapping, visualize_raster, load_raster
+from utils import fire_cause_mapping, load_raster
+from visualize import visualize_ignition_raster
+
 
 def load_ignition_distribution_zone_mapping(ignition_distribution_file_path:str, cause: int, season: int) -> dict[int, float]:
     """ Load ignition distribution file and return zone to probability mapping for given cause and season"""
@@ -81,10 +82,10 @@ def build_ignition_conditional_prob_grid(ignition_grid_folder_path: str, zone_gr
 
 # TODO: delete later
 if __name__ == "__main__":
-    root_dir = "/yan_bp3/hex05"
+    root_dir = "../yan_bp3/hex05"
 
     out_ignition_grids = build_ignition_conditional_prob_grid(ignition_grid_folder_path=os.path.join(root_dir, "ignitions_module/ignition_grids"),
                                         zone_grid_file_path=os.path.join(root_dir,"mapped_inputs/cfrs.asc"),
                                         ignition_distribution_file_path=os.path.join(root_dir,"ignitions_module/Nb_ignitions_zone_season_cause_5.csv"))
     
-    visualize_raster(out_ignition_grids[3], cause=2, season=2)
+    visualize_ignition_raster(out_ignition_grids[3], cause=2, season=2)

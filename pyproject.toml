@@ -12,6 +12,7 @@ dependencies = [
     "numpy>=2.3.5",
     "pandas>=2.3.3",
     "rasterio>=1.4.3",
+    "scikit-learn>=1.7.2",
 ]
 
 [project.optional-dependencies]
@@ -49,3 +50,8 @@ ignore = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.14.5",
+]
