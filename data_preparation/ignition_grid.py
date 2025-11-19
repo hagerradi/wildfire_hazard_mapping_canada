@@ -82,7 +82,7 @@ def build_ignition_conditional_prob_grid(ignition_grid_folder_path: str, zone_gr
 
 # TODO: delete later
 if __name__ == "__main__":
-    root_dir = "/yan_bp3/hex05"
+    root_dir = "../yan_bp3/hex05"
 
     out_ignition_grids = build_ignition_conditional_prob_grid(ignition_grid_folder_path=os.path.join(root_dir, "ignitions_module/ignition_grids"),
                                         zone_grid_file_path=os.path.join(root_dir,"mapped_inputs/cfrs.asc"),
