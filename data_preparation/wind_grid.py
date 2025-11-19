@@ -1,7 +1,7 @@
 from pathlib import Path
 
 import numpy as np
-from utils import load_raster
+from utils import NODATA, load_raster
 
 
 def get_global_wind_velocity(all_wind_velocity_files:list[Path])->np.float32:
@@ -69,7 +69,7 @@ def sample_wind_grids(all_u:list, all_v:list, all_mask:list, sampling:str="all")
       wind_grid = np.stack(u_v_combined, axis=-1) #(H,W,2*n_dir)
    
    wind_grid = np.ma.array(wind_grid, mask=np.broadcast_to(combined_mask[:,:,np.newaxis], wind_grid.shape))
-   return wind_grid.filled(-9999.0)
+   return wind_grid.filled(NODATA)
 
 def get_wind_grid_sample(path_wind_grids:str,sampling:str="all")->np.ndarray:
    """
