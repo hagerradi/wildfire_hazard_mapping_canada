@@ -3,7 +3,11 @@ import math
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib import cm
+from matplotlib.colors import ListedColormap
+from matplotlib.patches import Patch
 from rasterio.plot import show
+
+from data_preparation.utils import NODATA
 
 
 def visualize_ignition_raster(raster: np.array, cause: int, season: int):
@@ -91,6 +95,47 @@ def visualize_weather_params(weather_cube: np.array, sampling:str="dist", cols:i
     # 5. Hide empty subplots (if you have 7 params in a 3x3 grid, hide last 2)
     for j in range(i + 1, len(axes)):
         axes[j].axis('off')
+
+    plt.tight_layout()
+    plt.show()
+
+
+def visualize_fuel_grid(fuel_grid: np.array):
+    """Visualize fuel grid"""
+    classes = np.unique(fuel_grid)[1:] # ignore the noData class
+
+    # Reapply mask: -1 = nodata
+    indexed = np.ma.array(fuel_grid, mask=(fuel_grid == NODATA))
+
+    colors = plt.cm.tab20(np.linspace(0, 1, len(classes)))  # or any discrete cmap
+
+    cmap = ListedColormap(colors)
+
+    plt.figure(figsize=(8, 6))
+    plt.imshow(
+        indexed,
+        cmap=cmap,
+        origin="upper",
+        vmin=0,
+        vmax=len(classes) - 1
+    )
+
+    plt.title("FBP fuel map")
+    plt.xlabel("Easting (m)")
+    plt.ylabel("Northing (m)")
+
+    # Classification legend instead of colorbar
+    legend_patches = [
+        Patch(facecolor=colors[i], edgecolor="black", label=str(cls))
+        for i, cls in enumerate(classes)
+    ]
+    plt.legend(
+        handles=legend_patches,
+        title="Fuel Classes",
+        loc="upper right",
+        bbox_to_anchor=(1.32, 1.0),
+        frameon=True
+    )
 
     plt.tight_layout()
     plt.show()
