@@ -18,13 +18,13 @@ def group_fuels_in_grid(data: np.ndarray) -> np.ndarray:
             class_to_group_index[cls] = g_idx
 
     # re-classify raster from FBP code to group index
-    grouped_data = np.full(data.shape, fill_value=NODATA, dtype=np.int16)
+    fuel_grid_data = np.full(data.shape, fill_value=NODATA, dtype=np.int16)
 
     for cls, g_idx in class_to_group_index.items():
-        grouped_data[data == cls] = g_idx
+        fuel_grid_data[data == cls] = g_idx
 
     # range of classes will be between 0 - len(fuel_grouping)
-    return grouped_data
+    return fuel_grid_data
 
 
 def load_fuel_grid(path: str, fuel_table_path: str, group_fuels: bool = False)-> np.ndarray:
@@ -45,11 +45,11 @@ def load_fuel_grid(path: str, fuel_table_path: str, group_fuels: bool = False)->
     grid_values = fuel_table["grid_value"].tolist()
     class_to_index = {cls: i for i, cls in enumerate(grid_values)}
 
-    remapped_data = np.full(data.shape, fill_value=NODATA, dtype=np.int16)
+    fuel_grid_data = np.full(data.shape, fill_value=NODATA, dtype=np.int16)
     for cls, idx in class_to_index.items():
-        remapped_data[data == cls] = idx
+        fuel_grid_data[data == cls] = idx
 
-    return remapped_data
+    return fuel_grid_data
 
 
 # TODO: delete later
