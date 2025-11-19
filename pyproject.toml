@@ -50,3 +50,8 @@ ignore = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.14.5",
+]
