@@ -13,7 +13,7 @@ def get_global_wind_velocity(all_wind_velocity_files:list[Path])->np.float32:
    return float(global_max_wind_velocity)
 
 
-def wind_angle_speed_to_uv(speed:np.ndarray, wd_deg:np.ndarray, nodata:float=-9999.0):
+def convert_wind_angle_speed_to_uv(speed:np.ndarray, wd_deg:np.ndarray, nodata:float=-9999.0)->tuple[list[np.ndarray], list[np.ndarray], list[np.ndarray]]:
     """
        Returns u (east), v (north) as masked numpy arrays (mask True=invalid).
     """
@@ -36,13 +36,13 @@ def get_all_wind_grids(all_wind_velocity_files:list[Path], global_max_wind_veloc
       wind_ang_filename = wind_velocity_filename.with_name(wind_velocity_filename.name.replace("_vel.asc", "_ang.asc"))
       wind_velocity_grid = load_raster(wind_velocity_filename)
       wind_angle_grid = load_raster(wind_ang_filename)
-      u,v,mask  = wind_angle_speed_to_uv(wind_velocity_grid.data, wind_angle_grid.data)
+      u,v,mask  = convert_wind_angle_speed_to_uv(wind_velocity_grid.data, wind_angle_grid.data)
       all_u.append(u/global_max_wind_velocity) #normalizing by max speed
       all_v.append(v/global_max_wind_velocity)#normalizing by max speed
       all_mask.append(mask)
    return all_u, all_v, all_mask
 
-def sample_wind_grids(all_u:list, all_v:list, all_mask:list, sampling:str="all"):
+def sample_wind_grids(all_u:list, all_v:list, all_mask:list, sampling:str="all")->np.ndarray:
    """
     Sampling the wind grids from the loaded u,v. 
     Options: dist, all
