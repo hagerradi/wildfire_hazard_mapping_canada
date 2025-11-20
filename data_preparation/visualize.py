@@ -139,3 +139,19 @@ def visualize_fuel_grid(fuel_grid: np.array):
 
     plt.tight_layout()
     plt.show()
+
+
+def visualize_elevation_grid(grid: np.array):
+    """
+    Visualizes an elevation grid using matplotlib.
+    """
+
+    plt.figure(figsize=(8, 6))
+    img = plt.imshow(
+        grid,
+        cmap="terrain",
+        origin="upper"
+    )
+    plt.colorbar(img, label="Elevation")
+    plt.title("Elevation Grid (m)")
+    plt.show()

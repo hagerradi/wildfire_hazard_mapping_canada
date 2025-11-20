@@ -8,6 +8,10 @@ import rasterio
 # value for nodata in the rasters
 NODATA = -9999
 
+# normalization values for elevation (on national scale)
+ELEV_NATIONAL_MAX = 5855
+ELEV_NATIONAL_MIN = -158
+
 # Max wind velocity 
 GLOBAL_MAX_WIND_VELOCITY = 14.279999732971191
 
