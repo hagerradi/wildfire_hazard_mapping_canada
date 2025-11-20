@@ -1,15 +1,13 @@
 import os
 
 import numpy as np
-from utils import load_raster
+from utils import ELEV_NATIONAL_MAX, ELEV_NATIONAL_MIN, load_raster
 
 from data_preparation.visualize import visualize_elevation_grid
 
-ELEV_NATIONAL_MAX = 5855
-ELEV_NATIONAL_MIN = -158
 
 def load_elevation_grid(path: str)-> np.ma.MaskedArray:
-    """Load an FBP fuel raster and group fuel types if selected"""
+    """Load elevation grid and normalize values."""
     elevation_grid = load_raster(path)
     # normalize elevation grid data
     elevation_grid = (elevation_grid - ELEV_NATIONAL_MIN) / (ELEV_NATIONAL_MAX - ELEV_NATIONAL_MIN)

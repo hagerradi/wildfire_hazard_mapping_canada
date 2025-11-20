@@ -143,7 +143,7 @@ def visualize_fuel_grid(fuel_grid: np.array):
 
 def visualize_elevation_grid(grid: np.array):
     """
-    Visualizes an ignition raster using matplotlib.
+    Visualizes an elevation grid using matplotlib.
     """
 
     plt.figure(figsize=(8, 6))

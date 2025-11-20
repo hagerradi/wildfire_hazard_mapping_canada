@@ -7,6 +7,10 @@ import rasterio
 # value for nodata in the rasters
 NODATA = -9999
 
+# normalization values for elevation (on national scale)
+ELEV_NATIONAL_MAX = 5855
+ELEV_NATIONAL_MIN = -158
+
 # mapping cause to cause index
 fire_cause_mapping = {"h": 1, "l": 2}
 
