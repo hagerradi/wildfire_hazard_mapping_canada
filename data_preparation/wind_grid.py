@@ -1,16 +1,7 @@
 from pathlib import Path
 
 import numpy as np
-from utils import NODATA, load_raster
-
-
-def get_global_wind_velocity(all_wind_velocity_files:list[Path])->np.float32:
-   """Get the global maximum wind velocity for normalization"""
-   global_max_wind_velocity = -np.inf
-   for file_name in all_wind_velocity_files:
-      wind_velocity_grid = load_raster(file_name)
-      global_max_wind_velocity = max(global_max_wind_velocity, wind_velocity_grid.data.max())
-   return float(global_max_wind_velocity)
+from utils import GLOBAL_MAX_WIND_VELOCITY, NODATA, load_raster
 
 
 def convert_wind_angle_speed_to_uv(speed:np.ndarray, wd_deg:np.ndarray, nodata:float=-9999.0)->tuple[list[np.ndarray], list[np.ndarray], list[np.ndarray]]:
@@ -77,9 +68,7 @@ def get_wind_grid_sample(path_wind_grids:str,sampling:str="all")->np.ndarray:
    """
    path_wind_grids = Path(path_wind_grids)
    all_wind_velocity_files = list(path_wind_grids.glob("w???_vel.asc"))
-   global_max_wind_velocity = get_global_wind_velocity(all_wind_velocity_files)
-   
-   all_u, all_v, all_mask = get_all_wind_grids(all_wind_velocity_files, global_max_wind_velocity)
+   all_u, all_v, all_mask = get_all_wind_grids(all_wind_velocity_files, GLOBAL_MAX_WIND_VELOCITY)
    wind_grid = sample_wind_grids(all_u, all_v, all_mask, sampling=sampling)
    return wind_grid
 
