@@ -7,7 +7,7 @@ from utils import load_raster, selected_weather_features
 from visualize import visualize_weather_params
 
 
-def wind_direction_to_sincos(wd:np.array)-> tuple[np.array, np.array]:
+def wind_direction_to_sincos(wd:np.ndarray)-> tuple[np.ndarray, np.ndarray]:
     """Convert Wind Direction to Sin/Cos for normalization"""
     # Since wd is circular, we cannot directly normalize so need to use it as sin/cos
     wd_deg = wd.reshape(-1)
@@ -65,13 +65,13 @@ def weather_list_to_grid(weather_list:pd.DataFrame, fire_weather_zone_grid: np.m
         #array of mean, var for all the variables (1x2*len(selected_weather_features))
         elif sampling=="dist":
             value = np.vstack([weather_zone_subset.mean(), weather_zone_subset.std()]).T.flatten()        
-        out[fire_weather_zone_grid.data==zone] = value
+        out[fire_weather_zone_grid.data==zone] = value # type: ignore
     return out
 
 def build_weather_grid(weather_list_file_path:str, zone_grid_file_path: str, season: int=1, sampling:str="dist"):
     """Single function to run the weather grid creation"""
-    weather_csv = load_weather_list(data_folder + "/" + folders[0] + "/" + "hex_05_weather_list.csv", season)
-    data = load_raster(data_folder + "/" + folders[3] + "/cfrs.asc")
+    weather_csv = load_weather_list(weather_list_file_path, season)
+    data = load_raster(zone_grid_file_path)
 
     out = weather_list_to_grid(weather_csv, data, sampling)
     return out 
