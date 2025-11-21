@@ -12,7 +12,7 @@ NODATA = -9999
 ELEV_NATIONAL_MAX = 5855
 ELEV_NATIONAL_MIN = -158
 
-# Max wind velocity 
+# Max wind velocity (need to modify when we have the entire dataset)
 GLOBAL_MAX_WIND_VELOCITY = 14.279999732971191
 
 # mapping cause to cause index
