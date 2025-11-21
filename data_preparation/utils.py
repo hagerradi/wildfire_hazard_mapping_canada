@@ -13,7 +13,7 @@ ELEV_NATIONAL_MAX = 5855
 ELEV_NATIONAL_MIN = -158
 
 # Max wind velocity (TODO: need to modify when we have the entire dataset)
-GLOBAL_MAX_WIND_VELOCITY = 14.279999732971191
+MAX_WIND_VELOCITY = 14.279999732971191
 
 # Normalization values for Fire Intensity (TODO: need to rerun once we have the entire dataset)
 FIRE_INTENSITY_MAX = 127247.0
@@ -53,7 +53,7 @@ def load_csv(path: str) -> pd.DataFrame:
     else:
         raise FileNotFoundError(f"File not found: {path}")
 
-def get_global_wind_velocity(data_path:str)->float:
+def get_max_wind_velocity(data_path:str)->float:
     """Get the global maximum wind velocity for normalization"""
     all_hex = list(os.listdir(data_path))[1:]
     global_max_wind_velocity = -np.inf
