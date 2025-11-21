@@ -20,7 +20,7 @@ FIRE_INTENSITY_MAX = 127247.0
 FIRE_INTENSITY_MIN = 0.0
 
 # mapping cause to cause index
-fire_cause_mapping = {"h": 1, "l": 2}
+fire_cause_mapping = {1: "h", 2: "l"}
 
 # features of fire weather list to include
 selected_weather_features = ['temp', 'rh', 'prec', 'ffmc', 'dmc','dc', 'isi', 'bui'] #'ws','wd_sin', 'wd_cos'

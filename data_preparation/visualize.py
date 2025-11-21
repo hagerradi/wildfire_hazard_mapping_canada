@@ -10,7 +10,7 @@ from rasterio.plot import show
 from data_preparation.utils import NODATA
 
 
-def visualize_ignition_raster(raster: np.array, cause: int, season: int):
+def visualize_ignition_grid(raster: np.array, cause: int, season: int):
     """
     Visualizes an ignition raster using matplotlib.
     """
