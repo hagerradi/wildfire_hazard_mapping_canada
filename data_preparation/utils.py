@@ -53,7 +53,7 @@ def load_csv(path: str) -> pd.DataFrame:
     else:
         raise FileNotFoundError(f"File not found: {path}")
 
-def get_global_wind_velocity(data_path:str="./yan_bp3")->np.float32:
+def get_global_wind_velocity(data_path:str="./yan_bp3")->float:
     """Get the global maximum wind velocity for normalization"""
     all_hex = list(os.listdir(data_path))[1:]
     global_max_wind_velocity = -np.inf
