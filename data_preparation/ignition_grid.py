@@ -48,7 +48,7 @@ def sample_fire_density_grid(zone_grid_file_path: str, esc_fire_distribution_fil
 
     return esc_fire_grid
 
-def load_ignition_grids(ignition_grids_folder_path: str, cause: int = None, season: int = None)-> np.ma.MaskedArray:
+def load_ignition_grid(ignition_grids_folder_path: str, cause: int = None, season: int = None)-> np.ma.MaskedArray:
     """Load ignition grids for a specific season/cause or all seasons/causes"""
     if season and cause:
         file_name = f"ign_s{season}_{fire_cause_mapping[cause]}.asc"
@@ -76,7 +76,7 @@ if __name__ == "__main__":
     season = 1
     cause = 1
 
-    out_ignition_grids = load_ignition_grids(ignition_grids_folder_path=os.path.join(root_dir, "ignitions_module/ignition_grids"), season=season, cause=cause)
+    out_ignition_grids = load_ignition_grid(ignition_grids_folder_path=os.path.join(root_dir, "ignitions_module/ignition_grids"), season=season, cause=cause)
     visualize_ignition_grid(out_ignition_grids, cause=cause, season=season)
 
     # optionally, we can also use this grid
