@@ -141,7 +141,7 @@ def visualize_fuel_grid(fuel_grid: np.array):
     plt.show()
 
 
-def visualize_elevation_grid(grid: np.array):
+def visualize_elevation_grid(grid: np.ndarray):
     """
     Visualizes an elevation grid using matplotlib.
     """
@@ -154,4 +154,21 @@ def visualize_elevation_grid(grid: np.array):
     )
     plt.colorbar(img, label="Elevation")
     plt.title("Elevation Grid (m)")
+    plt.show()
+
+def visualize_fire_intensity_grid(grid: np.ndarray):
+    """
+    Visualizes a fire intensity grid using matplotlib.
+    """
+
+    plt.figure(figsize=(8, 6))
+    img = plt.imshow(
+        grid,
+        cmap="viridis",
+        origin="upper"
+    )
+    plt.colorbar(img, label="Fire Intensity")
+    plt.title("Fire Intensity Grid (m)")
+    plt.xlabel("Easting (m)")
+    plt.ylabel("Northing (m)")
     plt.show()

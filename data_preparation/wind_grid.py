@@ -1,7 +1,7 @@
 from pathlib import Path
 
 import numpy as np
-from utils import GLOBAL_MAX_WIND_VELOCITY, NODATA, load_raster
+from utils import MAX_WIND_VELOCITY, NODATA, load_raster
 
 
 def convert_wind_angle_speed_to_uv(speed:np.ndarray, wd_deg:np.ndarray, nodata:float=-9999.0)->tuple[list[np.ndarray], list[np.ndarray], list[np.ndarray]]:
@@ -18,7 +18,7 @@ def convert_wind_angle_speed_to_uv(speed:np.ndarray, wd_deg:np.ndarray, nodata:f
     v = -s * np.cos(rad)   # northward
     return u, v, mask.astype(np.float32)  # mask channel: 1=valid, 0=invalid
 
-def get_all_wind_grids(all_wind_velocity_files:list[Path], global_max_wind_velocity:float)->tuple[list[np.ndarray], list[np.ndarray], list[np.ndarray]]:
+def get_all_wind_grids(all_wind_velocity_files:list[Path], max_wind_velocity:float)->tuple[list[np.ndarray], list[np.ndarray], list[np.ndarray]]:
    """
     Loading the u,v and mask for all possible wind directions 
    """
@@ -28,8 +28,8 @@ def get_all_wind_grids(all_wind_velocity_files:list[Path], global_max_wind_veloc
       wind_velocity_grid = load_raster(wind_velocity_filename)
       wind_angle_grid = load_raster(wind_ang_filename)
       u,v,mask  = convert_wind_angle_speed_to_uv(wind_velocity_grid.data, wind_angle_grid.data)
-      all_u.append(u/global_max_wind_velocity) #normalizing by max speed
-      all_v.append(v/global_max_wind_velocity)#normalizing by max speed
+      all_u.append(u/max_wind_velocity) #normalizing by max speed
+      all_v.append(v/max_wind_velocity)#normalizing by max speed
       all_mask.append(mask)
    return all_u, all_v, all_mask
 
@@ -68,7 +68,7 @@ def get_wind_grid_sample(path_wind_grids:str,sampling:str="all")->np.ndarray:
    """
    path_wind_grids = Path(path_wind_grids)
    all_wind_velocity_files = list(path_wind_grids.glob("w???_vel.asc"))
-   all_u, all_v, all_mask = get_all_wind_grids(all_wind_velocity_files, GLOBAL_MAX_WIND_VELOCITY)
+   all_u, all_v, all_mask = get_all_wind_grids(all_wind_velocity_files, MAX_WIND_VELOCITY)
    wind_grid = sample_wind_grids(all_u, all_v, all_mask, sampling=sampling)
    return wind_grid #HxWx16
 
