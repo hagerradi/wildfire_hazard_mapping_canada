@@ -15,6 +15,10 @@ ELEV_NATIONAL_MIN = -158
 # Max wind velocity (TODO: need to modify when we have the entire dataset)
 GLOBAL_MAX_WIND_VELOCITY = 14.279999732971191
 
+# Normalization values for Fire Intensity (TODO: need to rerun once we have the entire dataset)
+FIRE_INTENSITY_MAX = 127247.0
+FIRE_INTENSITY_MIN = 0.0
+
 # mapping cause to cause index
 fire_cause_mapping = {"h": 1, "l": 2}
 
@@ -61,3 +65,14 @@ def get_global_wind_velocity(data_path:str="./yan_bp3")->np.float32:
             wind_velocity_grid = load_raster(file_name)
             global_max_wind_velocity = max(global_max_wind_velocity, wind_velocity_grid.data.max())
     return (float(global_max_wind_velocity))
+
+def get_maxmin_output_fire_intensity(data_path:str="./yan_bp3")->tuple[float, float]:
+    """Get the maximum and minimum output fire intensity for normalization"""
+    all_hex = list(os.listdir(data_path))[1:]
+    global_min_fire_intensity, global_max_fire_intensity = np.inf, -np.inf
+    for hex in all_hex:
+        path_output_files = f"{data_path}/{hex}/outputs/hex_{hex[3:]}_fiRaw_mean.tif"
+        output_fire_intensity_grid = load_raster(path_output_files)
+        global_max_fire_intensity = max(global_max_fire_intensity, output_fire_intensity_grid.max())
+        global_min_fire_intensity = min(global_min_fire_intensity, output_fire_intensity_grid.min())
+    return float(global_max_fire_intensity), float(global_min_fire_intensity)
