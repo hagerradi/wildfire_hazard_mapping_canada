@@ -1,91 +1,76 @@
 import os
-import re
 
 import numpy as np
 import pandas as pd
-from utils import fire_cause_mapping, load_raster
-from visualize import visualize_ignition_raster
+from utils import load_raster
+from visualize import visualize_ignition_grid
 
 
-def load_ignition_distribution_zone_mapping(ignition_distribution_file_path:str, cause: int, season: int) -> dict[int, float]:
+def build_esc_fire_distribution_zone_mapping(esc_fire_distribution_file_path:str, cause: int, season: int) -> dict[int, float]:
     """ Load ignition distribution file and return zone to probability mapping for given cause and season"""
-    ignition_dist = pd.read_csv(ignition_distribution_file_path)
+    esc_fire_dist = pd.read_csv(esc_fire_distribution_file_path)
 
     # convert percentage to probability
-    ignition_dist["esc_fires"] = ignition_dist["esc_fires"] / 100.0
-    ignition_dist_subset = ignition_dist[(ignition_dist["season"] == season) & (ignition_dist["cause"] == cause)].copy()
+    esc_fire_dist["esc_fires"] = esc_fire_dist["esc_fires"] / 100.0
+    esc_fire_dist_subset = esc_fire_dist[(esc_fire_dist["season"] == season) & (esc_fire_dist["cause"] == cause)].copy()
     
     # Convert it to probabilities over zones
-    ignition_dist_subset["esc_fires"] = ignition_dist_subset["esc_fires"] / ignition_dist_subset["esc_fires"].sum()
+    esc_fire_dist_subset["esc_fires"] = esc_fire_dist_subset["esc_fires"] / esc_fire_dist_subset["esc_fires"].sum()
 
-    assert len(ignition_dist_subset) == len(ignition_dist_subset["zone"].tolist())
+    assert len(esc_fire_dist_subset) == len(esc_fire_dist_subset["zone"].tolist())
     
     # Map: zone_id -> probability
-    zone_prob_mapping = dict(zip(ignition_dist_subset["zone"].astype(int), ignition_dist_subset["esc_fires"], strict=True))
+    zone_prob_mapping = dict(zip(esc_fire_dist_subset["zone"].astype(int), esc_fire_dist_subset["esc_fires"], strict=True))
 
     return zone_prob_mapping
 
 
-def project_zone_distribution_over_grid(ignition_raster: np.ma.MaskedArray, zone_raster: np.ma.MaskedArray, zone_prob_mapping: dict[int, float]) -> np.ndarray:
-    """ Project zone distribution probabilities over ignition raster grid"""
-    ignition_data = ignition_raster.data.astype("float64")
-    ignition_mask = ignition_raster.mask
-
+def project_esc_fire_distribution_over_grid(zone_raster: np.ma.MaskedArray, zone_prob_mapping: dict[int, float]) -> np.ma.MaskedArray:
+    """ Project zone distribution probabilities over zone grid"""
     zones_data = zone_raster.data.astype("int32")
     zones_mask = zone_raster.mask
 
-    # valid where both rasters have data
-    valid = (~ignition_mask) & (~zones_mask)
-
-    # initialize result
-    reweighted_raster = np.zeros_like(ignition_data, dtype="float64")
+    zone_prob_grid = np.ma.array(zones_data, mask=zones_mask, dtype=np.float64)
 
     for z_id, z_w in zone_prob_mapping.items():
-        valid_mask = valid & (zones_data == z_id)
-        if not np.any(valid_mask):
-            continue
-        
-        # multiply cell weight by zone weight
-        reweighted_raster[valid_mask] = ignition_data[valid_mask] * z_w
+        valid_mask = ~zones_mask & (zones_data == z_id)
+        if np.any(valid_mask):
+            zone_prob_grid.data[valid_mask] = z_w
+    
+    return zone_prob_grid
 
-    return reweighted_raster
-
-def build_ignition_conditional_prob_grid(ignition_grid_folder_path: str, zone_grid_file_path: str, ignition_distribution_file_path:str)-> list[np.ndarray]:
-    """ Build ignition grids re-weighted by zone distribution probabilities"""
+def sample_fire_density_grid(zone_grid_file_path: str, esc_fire_distribution_file_path:str, season: int, cause:int)-> np.ma.MaskedArray:
+    """ Build fire density grid based on probability of escaped fires per fire weather zone"""
     zone_raster = load_raster(zone_grid_file_path)
     
-    ignition_raster_files = [f for f in os.listdir(ignition_grid_folder_path) if f.endswith(".asc")]
-    out_ignition_grids = []
-    
+    zone_prob_mapping = build_esc_fire_distribution_zone_mapping(esc_fire_distribution_file_path=esc_fire_distribution_file_path, cause=cause, season=season)
+    esc_fire_grid = project_esc_fire_distribution_over_grid(zone_raster=zone_raster, zone_prob_mapping=zone_prob_mapping)
+
+    return esc_fire_grid
+
+def load_ignition_grids(ignition_grids_folder_path: str)-> np.ma.MaskedArray:
+    """Load ignition grids for all seasons/causes"""
     # loop over all ignition grids (across causes/seasons)
+    ignition_raster_files = [f for f in os.listdir(ignition_grids_folder_path) if f.endswith(".asc")]
+    out_ignition_grids = []
     for file_name in ignition_raster_files:
-        ignition_raster = load_raster(os.path.join(ignition_grid_folder_path, file_name))
-
-        matched = re.match(r"ign_s(\d+)_(\w)\.asc", file_name)
-        if not matched:
-            print(f"Warning: filename '{file_name}' does not match expected pattern, skipping.")
-            continue
-        season = int(matched.group(1))
-        cause = matched.group(2)
-
-        zone_prob_mapping = load_ignition_distribution_zone_mapping(ignition_distribution_file_path=ignition_distribution_file_path, cause=fire_cause_mapping[cause], season=season)
-        reweighted_raster = project_zone_distribution_over_grid(ignition_raster=ignition_raster, zone_raster=zone_raster, zone_prob_mapping=zone_prob_mapping)
-
-        out_ignition_grids.append(reweighted_raster)
-        
-        print(f"Processed re-weighted ignition grid for season {season} and cause {cause}")
-        print(f"  Min: {np.min(reweighted_raster)}, Max: {np.max(reweighted_raster)}, Sum: {np.sum(reweighted_raster)}")
+        ignition_raster = load_raster(os.path.join(ignition_grids_folder_path, file_name))
+        out_ignition_grids.append(ignition_raster)
     
+    # size (n, H, W), where n refers to product of number of seaons x number of causes
+    out_ignition_grids = np.ma.stack(out_ignition_grids, axis=0)
 
     return out_ignition_grids
-
 
 # TODO: delete later
 if __name__ == "__main__":
     root_dir = "../yan_bp3/hex05"
 
-    out_ignition_grids = build_ignition_conditional_prob_grid(ignition_grid_folder_path=os.path.join(root_dir, "ignitions_module/ignition_grids"),
-                                        zone_grid_file_path=os.path.join(root_dir,"mapped_inputs/cfrs.asc"),
-                                        ignition_distribution_file_path=os.path.join(root_dir,"ignitions_module/Nb_ignitions_zone_season_cause_5.csv"))
-    
-    visualize_ignition_raster(out_ignition_grids[3], cause=2, season=2)
+    out_ignition_grids = load_ignition_grids(ignition_grids_folder_path=os.path.join(root_dir, "ignitions_module/ignition_grids"))
+    visualize_ignition_grid(out_ignition_grids[1], cause=1, season=1)
+
+    # optionally, we can also use this grid
+    # out_fire_density_grid = sample_fire_density_grid(zone_grid_file_path=os.path.join(root_dir,"mapped_inputs/cfrs.asc"),
+    #                          esc_fire_distribution_file_path=os.path.join(root_dir,"ignitions_module/Nb_ignitions_zone_season_cause_5.csv"),
+    #                          season=1, cause=1)
+    # visualize_ignition_grid(out_fire_density_grid, season=1, cause=1)
