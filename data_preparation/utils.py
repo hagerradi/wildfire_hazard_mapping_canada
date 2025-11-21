@@ -19,7 +19,7 @@ GLOBAL_MAX_WIND_VELOCITY = 14.279999732971191
 fire_cause_mapping = {"h": 1, "l": 2}
 
 # features of fire weather list to include
-selected_weather_features = ['temp', 'rh', 'ws','wd_sin', 'wd_cos', 'prec', 'ffmc', 'dmc','dc', 'isi', 'bui']
+selected_weather_features = ['temp', 'rh', 'prec', 'ffmc', 'dmc','dc', 'isi', 'bui'] #'ws','wd_sin', 'wd_cos'
 
 # grouping fuel classes
 fuel_grouping = {
