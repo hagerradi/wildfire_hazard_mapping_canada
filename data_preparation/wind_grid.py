@@ -70,7 +70,7 @@ def get_wind_grid_sample(path_wind_grids:str,sampling:str="all")->np.ndarray:
    all_wind_velocity_files = list(path_wind_grids.glob("w???_vel.asc"))
    all_u, all_v, all_mask = get_all_wind_grids(all_wind_velocity_files, GLOBAL_MAX_WIND_VELOCITY)
    wind_grid = sample_wind_grids(all_u, all_v, all_mask, sampling=sampling)
-   return wind_grid
+   return wind_grid #HxWx16
 
 #TODO: Delete Later
 if __name__=="__main__":
