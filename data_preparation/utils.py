@@ -53,7 +53,7 @@ def load_csv(path: str) -> pd.DataFrame:
     else:
         raise FileNotFoundError(f"File not found: {path}")
 
-def get_global_wind_velocity(data_path:str="./yan_bp3")->float:
+def get_global_wind_velocity(data_path:str)->float:
     """Get the global maximum wind velocity for normalization"""
     all_hex = list(os.listdir(data_path))[1:]
     global_max_wind_velocity = -np.inf
@@ -66,13 +66,13 @@ def get_global_wind_velocity(data_path:str="./yan_bp3")->float:
             global_max_wind_velocity = max(global_max_wind_velocity, wind_velocity_grid.data.max())
     return (float(global_max_wind_velocity))
 
-def get_maxmin_output_fire_intensity(data_path:str="./yan_bp3")->tuple[float, float]:
+def get_range_output_fire_intensity(data_path:str)->tuple[float, float]:
     """Get the maximum and minimum output fire intensity for normalization"""
     all_hex = list(os.listdir(data_path))[1:]
-    global_min_fire_intensity, global_max_fire_intensity = np.inf, -np.inf
+    min_fire_intensity, max_fire_intensity = np.inf, -np.inf
     for hex in all_hex:
         path_output_files = f"{data_path}/{hex}/outputs/hex_{hex[3:]}_fiRaw_mean.tif"
         output_fire_intensity_grid = load_raster(path_output_files)
-        global_max_fire_intensity = max(global_max_fire_intensity, output_fire_intensity_grid.max())
-        global_min_fire_intensity = min(global_min_fire_intensity, output_fire_intensity_grid.min())
-    return float(global_max_fire_intensity), float(global_min_fire_intensity)
+        max_fire_intensity = max(max_fire_intensity, output_fire_intensity_grid.max())
+        min_fire_intensity = min(min_fire_intensity, output_fire_intensity_grid.min())
+    return float(max_fire_intensity), float(min_fire_intensity)
