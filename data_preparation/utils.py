@@ -6,7 +6,7 @@ import pandas as pd
 import rasterio
 
 # value for nodata in the rasters
-NODATA = -9999
+NODATA = np.nan
 
 # normalization values for elevation (on national scale)
 ELEV_NATIONAL_MAX = 5855
@@ -38,7 +38,7 @@ def load_raster(path: str) -> np.ma.MaskedArray:
     """ Load raster from given path"""
     if os.path.exists(path):  # noqa: F821
         with rasterio.open(path) as src:
-            raster = src.read(1, masked=True) # mask out the nodata (-9999 values)
+            raster = src.read(1, masked=True) # mask out the nodata
             return raster
     else:
         raise FileNotFoundError(f"File not found: {path}")

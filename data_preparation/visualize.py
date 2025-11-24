@@ -10,19 +10,22 @@ from rasterio.plot import show
 from data_preparation.utils import NODATA
 
 
-def visualize_ignition_grid(raster: np.array, cause: int, season: int):
+def visualize_ignition_grid(grid: np.array, cause: int, season: int):
     """
     Visualizes an ignition raster using matplotlib.
     """
-    fig, ax = plt.subplots(figsize=(8, 6))
+    masked_grid = np.ma.masked_invalid(grid)
 
-    show(raster, ax=ax, cmap="gray")
-
-    img = ax.get_images()[0]
-    cbar = plt.colorbar(img, ax=ax, cmap='gray')
-    cbar.set_label("ignition value")
-
-    ax.set_title(f"Ignition Grid for season {season} : Cause: {cause}")
+    plt.figure(figsize=(8, 6))
+    img = plt.imshow(
+        masked_grid,
+        cmap="gray",
+        origin="upper"
+    )
+    plt.colorbar(img, label="Ignition probability")
+    plt.title(f"Ignition Grid for season {season} : Cause: {cause}")
+    plt.xlabel("Easting (m)")
+    plt.ylabel("Northing (m)")
     plt.show()
 
 def visualize_weather_params(weather_cube: np.array, sampling:str="dist", cols:int=3):
@@ -102,10 +105,10 @@ def visualize_weather_params(weather_cube: np.array, sampling:str="dist", cols:i
 
 def visualize_fuel_grid(fuel_grid: np.array):
     """Visualize fuel grid"""
-    classes = np.unique(fuel_grid)[1:] # ignore the noData class
+    classes = np.unique(fuel_grid)[:-1] # ignore the noData class
 
     # Reapply mask: -1 = nodata
-    indexed = np.ma.array(fuel_grid, mask=(fuel_grid == NODATA))
+    masked_grid = np.ma.masked_invalid(fuel_grid)
 
     colors = plt.cm.tab20(np.linspace(0, 1, len(classes)))  # or any discrete cmap
 
@@ -113,7 +116,7 @@ def visualize_fuel_grid(fuel_grid: np.array):
 
     plt.figure(figsize=(8, 6))
     plt.imshow(
-        indexed,
+        masked_grid,
         cmap=cmap,
         origin="upper",
         vmin=0,
@@ -145,10 +148,11 @@ def visualize_elevation_grid(grid: np.ndarray):
     """
     Visualizes an elevation grid using matplotlib.
     """
+    masked_grid = np.ma.masked_invalid(grid)
 
     plt.figure(figsize=(8, 6))
     img = plt.imshow(
-        grid,
+        masked_grid,
         cmap="terrain",
         origin="upper"
     )
@@ -160,10 +164,11 @@ def visualize_fire_intensity_grid(grid: np.ndarray):
     """
     Visualizes a fire intensity grid using matplotlib.
     """
+    masked_grid = np.ma.masked_invalid(grid)
 
     plt.figure(figsize=(8, 6))
     img = plt.imshow(
-        grid,
+        masked_grid,
         cmap="viridis",
         origin="upper"
     )
