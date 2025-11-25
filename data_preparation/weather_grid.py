@@ -44,7 +44,7 @@ def load_weather_list(weather_list_file_path:str, season: int | None = None)->pd
     weather_list_preprocessed = preprocess_weather_list(weather_list_subset)
     return weather_list_preprocessed
 
-def weather_list_to_grid(weather_list:pd.DataFrame, fire_weather_zone_grid: np.ma.MaskedArray, sampling: str="dist")->np.array:
+def weather_list_to_grid(weather_list:pd.DataFrame, fire_weather_zone_grid: np.ma.MaskedArray, sampling: str="dist")->np.ndarray:
     """Project weather list onto the Fire Weather Zones"""
 
     fire_weather_zones = weather_list["wx_zone"].unique()
