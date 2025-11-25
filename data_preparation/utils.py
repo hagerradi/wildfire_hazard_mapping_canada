@@ -23,7 +23,7 @@ FIRE_INTENSITY_MIN = 0.0
 fire_cause_mapping = {1: "h", 2: "l"}
 
 # features of fire weather list to include
-selected_weather_features = ['temp', 'rh', 'prec', 'ffmc', 'dmc','dc', 'isi', 'bui'] #'ws','wd_sin', 'wd_cos'
+selected_weather_features = ['temp', 'rh', 'prec', 'ffmc', 'dmc', 'dc', 'isi', 'bui'] #'ws','wd_sin', 'wd_cos'
 
 # grouping fuel classes
 fuel_grouping = {

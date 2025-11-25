@@ -7,8 +7,6 @@ from matplotlib.colors import ListedColormap
 from matplotlib.patches import Patch
 from rasterio.plot import show
 
-from data_preparation.utils import NODATA
-
 
 def visualize_ignition_grid(grid: np.array, cause: int, season: int):
     """
