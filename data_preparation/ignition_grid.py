@@ -67,8 +67,7 @@ def load_ignition_grid(ignition_grids_folder_path: str, cause: int = None, seaso
     
     # size (H, W)
     out_ignition_grids = np.stack(out_ignition_grids, axis=0)
-    max_ignition_grid = np.max(out_ignition_grids, axis=0)
-
+    max_ignition_grid = np.nanmax(out_ignition_grids, axis=0)
     return max_ignition_grid
 
 # TODO: delete later
