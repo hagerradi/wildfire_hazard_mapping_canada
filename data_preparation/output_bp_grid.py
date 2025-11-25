@@ -6,7 +6,7 @@ from visualize import visualize_burn_prob_grid
 
 
 def load_output_burn_prob_grid(path: str)-> np.ndarray:
-    """Load elevation grid and normalize values."""
+    """Load burn probability grid."""
     output_burn_prob_grid = load_raster(path) #no norm because each pixel prob is independent of each other
     return output_burn_prob_grid.data
 
