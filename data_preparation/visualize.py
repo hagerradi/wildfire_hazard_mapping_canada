@@ -172,3 +172,20 @@ def visualize_fire_intensity_grid(grid: np.ndarray):
     plt.xlabel("Easting (m)")
     plt.ylabel("Northing (m)")
     plt.show()
+
+def visualize_burn_prob_grid(grid: np.ndarray):
+    """
+    Visualizes a burn prob grid using matplotlib.
+    """
+
+    plt.figure(figsize=(8, 6))
+    img = plt.imshow(
+        grid,
+        cmap="viridis",
+        origin="upper"
+    )
+    plt.colorbar(img, label="Burn Probability")
+    plt.title("Burn Probability Grid (m)")
+    plt.xlabel("Easting (m)")
+    plt.ylabel("Northing (m)")
+    plt.show()
