@@ -3,8 +3,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
-from utils import load_raster, selected_weather_features
-from visualize import visualize_weather_params
+
+from data_preparation.utils import NODATA, load_raster, selected_weather_features
+from data_preparation.visualize import visualize_weather_params
 
 
 def wind_direction_to_sincos(wd:np.ndarray)-> tuple[np.ndarray, np.ndarray]:
@@ -46,13 +47,12 @@ def load_weather_list(weather_list_file_path:str, season: int | None = None)->pd
 
 def weather_list_to_grid(weather_list:pd.DataFrame, fire_weather_zone_grid: np.ma.MaskedArray, sampling: str="dist")->np.ndarray:
     """Project weather list onto the Fire Weather Zones"""
-
     fire_weather_zones = weather_list["wx_zone"].unique()
     
     if sampling=="dist":
-        out = np.repeat(fire_weather_zone_grid.data[..., np.newaxis], (len(selected_weather_features))*2, axis=-1).astype("float32")
+        out = np.repeat(fire_weather_zone_grid[..., np.newaxis], (len(selected_weather_features))*2, axis=-1).astype("float32")
     else:
-        out = np.repeat(fire_weather_zone_grid.data[..., np.newaxis], len(selected_weather_features), axis=-1).astype("float32")
+        out = np.repeat(fire_weather_zone_grid[..., np.newaxis], len(selected_weather_features), axis=-1).astype("float32")
     
     for zone in fire_weather_zones:
         weather_zone_subset = weather_list[weather_list["wx_zone"]==zone][selected_weather_features]
@@ -66,13 +66,12 @@ def weather_list_to_grid(weather_list:pd.DataFrame, fire_weather_zone_grid: np.m
         elif sampling=="dist":
             value = np.vstack([weather_zone_subset.mean(), weather_zone_subset.std()]).T.flatten()        
         out[fire_weather_zone_grid.data==zone] = value # type: ignore
-    return out #HxWx2*len(selected_weather_features) (or len(selected_weather_features))
+    return out.filled(NODATA) #HxWx2*len(selected_weather_features) (or len(selected_weather_features))
 
 def build_weather_grid(weather_list_file_path:str, zone_grid_file_path: str, season: int=1, sampling:str="dist"):
     """Single function to run the weather grid creation"""
     weather_csv = load_weather_list(weather_list_file_path, season)
     data = load_raster(zone_grid_file_path)
-
     out = weather_list_to_grid(weather_csv, data, sampling)
     return out 
 
