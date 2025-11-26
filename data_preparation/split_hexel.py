@@ -25,7 +25,7 @@ def get_stacked_feats(root_dir:str, season:int, cause:int, wind_sampling:str, we
     stacked_feats = np.concatenate([elevation_grid[:, :, np.newaxis], ignition_grid[:, :, np.newaxis], weather_grid, wind_grid, out_bp_grid[:, :, np.newaxis]],axis=-1)
     return stacked_feats, np.isnan(elevation_grid) #(H,W,35), (H,W)
 
-def get_split_hexel_window(stacked_feats:np.ndarray, mask:np.ndarray, win_h:int=128, win_w:int=128, overlap_ratio:float=0.2, mask_threshold:float=0.5)->tuple[list[np.ndarray], list[list]]:
+def get_split_hexel_window(stacked_feats:np.ndarray, mask:np.ndarray, win_h:int=128, win_w:int=128, overlap_ratio:float=0.2, mask_threshold:float=0.5)->tuple[list[np.ndarray], list[dict]]:
     """
         Split the hexel using sliding windows for inp to the model
         Inputs:
