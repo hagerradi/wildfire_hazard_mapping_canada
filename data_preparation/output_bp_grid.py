@@ -1,8 +1,9 @@
 import os
 
 import numpy as np
-from utils import load_raster
-from visualize import visualize_burn_prob_grid
+
+from data_preparation.utils import load_raster
+from data_preparation.visualize import visualize_burn_prob_grid
 
 
 def load_output_burn_prob_grid(path: str)-> np.ndarray:

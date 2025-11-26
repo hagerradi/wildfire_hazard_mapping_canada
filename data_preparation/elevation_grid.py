@@ -2,7 +2,7 @@ import os
 
 import numpy as np
 
-from data_preparation.utils import ELEV_NATIONAL_MAX, ELEV_NATIONAL_MIN, load_raster
+from data_preparation.utils import ELEV_NATIONAL_MAX, ELEV_NATIONAL_MIN, NODATA, load_raster
 from data_preparation.visualize import visualize_elevation_grid
 
 
