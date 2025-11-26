@@ -25,7 +25,7 @@ def get_stacked_feats(root_dir:str, season:int, cause:int, wind_sampling:str, we
     stacked_feats = np.concatenate([elevation_grid[:, :, np.newaxis], ignition_grid[:, :, np.newaxis], weather_grid, wind_grid, out_bp_grid[:, :, np.newaxis]],axis=-1)
     return stacked_feats, np.isnan(elevation_grid) #(H,W,35), (H,W)
 
-def split_hexel(stacked_feats:np.ndarray, mask:np.ndarray, win_h:int=128, win_w:int=128, overlap_ratio:float=0.2, mask_threshold:float=0.5)->tuple[list[np.ndarray], list[list]]:
+def get_split_hexel_window(stacked_feats:np.ndarray, mask:np.ndarray, win_h:int=128, win_w:int=128, overlap_ratio:float=0.2, mask_threshold:float=0.5)->tuple[list[np.ndarray], list[list]]:
     """Split the hexel using sliding windows for inp to the model"""
     H,W,C = stacked_feats.shape
     stride_h = max(1,int(win_h * (1 - overlap_ratio))) #n_rows = (H-win_h)//stride_h + 1
@@ -34,20 +34,20 @@ def split_hexel(stacked_feats:np.ndarray, mask:np.ndarray, win_h:int=128, win_w:
     total, processed = 0.0,0.0
     valid_windows, valid_coords = [], []
 
-    for r in range(0, H - win_h + 1, stride_h):
-        for c in range(0, W - win_w + 1, stride_w):
+    for row in range(0, H - win_h + 1, stride_h):
+        for col in range(0, W - win_w + 1, stride_w):
             total+=1
             # Extract the mask patch 
-            mask_patch = mask[r : r + win_h, c : c + win_w]
+            mask_patch = mask[row : row + win_h, col : col + win_w]
             # Count True values in the mask
             true_count = np.count_nonzero(mask_patch)
             ratio = true_count / window_area
             # Check Threshold Condition
             if ratio <= mask_threshold:
                 processed+=1
-                window_data = stacked_feats[r : r + win_h, c : c + win_w, :]
+                window_data = stacked_feats[row : row + win_h, col : col + win_w, :]
                 valid_windows.append(window_data)
-                valid_coords.append((r, c, ratio))
+                valid_coords.append((row, col, ratio))
     #TODO: Saving function
     return valid_windows, valid_coords #(n_rows*n_cols,win_h,win_w), (n_rows*n_cols,3)
 
@@ -58,7 +58,7 @@ if __name__=="__main__":
                                       cause=1, 
                                       wind_sampling="all", 
                                       weather_sampling="dist")
-    valid_windows, valid_coords = split_hexel(stacked_feats=stacked_feats, 
+    valid_windows, valid_coords = get_split_hexel_window(stacked_feats=stacked_feats, 
                                         mask=mask, 
                                         win_h=128, 
                                         win_w=128, 
