@@ -24,4 +24,4 @@ def split_hexel(stacked_feats:np.ndarray, mask:np.ndarray, win_h:int=128, win_w:
                 window_data = stacked_feats[r : r + win_h, c : c + win_w, :]
                 valid_windows.append(window_data)
                 valid_coords.append((r, c, ratio))
-    return valid_windows, valid_coords #(n,win_h,win_w), (n,3)
+    return valid_windows, valid_coords #(n_rows*n_cols,win_h,win_w), (n_rows*n_cols,3)
