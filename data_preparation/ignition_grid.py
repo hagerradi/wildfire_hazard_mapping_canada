@@ -3,7 +3,7 @@ import os
 import numpy as np
 import pandas as pd
 
-from data_preparation.utils import fire_cause_mapping, load_raster
+from data_preparation.utils import NODATA, fire_cause_mapping, load_raster
 from data_preparation.visualize import visualize_ignition_grid
 
 
@@ -55,7 +55,7 @@ def load_ignition_grid(ignition_grids_folder_path: str, cause: int = None, seaso
     if season and cause:
         file_name = f"ign_s{season}_{fire_cause_mapping[cause]}.asc"
         ignition_raster = load_raster(os.path.join(ignition_grids_folder_path, file_name))
-
+        ignition_raster = ignition_raster.filled(NODATA)
         return ignition_raster
 
     # else, loop over all ignition grids (across causes/seasons) and output one grid
