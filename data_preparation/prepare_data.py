@@ -5,6 +5,7 @@ import numpy as np
 from data_preparation.elevation_grid import load_elevation_grid
 from data_preparation.ignition_grid import load_ignition_grid
 from data_preparation.output_bp_grid import load_output_burn_prob_grid
+from data_preparation.visualize import plot_split_window_hexel
 from data_preparation.weather_grid import build_weather_grid
 from data_preparation.wind_grid import get_wind_grid_sample
 
@@ -64,3 +65,4 @@ if __name__=="__main__":
                                         overlap_ratio=0.2, 
                                         mask_threshold=0.5)
     print(len(valid_windows), valid_windows[0].shape)
+    plot_split_window_hexel(valid_windows[:10], -1)
