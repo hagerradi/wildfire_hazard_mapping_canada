@@ -231,7 +231,7 @@ def plot_split_window_hexel(windows, channel_index=0, max_cols=5, figsize=(15, 1
                 img_data = window
             
             # Plot
-            im = ax.imshow(img_data, cmap='viridis')  # noqa: F841
+            im = ax.imshow(img_data, cmap='gray')  # noqa: F841
             ax.set_title(f"Window {i}")
         
         # Hide axis ticks for all subplots (cleaner look)
