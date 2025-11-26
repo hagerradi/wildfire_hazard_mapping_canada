@@ -38,10 +38,7 @@ def visualize_weather_params(weather_cube: np.array, sampling:str="dist", cols:i
     """
     if sampling=="dist":
         param_names = ['temp_mean','temp_std',
-        'rh_mean', 'rh_std', 
-        'ws_mean','ws_std',
-        'wd_sin_mean','wd_sin_std', 
-        'wd_cos_mean', 'wd_cos_std',
+        'rh_mean', 'rh_std',
         'prec_mean', 'prec_std',
         'ffmc_mean', 'ffmc_std', 
         'dmc_mean','dmc_std',
