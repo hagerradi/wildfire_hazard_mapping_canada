@@ -1,8 +1,9 @@
 import os
 
 import numpy as np
-from utils import FIRE_INTENSITY_MAX, FIRE_INTENSITY_MIN, load_raster
-from visualize import visualize_fire_intensity_grid
+
+from data_preparation.utils import FIRE_INTENSITY_MAX, FIRE_INTENSITY_MIN, load_raster
+from data_preparation.visualize import visualize_fire_intensity_grid
 
 
 def load_output_fire_intensity_grid(path: str)-> np.ma.MaskedArray:

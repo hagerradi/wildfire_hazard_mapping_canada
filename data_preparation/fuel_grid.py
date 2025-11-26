@@ -1,8 +1,8 @@
 import os
 
 import numpy as np
-from utils import NODATA, fuel_grouping, load_csv, load_raster
 
+from data_preparation.utils import NODATA, fuel_grouping, load_csv, load_raster
 from data_preparation.visualize import visualize_fuel_grid
 
 

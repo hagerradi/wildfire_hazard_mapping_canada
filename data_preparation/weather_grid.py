@@ -3,8 +3,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
-from utils import load_raster, selected_weather_features
-from visualize import visualize_weather_params
+
+from data_preparation.utils import load_raster, selected_weather_features
+from data_preparation.visualize import visualize_weather_params
 
 
 def wind_direction_to_sincos(wd:np.ndarray)-> tuple[np.ndarray, np.ndarray]:

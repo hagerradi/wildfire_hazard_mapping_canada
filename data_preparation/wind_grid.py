@@ -1,7 +1,8 @@
 from pathlib import Path
 
 import numpy as np
-from utils import MAX_WIND_VELOCITY, NODATA, load_raster
+
+from data_preparation.utils import MAX_WIND_VELOCITY, NODATA, load_raster
 
 
 def convert_wind_angle_speed_to_uv(speed:np.ndarray, wd_deg:np.ndarray, nodata:float=-9999.0)->tuple[list[np.ndarray], list[np.ndarray], list[np.ndarray]]:
