@@ -18,7 +18,7 @@ def group_fuels_in_grid(data: np.ndarray) -> np.ndarray:
             class_to_group_index[cls] = g_idx
 
     # re-classify raster from FBP code to group index
-    fuel_grid_data = np.full(data.shape, fill_value=NODATA, dtype=np.int16)
+    fuel_grid_data = np.full(data.shape, fill_value=NODATA, dtype=np.float32)
 
     for cls, g_idx in class_to_group_index.items():
         fuel_grid_data[data == cls] = g_idx
@@ -32,22 +32,19 @@ def load_fuel_grid(path: str, fuel_table_path: str, group_fuels: bool = False)->
 
     fuel_grid = load_raster(path)
 
-    # fill empty data with nodata value: -9999
-    data = fuel_grid.filled(NODATA)
-    
     # option 1: group fuels
     if group_fuels:
         # convert classes to be in the range 0 - num_groups       
-        return group_fuels_in_grid(data=data)
+        return group_fuels_in_grid(data=fuel_grid)
     
     # option 2: keep grid as is, re-assign classes to be between 0 - num_classes
     fuel_table = load_csv(fuel_table_path)
     grid_values = fuel_table["grid_value"].tolist()
     class_to_index = {cls: i for i, cls in enumerate(grid_values)}
 
-    fuel_grid_data = np.full(data.shape, fill_value=NODATA, dtype=np.int16)
+    fuel_grid_data = np.full(fuel_grid.shape, fill_value=NODATA, dtype=np.float32)
     for cls, idx in class_to_index.items():
-        fuel_grid_data[data == cls] = idx
+        fuel_grid_data[fuel_grid == cls] = idx
 
     return fuel_grid_data
 
@@ -57,8 +54,7 @@ if __name__ == "__main__":
     root_dir = "../yan_bp3/hex05"
 
     out_fuel_grid = load_fuel_grid(path=os.path.join(root_dir, "mapped_inputs/fbp.asc"),
-                                fuel_table_path=os.path.join(root_dir, "mapped_inputs/Fuel_table.lut"),
-                                group_fuels=True)  # noqa: F821
+                                fuel_table_path=os.path.join(root_dir, "mapped_inputs/Fuel_table.lut"))  # noqa: F821
     
     print(np.unique_counts(out_fuel_grid))
     visualize_fuel_grid(out_fuel_grid)

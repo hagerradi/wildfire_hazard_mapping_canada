@@ -6,7 +6,7 @@ import pandas as pd
 import rasterio
 
 # value for nodata in the rasters
-NODATA = -9999
+NODATA = np.nan
 
 # normalization values for elevation (on national scale)
 ELEV_NATIONAL_MAX = 5855
@@ -23,7 +23,7 @@ FIRE_INTENSITY_MIN = 0.0
 fire_cause_mapping = {1: "h", 2: "l"}
 
 # features of fire weather list to include
-selected_weather_features = ['temp', 'rh', 'prec', 'ffmc', 'dmc','dc', 'isi', 'bui'] #'ws','wd_sin', 'wd_cos'
+selected_weather_features = ['temp', 'rh', 'prec', 'ffmc', 'dmc', 'dc', 'isi', 'bui'] #'ws','wd_sin', 'wd_cos'
 
 # grouping fuel classes
 fuel_grouping = {
@@ -38,7 +38,7 @@ def load_raster(path: str) -> np.ma.MaskedArray:
     """ Load raster from given path"""
     if os.path.exists(path):  # noqa: F821
         with rasterio.open(path) as src:
-            raster = src.read(1, masked=True) # mask out the nodata (-9999 values)
+            raster = src.read(1, masked=True) # mask out the nodata
             return raster
     else:
         raise FileNotFoundError(f"File not found: {path}")

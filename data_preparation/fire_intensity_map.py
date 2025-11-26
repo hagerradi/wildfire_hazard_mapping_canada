@@ -6,11 +6,12 @@ from data_preparation.utils import FIRE_INTENSITY_MAX, FIRE_INTENSITY_MIN, load_
 from data_preparation.visualize import visualize_fire_intensity_grid
 
 
-def load_output_fire_intensity_grid(path: str)-> np.ma.MaskedArray:
+def load_output_fire_intensity_grid(path: str)-> np.ndarray:
     """Load elevation grid and normalize values."""
     output_fire_intensity_grid = load_raster(path)
-    # normalize elevation grid data
+    # normalize fire intensity data
     output_fire_intensity_grid = ((output_fire_intensity_grid - FIRE_INTENSITY_MIN) / (FIRE_INTENSITY_MAX - FIRE_INTENSITY_MIN))
+    output_fire_intensity_grid = output_fire_intensity_grid.filled(NODATA)
     return output_fire_intensity_grid
 
 
