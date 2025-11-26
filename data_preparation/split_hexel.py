@@ -52,7 +52,7 @@ def get_split_hexel_window(stacked_feats:np.ndarray, mask:np.ndarray, win_h:int=
                 num_valid_windows+=1
                 window_data = stacked_feats[row : row + win_h, col : col + win_w, :]
                 valid_windows.append(window_data)
-                valid_coords.append((row, col, valid_ratio))
+                valid_coords.append({(row, col): valid_ratio})
     #TODO: Saving function
     return valid_windows, valid_coords #(n_rows*n_cols,win_h,win_w), (n_rows*n_cols,3)
 
