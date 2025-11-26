@@ -1,5 +1,26 @@
-import numpy as np
+import os
 
+import numpy as np
+from nrcan_wildfireriskmapping.data_preparation.elevation_grid import load_elevation_grid
+from nrcan_wildfireriskmapping.data_preparation.ignition_grid import load_ignition_grid
+from nrcan_wildfireriskmapping.data_preparation.output_bp_grid import load_output_burn_prob_grid
+from nrcan_wildfireriskmapping.data_preparation.weather_grid import build_weather_grid
+from nrcan_wildfireriskmapping.data_preparation.wind_grid import get_wind_grid_sample
+
+
+def get_stacked_feats(root_dir:str, season:int, cause:int, wind_sampling:str, weather_sampling:str)->tuple[np.ndarray, np.ndarray]:
+    """Stack all the features"""
+    #TODO: Channel Mapping dict, Add Fuel grid features
+    elevation_grid = load_elevation_grid(path=os.path.join(root_dir, "mapped_inputs/elev.asc"))
+    ignition_grid = load_ignition_grid(ignition_grids_folder_path=os.path.join(root_dir, "ignitions_module/ignition_grids"), season=season, cause=cause)
+    out_bp_grid = load_output_burn_prob_grid(path=os.path.join(root_dir, "outputs/hex_05_20000_iter_bp.tif"))  # noqa: F821
+    weather_grid = build_weather_grid(weather_list_file_path=os.path.join(root_dir, "/burning_conditions_module/hex_05_weather_list.csv"),
+                        zone_grid_file_path=os.path.join(root_dir, "/mapped_inputs/cfrs.asc"), 
+                        season=season,
+                        sampling=weather_sampling)
+    wind_grid = get_wind_grid_sample(os.path.join(root_dir, "/burning_conditions_module/wind_grids"),sampling=wind_sampling)
+    stacked_feats = np.concatenate([elevation_grid[:, :, np.newaxis], ignition_grid[:, :, np.newaxis], weather_grid, wind_grid, out_bp_grid[:, :, np.newaxis]],axis=-1)
+    return stacked_feats, np.isnan(elevation_grid) #(H,W,35), (H,W)
 
 def split_hexel(stacked_feats:np.ndarray, mask:np.ndarray, win_h:int=128, win_w:int=128, overlap_ratio:float=0.2, mask_threshold:float=0.5)->tuple[list[np.ndarray], list[list]]:
     """Split the hexel using sliding windows for inp to the model"""
@@ -24,4 +45,5 @@ def split_hexel(stacked_feats:np.ndarray, mask:np.ndarray, win_h:int=128, win_w:
                 window_data = stacked_feats[r : r + win_h, c : c + win_w, :]
                 valid_windows.append(window_data)
                 valid_coords.append((r, c, ratio))
+    #TODO: Saving function
     return valid_windows, valid_coords #(n_rows*n_cols,win_h,win_w), (n_rows*n_cols,3)
