@@ -26,28 +26,33 @@ def get_stacked_feats(root_dir:str, season:int, cause:int, wind_sampling:str, we
     return stacked_feats, np.isnan(elevation_grid) #(H,W,35), (H,W)
 
 def get_split_hexel_window(stacked_feats:np.ndarray, mask:np.ndarray, win_h:int=128, win_w:int=128, overlap_ratio:float=0.2, mask_threshold:float=0.5)->tuple[list[np.ndarray], list[list]]:
-    """Split the hexel using sliding windows for inp to the model"""
-    H,W,C = stacked_feats.shape
+    """
+        Split the hexel using sliding windows for inp to the model
+        Inputs:
+            stacked_feats(np.ndarray): Stacked array of all the features of the shape (H,W, num_feats)
+            mask(np.ndarray): A bool array where True means to ignore the pixel (H,W)
+    """
+    H,W,_ = stacked_feats.shape
     stride_h = max(1,int(win_h * (1 - overlap_ratio))) #n_rows = (H-win_h)//stride_h + 1
     stride_w = max(1,int(win_w * (1 - overlap_ratio)))
     window_area = win_h * win_w
-    total, processed = 0.0,0.0
+    num_total_windows, num_valid_windows = 0.0,0.0
     valid_windows, valid_coords = [], []
 
     for row in range(0, H - win_h + 1, stride_h):
         for col in range(0, W - win_w + 1, stride_w):
-            total+=1
+            num_total_windows+=1
             # Extract the mask patch 
-            mask_patch = mask[row : row + win_h, col : col + win_w]
+            mask_window = mask[row : row + win_h, col : col + win_w]
             # Count True values in the mask
-            true_count = np.count_nonzero(mask_patch)
-            ratio = true_count / window_area
+            true_count = np.count_nonzero(~mask_window)
+            valid_ratio = true_count / window_area
             # Check Threshold Condition
-            if ratio <= mask_threshold:
-                processed+=1
+            if valid_ratio>=mask_threshold:
+                num_valid_windows+=1
                 window_data = stacked_feats[row : row + win_h, col : col + win_w, :]
                 valid_windows.append(window_data)
-                valid_coords.append((row, col, ratio))
+                valid_coords.append((row, col, valid_ratio))
     #TODO: Saving function
     return valid_windows, valid_coords #(n_rows*n_cols,win_h,win_w), (n_rows*n_cols,3)
 

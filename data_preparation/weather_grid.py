@@ -47,7 +47,6 @@ def load_weather_list(weather_list_file_path:str, season: int | None = None)->pd
 
 def weather_list_to_grid(weather_list:pd.DataFrame, fire_weather_zone_grid: np.ma.MaskedArray, sampling: str="dist")->np.ndarray:
     """Project weather list onto the Fire Weather Zones"""
-    # print(fire_weather_zone_grid)
     fire_weather_zones = weather_list["wx_zone"].unique()
     
     if sampling=="dist":
@@ -67,7 +66,6 @@ def weather_list_to_grid(weather_list:pd.DataFrame, fire_weather_zone_grid: np.m
         elif sampling=="dist":
             value = np.vstack([weather_zone_subset.mean(), weather_zone_subset.std()]).T.flatten()        
         out[fire_weather_zone_grid.data==zone] = value # type: ignore
-    # out[out == -9999.0] = NODATA
     return out.filled(NODATA) #HxWx2*len(selected_weather_features) (or len(selected_weather_features))
 
 def build_weather_grid(weather_list_file_path:str, zone_grid_file_path: str, season: int=1, sampling:str="dist"):
