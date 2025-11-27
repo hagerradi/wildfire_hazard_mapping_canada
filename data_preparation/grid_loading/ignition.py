@@ -3,8 +3,8 @@ import os
 import numpy as np
 import pandas as pd
 
-from data_preparation.utils import NODATA, fire_cause_mapping, load_raster
-from data_preparation.visualize import visualize_ignition_grid
+from data_preparation.grid_loading.utils import NODATA, fire_cause_mapping, load_raster
+from data_preparation.grid_loading.visualize import visualize_ignition_grid
 
 
 def build_esc_fire_distribution_zone_mapping(esc_fire_distribution_file_path:str, cause: int, season: int) -> dict[int, float]:
@@ -41,7 +41,7 @@ def project_esc_fire_distribution_over_grid(zone_raster: np.ma.MaskedArray, esc_
     # size (H, W)
     return esc_fire_prob_grid
 
-def sample_fire_density_grid(zone_grid_file_path: str, esc_fire_distribution_file_path:str, season: int, cause:int)-> np.ndarray:
+def load_fire_density_grid(zone_grid_file_path: str, esc_fire_distribution_file_path:str, season: int, cause:int)-> np.ndarray:
     """ Build fire density grid based on probability of escaped fires per fire weather zone"""
     zone_raster = load_raster(zone_grid_file_path)
     

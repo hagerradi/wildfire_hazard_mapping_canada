@@ -4,8 +4,8 @@ import numpy as np
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 
-from data_preparation.utils import NODATA, load_raster, selected_weather_features
-from data_preparation.visualize import visualize_weather_params
+from data_preparation.grid_loading.utils import NODATA, load_raster, selected_weather_features
+from data_preparation.grid_loading.visualize import visualize_weather_params
 
 
 def wind_direction_to_sincos(wd:np.ndarray)-> tuple[np.ndarray, np.ndarray]:
@@ -68,7 +68,7 @@ def weather_list_to_grid(weather_list:pd.DataFrame, fire_weather_zone_grid: np.m
         out[fire_weather_zone_grid.data==zone] = value # type: ignore
     return out.filled(NODATA) #HxWx2*len(selected_weather_features) (or len(selected_weather_features))
 
-def build_weather_grid(weather_list_file_path:str, zone_grid_file_path: str, season: int=1, sampling:str="dist"):
+def load_weather_grid(weather_list_file_path:str, zone_grid_file_path: str, season: int=1, sampling:str="dist"):
     """Single function to run the weather grid creation"""
     weather_csv = load_weather_list(weather_list_file_path, season)
     data = load_raster(zone_grid_file_path)
@@ -81,7 +81,7 @@ if __name__=="__main__":
     folders = ["burning_conditions_module", "dictionary", "ignitions_module",
              "mapped_inputs",  "outputs"]
     sampling="dist"
-    out = build_weather_grid(weather_list_file_path=data_folder + "/" + folders[0] + "/" + "hex_05_weather_list.csv",
+    out = load_weather_grid(weather_list_file_path=data_folder + "/" + folders[0] + "/" + "hex_05_weather_list.csv",
                     zone_grid_file_path=data_folder + "/" + folders[3] + "/cfrs.asc", 
                     season=1,
                     sampling=sampling)

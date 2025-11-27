@@ -2,12 +2,12 @@ from pathlib import Path
 
 import numpy as np
 
-from data_preparation.utils import MAX_WIND_VELOCITY, NODATA, load_raster
+from data_preparation.grid_loading.utils import MAX_WIND_VELOCITY, NODATA, load_raster
 
 
 def convert_wind_angle_speed_to_uv(speed:np.ndarray, wd_deg:np.ndarray, nodata:float=-9999.0)->tuple[list[np.ndarray], list[np.ndarray], list[np.ndarray]]:
     """
-       Returns u (east), v (north) as masked numpy arrays (mask True=invalid).
+      Returns u (east), v (north) as masked numpy arrays (mask True=invalid).
     """
     mask = (speed == nodata) | (wd_deg == nodata)
     # fill masked with 0 for trig computations 
@@ -63,12 +63,12 @@ def sample_wind_grids(all_u:list, all_v:list, all_mask:list, sampling:str="all")
    wind_grid = np.ma.array(wind_grid, mask=np.broadcast_to(combined_mask[:,:,np.newaxis], wind_grid.shape))
    return wind_grid.filled(NODATA)
 
-def get_wind_grid_sample(path_wind_grids:str,sampling:str="all")->np.ndarray:
+def load_wind_grid(path:str, sampling:str="all")->np.ndarray:
    """
     Get the final wind grid
    """
-   path_wind_grids = Path(path_wind_grids)
-   all_wind_velocity_files = list(path_wind_grids.glob("w???_vel.asc"))
+   path = Path(path)
+   all_wind_velocity_files = list(path.glob("w???_vel.asc"))
    all_u, all_v, all_mask = get_all_wind_grids(all_wind_velocity_files, MAX_WIND_VELOCITY)
    wind_grid = sample_wind_grids(all_u, all_v, all_mask, sampling=sampling)
    return wind_grid #HxWx16
@@ -79,5 +79,5 @@ if __name__=="__main__":
    folders = ["burning_conditions_module", "dictionary", "ignitions_module",
              "mapped_inputs",  "outputs"]
    path_wind_grids = data_folder + "/" + folders[0] + "/wind_grids"
-   wind_grid = get_wind_grid_sample(path_wind_grids,sampling="all")
+   wind_grid = load_wind_grid(path_wind_grids, sampling="all")
    print(wind_grid.shape)
