@@ -2,8 +2,14 @@ import os
 
 import numpy as np
 
-from data_preparation.grid_loading.utils import FIRE_INTENSITY_MAX, FIRE_INTENSITY_MIN, NODATA, load_raster
-from data_preparation.grid_loading.visualize import visualize_burn_prob_grid, visualize_fire_intensity_grid
+from data_preparation.grid_loader.utils import (
+    FIRE_INTENSITY_MAX,
+    FIRE_INTENSITY_MIN,
+    NODATA,
+    load_raster,
+    visualize_burn_prob_grid,
+    visualize_fire_intensity_grid,
+)
 
 
 def load_output_fire_intensity_grid(path: str)-> np.ndarray:

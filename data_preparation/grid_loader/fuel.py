@@ -2,8 +2,7 @@ import os
 
 import numpy as np
 
-from data_preparation.grid_loading.utils import NODATA, fuel_grouping, load_csv, load_raster
-from data_preparation.grid_loading.visualize import visualize_fuel_grid
+from data_preparation.grid_loader.utils import NODATA, fuel_grouping, load_csv, load_raster, visualize_fuel_grid
 
 
 def group_fuels_in_grid(data: np.ndarray) -> np.ndarray:

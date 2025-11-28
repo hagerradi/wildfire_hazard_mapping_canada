@@ -2,8 +2,7 @@ import os
 
 import numpy as np
 
-from data_preparation.grid_loading.utils import ELEV_NATIONAL_MAX, ELEV_NATIONAL_MIN, NODATA, load_raster
-from data_preparation.grid_loading.visualize import visualize_elevation_grid
+from data_preparation.grid_loader.utils import ELEV_NATIONAL_MAX, ELEV_NATIONAL_MIN, NODATA, load_raster, visualize_elevation_grid
 
 
 def load_elevation_grid(path: str)-> np.ndarray:

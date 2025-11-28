@@ -1,6 +1,10 @@
 import math
+import os
+from pathlib import Path
 
 from matplotlib import pyplot as plt
+
+from data_preparation.paths import OUTPUT_BURN_PROB_PATH
 
 feature_count_map = {
     "ignition_prob": 1,
@@ -12,20 +16,16 @@ feature_count_map = {
     "out_burn_prob": 1,
 }
 
-IGNITION_PROB_PATH =  "ignitions_module/ignition_grids"
-FIRE_ZONE_GRID_PATH =  "mapped_inputs/cfrs.asc"
-ESC_FIRE_DIST_PATH = "ignitions_module/Nb_ignitions_zone_season_cause_"
+def find_burn_prob_file(root_dir: str, hex_id: str) -> str:
+    pattern = f"hex_{hex_id}_*_iter_bp.tif"
+    matches = list(Path(os.path.join(root_dir, OUTPUT_BURN_PROB_PATH)).glob(pattern))
 
-FUEL_GRID_PATH = "mapped_inputs/fbp.asc"
-FUEL_TABLE_PATH = "mapped_inputs/Fuel_table.lut"
+    if not matches:
+        raise FileNotFoundError(f"No bp.tif file found matching pattern {pattern}")
+    if len(matches) > 1:
+        raise RuntimeError(f"Multiple bp files found: {matches}")
 
-ELEVATION_GRID_PATH = "mapped_inputs/elev.asc"
-
-WEATHER_LIST_PATH = "burning_conditions_module"
-WIND_GRID_DIR_PATH = "burning_conditions_module/wind_grids"
-
-OUTPUT_BURN_PROB_PATH = "outputs"
-
+    return str(matches[0])
 
 def plot_split_window_hexel(windows, channel_index=0, max_cols=5, figsize=(15, 15)):
     """
