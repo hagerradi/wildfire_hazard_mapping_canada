@@ -1,78 +1,78 @@
+import math
 import os
 from pathlib import Path
 
-import numpy as np
-import pandas as pd
-import rasterio
+from matplotlib import pyplot as plt
 
-# value for nodata in the rasters
-NODATA = np.nan
+from data_preparation.paths import OUTPUT_BURN_PROB_PATH
 
-# normalization values for elevation (on national scale)
-ELEV_NATIONAL_MAX = 5855
-ELEV_NATIONAL_MIN = -158
-
-# Max wind velocity (TODO: need to modify when we have the entire dataset)
-MAX_WIND_VELOCITY = 14.279999732971191
-
-# Normalization values for Fire Intensity (TODO: need to rerun once we have the entire dataset)
-FIRE_INTENSITY_MAX = 127247.0
-FIRE_INTENSITY_MIN = 0.0
-
-# mapping cause to cause index
-fire_cause_mapping = {1: "h", 2: "l"}
-
-# features of fire weather list to include
-selected_weather_features = ['temp', 'rh', 'prec', 'ffmc', 'dmc', 'dc', 'isi', 'bui'] #'ws','wd_sin', 'wd_cos'
-
-# grouping fuel classes
-fuel_grouping = {
-    "high":    [1, 2, 3, 4, 5, 6, 7, 650, 665],
-    "medium":  [635],
-    "low":     [11, 12, 13, 425, 525, 625],
-    "grass":   [31, 32],
-    "nonfuel": [101, 102, 106],
+feature_count_map = {
+    "ignition_prob": 1,
+    "esc_fire_prob": 1,
+    "weather_params": 16, # mean, var for 8 features
+    "fuel_grid": 1,
+    "wind_grid": 16,  # u, v for 8 directions
+    "elevation_grid": 1,
+    "out_burn_prob": 1,
 }
 
-def load_raster(path: str) -> np.ma.MaskedArray:
-    """ Load raster from given path"""
-    if os.path.exists(path):  # noqa: F821
-        with rasterio.open(path) as src:
-            raster = src.read(1, masked=True) # mask out the nodata
-            return raster
-    else:
-        raise FileNotFoundError(f"File not found: {path}")
+def find_burn_prob_file(root_dir: str, hex_id: str) -> str:
+    pattern = f"hex_{hex_id}_*_iter_bp.tif"
+    matches = list(Path(os.path.join(root_dir, OUTPUT_BURN_PROB_PATH)).glob(pattern))
+
+    if not matches:
+        raise FileNotFoundError(f"No bp.tif file found matching pattern {pattern}")
+    if len(matches) > 1:
+        raise RuntimeError(f"Multiple bp files found: {matches}")
+
+    return str(matches[0])
+
+def plot_split_window_hexel(windows, channel_index=0, max_cols=5, figsize=(15, 15)):
+    """
+    Plots a list/array of 3D windows in a subplot grid.
+
+    Args:
+        windows (list or np.ndarray): List of windows. Shape (N, H, W, C).
+        channel_index (int): The channel to visualize (e.g., 0 for Red/Band1).
+        max_cols (int): Maximum number of columns in the grid.
+        figsize (tuple): Figure size (width, height).
+    """
+    num_windows = len(windows)
     
+    if num_windows == 0:
+        print("No windows to plot.")
+        return
 
-def load_csv(path: str) -> pd.DataFrame:
-    """Load csv file from given path"""
-    if os.path.exists(path):  # noqa: F821
-        df = pd.read_csv(path)
-        print("File loaded successfully.")
-        return df
-    else:
-        raise FileNotFoundError(f"File not found: {path}")
+    # Calculate grid dimensions
+    num_cols = min(num_windows, max_cols)
+    num_rows = math.ceil(num_windows / num_cols)
+    
+    # Create subplots
+    fig, axes = plt.subplots(num_rows, num_cols, figsize=figsize)
+    
+    # Flatten axes for easy iteration (handle case where axes is not a list)
+    axes = [axes] if num_windows == 1 else axes.flatten()
 
-def get_max_wind_velocity(data_path:str)->float:
-    """Get the global maximum wind velocity for normalization"""
-    all_hex = list(os.listdir(data_path))[1:]
-    global_max_wind_velocity = -np.inf
-    for hex in all_hex:
-        path_wind_grids = f"./{data_path}/{hex}/burning_conditions_module/wind_grids"
-        path_wind_grids = Path(path_wind_grids)
-        all_wind_velocity_files = list(path_wind_grids.glob("w???_vel.asc"))
-        for file_name in all_wind_velocity_files:
-            wind_velocity_grid = load_raster(file_name)
-            global_max_wind_velocity = max(global_max_wind_velocity, wind_velocity_grid.data.max())
-    return (float(global_max_wind_velocity))
+    for i in range(len(axes)):
+        ax = axes[i]
+        
+        if i < num_windows:
+            window = windows[i]
+            
+            # Extract specific channel
+            if window.ndim == 3:  # noqa: SIM108
+                # Shape (H, W, C) -> Extract channel
+                img_data = window[:, :, channel_index]
+            else:
+                # Fallback if window is already 2D
+                img_data = window
+            
+            # Plot
+            im = ax.imshow(img_data, cmap='gray')  # noqa: F841
+            ax.set_title(f"Window {i}")
+        
+        # Hide axis ticks for all subplots (cleaner look)
+        ax.axis('off')
 
-def get_range_output_fire_intensity(data_path:str)->tuple[float, float]:
-    """Get the maximum and minimum output fire intensity for normalization"""
-    all_hex = list(os.listdir(data_path))[1:]
-    min_fire_intensity, max_fire_intensity = np.inf, -np.inf
-    for hex in all_hex:
-        path_output_files = f"{data_path}/{hex}/outputs/hex_{hex[3:]}_fiRaw_mean.tif"
-        output_fire_intensity_grid = load_raster(path_output_files)
-        max_fire_intensity = max(max_fire_intensity, output_fire_intensity_grid.max())
-        min_fire_intensity = min(min_fire_intensity, output_fire_intensity_grid.min())
-    return float(max_fire_intensity), float(min_fire_intensity)
+    plt.tight_layout()
+    plt.show()

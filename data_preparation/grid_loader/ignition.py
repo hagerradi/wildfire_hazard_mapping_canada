@@ -3,20 +3,30 @@ import os
 import numpy as np
 import pandas as pd
 
-from data_preparation.utils import NODATA, fire_cause_mapping, load_raster
-from data_preparation.visualize import visualize_ignition_grid
+from data_preparation.grid_loader.utils import NODATA, fire_cause_mapping, load_raster, visualize_ignition_grid
 
 
-def build_esc_fire_distribution_zone_mapping(esc_fire_distribution_file_path:str, cause: int, season: int) -> dict[int, float]:
+def build_esc_fire_distribution_zone_mapping(esc_fire_distribution_file_path:str, cause: int = None, season: int = None) -> dict[int, float]:
     """ Load ignition distribution file and return zone to probability mapping for given cause and season"""
     esc_fire_dist = pd.read_csv(esc_fire_distribution_file_path)
 
     # convert percentage to probability
     esc_fire_dist["esc_fires"] = esc_fire_dist["esc_fires"] / 100.0
-    esc_fire_dist_subset = esc_fire_dist[(esc_fire_dist["season"] == season) & (esc_fire_dist["cause"] == cause)].copy()
-    
-    # Convert it to probabilities over zones
-    esc_fire_dist_subset["esc_fires"] = esc_fire_dist_subset["esc_fires"] / esc_fire_dist_subset["esc_fires"].sum()
+    # for a given seaon and cuase
+    if cause is not None and season is not None:
+        esc_fire_dist_subset = esc_fire_dist[(esc_fire_dist["season"] == season) & (esc_fire_dist["cause"] == cause)].copy()
+        # Convert it to probabilities over zones
+        esc_fire_dist_subset["esc_fires"] = esc_fire_dist_subset["esc_fires"] / esc_fire_dist_subset["esc_fires"].sum()
+    else: 
+        # aggregate over all
+        esc_fire_dist_subset = (
+            esc_fire_dist
+            .groupby("zone", as_index=False)["esc_fires"]
+            .max()
+        )
+
+        # Normalize across zones
+        esc_fire_dist_subset["esc_fires"] /= esc_fire_dist_subset["esc_fires"].sum()
 
     assert len(esc_fire_dist_subset) == len(esc_fire_dist_subset["zone"].tolist())
     
@@ -41,7 +51,7 @@ def project_esc_fire_distribution_over_grid(zone_raster: np.ma.MaskedArray, esc_
     # size (H, W)
     return esc_fire_prob_grid
 
-def sample_fire_density_grid(zone_grid_file_path: str, esc_fire_distribution_file_path:str, season: int, cause:int)-> np.ndarray:
+def load_fire_density_grid(zone_grid_file_path: str, esc_fire_distribution_file_path:str, season: int = None, cause:int = None)-> np.ndarray:
     """ Build fire density grid based on probability of escaped fires per fire weather zone"""
     zone_raster = load_raster(zone_grid_file_path)
     
@@ -82,7 +92,7 @@ if __name__ == "__main__":
     visualize_ignition_grid(out_ignition_grid, cause=cause, season=season)
 
     # optionally, we can also use this grid
-    # out_fire_density_grid = sample_fire_density_grid(zone_grid_file_path=os.path.join(root_dir,"mapped_inputs/cfrs.asc"),
+    # out_fire_density_grid = load_fire_density_grid(zone_grid_file_path=os.path.join(root_dir,"mapped_inputs/cfrs.asc"),
     #                          esc_fire_distribution_file_path=os.path.join(root_dir,"ignitions_module/Nb_ignitions_zone_season_cause_5.csv"),
     #                          season=season, cause=cause)
     # visualize_ignition_grid(out_fire_density_grid, season=season, cause=cause)
