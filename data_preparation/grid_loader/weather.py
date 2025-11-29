@@ -28,7 +28,7 @@ def weather_list_to_grid(weather_list:pd.DataFrame, fire_weather_zone_grid: np.m
         out[fire_weather_zone_grid.data==zone] = value # type: ignore
     return out.filled(NODATA) #HxWx2*len(selected_weather_features) (or len(selected_weather_features))
 
-def load_weather_grid(weather_list_file_path:str, zone_grid_file_path: str, season: int=1, sampling:str="dist"):
+def load_weather_grid(weather_list_file_path:str, zone_grid_file_path: str, season: int = None, sampling:str="dist"):
     """Single function to run the weather grid creation"""
     weather_csv = load_weather_list(weather_list_file_path, season)
     data = load_raster(zone_grid_file_path)
