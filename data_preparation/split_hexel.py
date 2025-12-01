@@ -12,7 +12,7 @@ def save_split_hexel_windows(valid_window:np.ndarray, out_dir:str, win_id:int, s
     np.save(filename, valid_window) if format=="npy" else np.savez_compressed(filename, arr=valid_window)
     return filename
 
-def get_split_hexel_window(season_cause_stacked_feats:np.ndarray, season_cause_mask:np.ndarray, season_cause_mapping:dict|None, out_dir:str, hex_id:str, win_h:int=128, win_w:int=128, overlap_ratio:float=0.2, mask_threshold:float=0.5)->tuple[list[np.ndarray], list[dict]]:
+def get_split_hexel_window(season_cause_stacked_feats:np.ndarray, season_cause_mask:np.ndarray, season_cause_mapping:dict|None, out_dir:str, hex_id:str, win_h:int=128, win_w:int=128, overlap_ratio:float=0.2, mask_threshold:float=0.5):
     """
         Split the hexel using sliding windows for inp to the model
         Inputs:
