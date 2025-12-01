@@ -55,7 +55,7 @@ def get_split_hexel_window(season_cause_stacked_feats:np.ndarray, season_cause_m
 if __name__=="__main__":
     root_dir = "../yan_bp3"
     modelling_approach = 1
-    out_dir=f"../yan_bp3/split_windows_approach_{modelling_approach}"
+    out_dir=f"../yan_bp3/data_samples_approach_{modelling_approach}"
     stacked_feats, mask, season_cause_mapping = load_features_per_hexel(root_dir=root_dir, hex_id="05", modelling_approach=modelling_approach)
     os.makedirs(out_dir, exist_ok=True)
     os.makedirs(os.path.join(out_dir, "numpy_files"), exist_ok=True)
