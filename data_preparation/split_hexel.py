@@ -6,9 +6,9 @@ import pandas as pd
 from data_preparation.load_hexel_data import load_features_per_hexel
 
 
-def save_split_hexel_windows(valid_window:np.ndarray, out_dir:str, win_id:int, row:int, col:int, hex_id:str, format:str="npy")->str:
+def save_split_hexel_windows(valid_window:np.ndarray, out_dir:str, win_id:int, season:str, cause:str, hex_id:str, format:str="npy")->str:
     """Save a hexel window"""
-    filename = os.path.join(out_dir, f"numpy_files/hex_{hex_id}_{str(win_id)}_{row}_{col}.{format}")
+    filename = os.path.join(out_dir, f"numpy_files/hex_{hex_id}_{str(win_id)}_{season}_{cause}.{format}")
     np.save(filename, valid_window) if format=="npy" else np.savez_compressed(filename, arr=valid_window)
     return filename
 
@@ -45,7 +45,7 @@ def get_split_hexel_window(season_cause_stacked_feats:np.ndarray, season_cause_m
                 if valid_ratio>=mask_threshold:
                     num_valid_windows+=1
                     window_data = stacked_feats[row : row + win_h, col : col + win_w, :]
-                    filename = save_split_hexel_windows(window_data, out_dir, int(num_valid_windows), row, col, hex_id)
+                    filename = save_split_hexel_windows(window_data, out_dir, int(num_valid_windows), season, cause, hex_id)
                     valid_coords.append([filename, season, cause, hex_id, num_valid_windows, row, col, valid_ratio])
     df_coords = pd.DataFrame(valid_coords)
     df_coords.columns = ["filename", "season", "cause", "hex_id", "window_id", "row", "col", "valid_ratio"]
