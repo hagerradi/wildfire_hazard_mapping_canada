@@ -68,5 +68,3 @@ if __name__=="__main__":
                                         win_w=128, 
                                         overlap_ratio=0.2, 
                                         mask_threshold=0.5) 
-    # print(len(valid_windows), valid_windows[0].shape)
-    # plot_split_window_hexel(valid_windows[:10], -1)
