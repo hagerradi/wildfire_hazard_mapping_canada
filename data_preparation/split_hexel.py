@@ -6,7 +6,7 @@ import pandas as pd
 from data_preparation.load_hexel_data import load_features_per_hexel
 
 
-def save_split_hexel_windows(valid_window, out_dir:str, win_id:int, row:int, col:int, hex_id:str, format:str="npy"):
+def save_split_hexel_windows(valid_window, out_dir:str, win_id:int, row:int, col:int, hex_id:str, format:str="npy")->str:
     """Save a hexel window"""
     filename = os.path.join(out_dir, f"numpy_files/hex_{hex_id}_{str(win_id)}_{row}_{col}.{format}")
     np.save(filename, valid_window) if format=="npy" else np.savez_compressed(filename, arr=valid_window)
