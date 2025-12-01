@@ -52,7 +52,6 @@ def get_split_hexel_window(season_cause_stacked_feats:np.ndarray, season_cause_m
     df_coords = pd.DataFrame(valid_coords)
     df_coords.columns = ["filename", "season", "cause", "hex_id", "window_id", "row", "col", "valid_ratio"]
     df_coords.to_csv(os.path.join(out_dir, f"meta_hex_{hex_id}.csv"), index=False)
-    #save pd df
     return valid_windows, valid_coords #(n_rows*n_cols,win_h,win_w), (n_rows*n_cols,3)
 
 if __name__=="__main__":
@@ -71,4 +70,4 @@ if __name__=="__main__":
                                         overlap_ratio=0.2, 
                                         mask_threshold=0.5) 
     print(len(valid_windows), valid_windows[0].shape)
-    # plot_split_window_hexel(valid_windows[:10], -1)
+    plot_split_window_hexel(valid_windows[:10], -1)
