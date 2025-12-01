@@ -4,13 +4,12 @@ import numpy as np
 import pandas as pd
 
 from data_preparation.load_hexel_data import load_features_per_hexel
-from data_preparation.utils import plot_split_window_hexel
 
 
-def save_split_hexel_windows(valid_window, out_dir, season, cause, win_id, row, col, hex_id):
+def save_split_hexel_windows(valid_window, out_dir:str, win_id:int, row:int, col:int, hex_id:str, format:str="npy"):
     """Save a hexel window"""
-    filename = os.path.join(out_dir, f"numpy_files/hex_{hex_id}_{season}_{cause}_{str(win_id)}_{row}_{col}.npy")
-    np.save(filename, valid_window)
+    filename = os.path.join(out_dir, f"numpy_files/hex_{hex_id}_{str(win_id)}_{row}_{col}.{format}")
+    np.save(filename, valid_window) if format=="npy" else np.savez_compressed(filename, arr=valid_window)
     return filename
 
 def get_split_hexel_window(season_cause_stacked_feats:np.ndarray, season_cause_mask:np.ndarray, season_cause_mapping:dict|None, out_dir:str, hex_id:str, win_h:int=128, win_w:int=128, overlap_ratio:float=0.2, mask_threshold:float=0.5)->tuple[list[np.ndarray], list[dict]]:
@@ -26,7 +25,7 @@ def get_split_hexel_window(season_cause_stacked_feats:np.ndarray, season_cause_m
     stride_w = max(1,int(win_w * (1 - overlap_ratio)))
     window_area = win_h * win_w
     num_total_windows, num_valid_windows = 0.0,0.0
-    valid_windows, valid_coords = [], []
+    valid_coords = []
     for i in range(num_season_cause):
         stacked_feats = season_cause_stacked_feats[i]
         mask = season_cause_mask[i]
@@ -46,21 +45,21 @@ def get_split_hexel_window(season_cause_stacked_feats:np.ndarray, season_cause_m
                 if valid_ratio>=mask_threshold:
                     num_valid_windows+=1
                     window_data = stacked_feats[row : row + win_h, col : col + win_w, :]
-                    filename = save_split_hexel_windows(window_data, out_dir, season, cause, int(num_valid_windows), row, col, hex_id)
-                    valid_windows.append(window_data)
+                    filename = save_split_hexel_windows(window_data, out_dir, int(num_valid_windows), row, col, hex_id)
                     valid_coords.append([filename, season, cause, hex_id, num_valid_windows, row, col, valid_ratio])
     df_coords = pd.DataFrame(valid_coords)
     df_coords.columns = ["filename", "season", "cause", "hex_id", "window_id", "row", "col", "valid_ratio"]
     df_coords.to_csv(os.path.join(out_dir, f"meta_hex_{hex_id}.csv"), index=False)
-    return valid_windows, valid_coords #(n_rows*n_cols,win_h,win_w), (n_rows*n_cols,3)
+    print(f"=====Hexel data Saved at {out_dir} ========")
 
 if __name__=="__main__":
     root_dir = "../yan_bp3"
-    out_dir="../yan_bp3/split_windows_sc"
-    stacked_feats, mask, season_cause_mapping = load_features_per_hexel(root_dir=root_dir, hex_id="05", modelling_approach=2)
+    modelling_approach = 1
+    out_dir=f"../yan_bp3/split_windows_approach_{modelling_approach}"
+    stacked_feats, mask, season_cause_mapping = load_features_per_hexel(root_dir=root_dir, hex_id="05", modelling_approach=modelling_approach)
     os.makedirs(out_dir, exist_ok=True)
     os.makedirs(os.path.join(out_dir, "numpy_files"), exist_ok=True)
-    valid_windows, valid_coords = get_split_hexel_window(season_cause_stacked_feats=stacked_feats, 
+    get_split_hexel_window(season_cause_stacked_feats=stacked_feats, 
                                         season_cause_mask=mask, 
                                         season_cause_mapping=season_cause_mapping, 
                                         out_dir=out_dir, 
@@ -69,5 +68,5 @@ if __name__=="__main__":
                                         win_w=128, 
                                         overlap_ratio=0.2, 
                                         mask_threshold=0.5) 
-    print(len(valid_windows), valid_windows[0].shape)
-    plot_split_window_hexel(valid_windows[:10], -1)
+    # print(len(valid_windows), valid_windows[0].shape)
+    # plot_split_window_hexel(valid_windows[:10], -1)
