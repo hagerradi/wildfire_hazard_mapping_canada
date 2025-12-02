@@ -81,7 +81,11 @@ def load_features_per_hexel(root_dir: str, hex_id: str, modelling_approach: int 
         esc_fires_prob_grid = load_fire_density_grid(zone_grid_file_path=os.path.join(root_dir, FIRE_ZONE_GRID_PATH),
                              esc_fire_distribution_file_path=os.path.join(root_dir, ESC_FIRE_DIST_PATH + str(int(hex_id)) + ".csv"))
         
-        weather_grid = load_weather_grid(weather_list_file_path=os.path.join(root_dir, WEATHER_LIST_PATH + f"/hex_{hex_id}_weather_list.csv"),
+        if hex_id=="17":
+            weather_grid = load_weather_grid(weather_list_file_path=os.path.join(root_dir, WEATHER_LIST_PATH + f"/hex_{hex_id}_weather_list_mod.csv"),
+                        zone_grid_file_path=os.path.join(root_dir, FIRE_ZONE_GRID_PATH))
+        else:
+            weather_grid = load_weather_grid(weather_list_file_path=os.path.join(root_dir, WEATHER_LIST_PATH + f"/hex_{hex_id}_weather_list.csv"),
                         zone_grid_file_path=os.path.join(root_dir, FIRE_ZONE_GRID_PATH))
 
         stacked_features, mask = stack_sample(
@@ -108,8 +112,13 @@ def load_features_per_hexel(root_dir: str, hex_id: str, modelling_approach: int 
         esc_fires_prob_grid = load_fire_density_grid(zone_grid_file_path=os.path.join(root_dir, FIRE_ZONE_GRID_PATH),
                              esc_fire_distribution_file_path=os.path.join(root_dir, ESC_FIRE_DIST_PATH + str(int(hex_id)) + ".csv"),
                              season=season, cause=cause)
-        
-        weather_grid = load_weather_grid(weather_list_file_path=os.path.join(root_dir, WEATHER_LIST_PATH + f"/hex_{hex_id}_weather_list.csv"),
+
+        if hex_id=="17":
+            weather_grid = load_weather_grid(weather_list_file_path=os.path.join(root_dir, WEATHER_LIST_PATH + f"/hex_{hex_id}_weather_list_mod.csv"),
+                        zone_grid_file_path=os.path.join(root_dir, FIRE_ZONE_GRID_PATH), 
+                        season=season)
+        else:
+            weather_grid = load_weather_grid(weather_list_file_path=os.path.join(root_dir, WEATHER_LIST_PATH + f"/hex_{hex_id}_weather_list.csv"),
                         zone_grid_file_path=os.path.join(root_dir, FIRE_ZONE_GRID_PATH), 
                         season=season)
 
