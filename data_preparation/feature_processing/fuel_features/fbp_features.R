@@ -23,7 +23,7 @@ rm(list = ls())
 
 # ---------------- CONFIG -----------------
 
-input_dir <- "data/fuel_data_temporary"
+input_dir <- "data/fuel_input_data"
 base_dir <- "../yan_bp3/hex05/mapped_inputs"
 
 dem_path  <- file.path(base_dir, "elev.asc")
