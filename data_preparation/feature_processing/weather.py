@@ -4,6 +4,8 @@ import numpy as np
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 
+from data_preparation.grid_loader.utils import check_weather_list
+
 
 def wind_direction_to_sincos(wd:np.ndarray)-> tuple[np.ndarray, np.ndarray]:
     """Convert Wind Direction to Sin/Cos for normalization"""
@@ -38,6 +40,7 @@ def load_weather_list(weather_list_file_path:str, season: int | None = None)->pd
     if not path.exists():
         raise FileNotFoundError(f"Weather list file not found: {path}")
     weather_list = pd.read_csv(weather_list_file_path)
+    weather_list = check_weather_list(weather_list)
     weather_list_subset = weather_list[weather_list["season"] == season].copy() if season else weather_list.copy()
     weather_list_preprocessed = preprocess_weather_list(weather_list_subset)
     return weather_list_preprocessed
