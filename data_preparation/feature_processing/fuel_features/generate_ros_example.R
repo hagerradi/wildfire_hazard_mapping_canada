@@ -1,4 +1,5 @@
 ############################################################
+# An example on how to use cffdrs library
 # ROS / FBP example for cffdrs 1.9.0
 # - Uses the documented API: fbp(input, output = "Primary")
 # - No internal FBP object, no fire_behaviour_prediction()
@@ -47,12 +48,12 @@ print(result)
 # 4. Extract key outputs (if present) ----------------------
 safe_get <- function(x, name) if (name %in% names(x)) x[[name]] else NA
 
-ROS <- safe_get(result, "ROS")  # m/min
-HFI <- safe_get(result, "HFI")  # kW/m
-CFB <- safe_get(result, "CFB")
-FI  <- safe_get(result, "FI")
-SFC <- safe_get(result, "SFC")
-TFC <- safe_get(result, "TFC")
+ROS <- safe_get(result, "ROS") # nolint
+HFI <- safe_get(result, "HFI")  # nolint: object_name_linter.
+CFB <- safe_get(result, "CFB") # nolint: object_name_linter.
+FI  <- safe_get(result, "FI") # nolint: object_name_linter, object_name_linter.
+SFC <- safe_get(result, "SFC") # nolint: object_name_linter.
+TFC <- safe_get(result, "TFC") # nolint: object_name_linter.
 
 cat("\nKey outputs:\n")
 cat("  • Rate of Spread (ROS): ", ROS, " m/min\n", sep = "")
@@ -62,28 +63,3 @@ cat("  • Fire Intensity (FI): ", FI, " kW/m\n", sep = "")
 cat("  • Surface Fuel Consumption (SFC): ", SFC, " kg/m^2\n", sep = "")
 cat("  • Total Fuel Consumption (TFC): ", TFC, " kg/m^2\n\n", sep = "")
 cat("===================================================\n")
-
-
-# fuel_map <- list(
-#   '1'   = list(FuelType="C-1"),
-#   '2'   = list(FuelType="C-2"),
-#   '3'   = list(FuelType="C-3"),
-#   '4'   = list(FuelType="C-4"),
-#   '7'   = list(FuelType="C-7"),
-
-#   '11'  = list(FuelType="D-1"),
-#   '12'  = list(FuelType="D-1"),
-#   '13'  = list(FuelType="D-1"),
-
-#   '31'  = list(FuelType="O-1A"),   # or O-1B if you classify as matted
-
-#   '101' = list(FuelType="NF"),
-#   '102' = list(FuelType="W"),
-#   '106' = list(FuelType="U"),
-
-#   '425' = list(FuelType="M-1", PC=25),
-#   '525' = list(FuelType="M-2", PC=25),
-#   '635' = list(FuelType="M-1", PC=35),  # or M-2, pick seasonal
-#   '650' = list(FuelType="M-1", PC=50), # or M-2, pick seasonal
-#   '665' = list(FuelType="M-2", PC=65) # or M-2, pick seasonal
-# ) 
