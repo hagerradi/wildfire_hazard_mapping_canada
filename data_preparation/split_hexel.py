@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -6,6 +7,23 @@ import pandas as pd
 from data_preparation.load_hexel_data import load_features_per_hexel
 from data_preparation.utils import find_hex_ids
 
+
+def read_append_csvs(folder_path):
+    folder = Path(folder_path)
+    
+    # 1. Get list of all csv files
+    csv_files = folder.glob("*.csv")
+    
+    # 2. Read each CSV into a list of DataFrames
+    #    (This is much faster than appending inside a loop)
+    dfs = [pd.read_csv(f) for f in csv_files]
+    
+    # 3. Concatenate them all at once
+    if dfs:
+        combined_df = pd.concat(dfs, ignore_index=True)
+        return combined_df
+    else:
+        return pd.DataFrame() # Return empty DF if no files found
 
 def save_split_hexel_windows(valid_window:np.ndarray, out_dir:str, win_id:int, season:str, cause:str, hex_id:str, format:str="npy")->str:
     """Save a hexel window"""
@@ -73,11 +91,13 @@ def generate_data_samples(root_dir:str, out_dir:str, modelling_approach:int, win
                                 overlap_ratio=overlap_ratio, 
                                 mask_threshold=mask_threshold) 
         print(f"======Processed Hex ID: {hex_id}==========")
+    combined_df = read_append_csvs(out_dir)
+    combined_df.to_csv(os.path.join(out_dir, "all_hexel_data_samples.csv"), index=False)
 
 
 if __name__=="__main__":
     root_dir = "../yan_bp3"
-    modelling_approach = 1
+    modelling_approach = 2
     out_dir=f"../yan_bp3/data_samples_approach_{modelling_approach}"
     generate_data_samples(root_dir=root_dir, 
                           out_dir=out_dir, 
