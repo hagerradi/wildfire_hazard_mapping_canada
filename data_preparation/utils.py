@@ -27,7 +27,7 @@ def find_burn_prob_file(root_dir: str, hex_id: str) -> str:
 
     return str(matches[0])
 
-def find_hex_ids(root_dir):
+def find_hex_ids(root_dir:str)->list:
     hex_ids = []
     try:
         with os.scandir(root_dir) as entries:

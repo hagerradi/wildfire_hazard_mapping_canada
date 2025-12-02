@@ -77,7 +77,7 @@ def load_csv(path: str) -> pd.DataFrame:
     else:
         raise FileNotFoundError(f"File not found: {path}")
 
-def check_column_format(df, col_name):
+def check_column_format(df:pd.DataFrame, col_name:str)->np.bool:
     # Regex Explanation:
     # ^   = Start of string
     # s   = Literal letter 's'
@@ -91,7 +91,10 @@ def check_column_format(df, col_name):
     is_valid = df[col_name].astype(str).str.match(pattern).all()
     return is_valid
 
-def check_weather_list(weather_list):
+def check_weather_list(weather_list:pd.DataFrame)->pd.DataFrame:
+    """
+        Check if the weather list is of the required format (columns) and the season and wx_zone column
+    """
     if set(list(column_full_form_abrevation_map.values())).issubset(weather_list.columns):
         return weather_list
     print("==============hexel didnot have the req columns===================")
@@ -102,7 +105,6 @@ def check_weather_list(weather_list):
     if check_column_format(weather_list, "wx_zone"):
         print("=============wx_zone checck not passed==================")
         weather_list['wx_zone'] = weather_list['wx_zone'].astype(str).str.extract(r'(\d+)').astype(int)
-    print(weather_list.head())
     return weather_list
 
 def get_max_wind_velocity(data_path:str)->float:
