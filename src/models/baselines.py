@@ -1,23 +1,25 @@
 """
-Baselines: Classic U-Net encoder-decoder with skip connections.
+Baselines: Classic U-Net encoder-decoder with optional skip connections.
 """
 import torch
 import torch.nn as nn
 
 
 class UNet(nn.Module):
-    def __init__(self, input_channels: int = 1, num_classes: int = 1, hidden_features: list = None):
+    def __init__(self, input_channels: int = 1, num_classes: int = 1, hidden_features: list = None, use_skip_connections: bool = True):
         """
         Args:
-            in_channels: Number of input channels
-            out_channels: Number of output channels
+            input_channels: Number of input channels
+            num_classes: Number of output channels
             hidden_features: List of feature maps at each level [64, 128, 256, 512]. Model adjusts accordingly
+            use_skip_connections: Whether to use skip connections in the decoder
         """
         super().__init__()
         
         if hidden_features is None:
             hidden_features = [64, 128, 256, 512]
         
+        self.use_skip_connections = use_skip_connections
         self.encoder = nn.ModuleList()
         self.decoder = nn.ModuleList()
         self.maxpool = nn.MaxPool2d(kernel_size=2, stride=2)
@@ -36,13 +38,13 @@ class UNet(nn.Module):
         for h_feature in reversed(hidden_features):
             # 4 downsampling blocks: 1024x512, 512x256, 256x128, 128x64
             self.decoder.append(nn.ConvTranspose2d(h_feature * 2, h_feature, kernel_size=2, stride=2))
-            self.decoder.append(self._double_conv_block(h_feature * 2, h_feature))
+            decoder_in_channels = h_feature * 2 if use_skip_connections else h_feature
+            self.decoder.append(self._double_conv_block(decoder_in_channels, h_feature))
 
         # output layer
         self.out_conv = nn.Conv2d(hidden_features[0], num_classes, kernel_size=1)
     
     def _double_conv_block(self, in_channels: int, out_channels: int) -> nn.Sequential:
-        """Double convolution block: Conv2d -> BatchNorm -> ReLU"""
         return nn.Sequential(
             nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
             nn.BatchNorm2d(out_channels),
@@ -68,10 +70,11 @@ class UNet(nn.Module):
         skip_connections = skip_connections[::-1]
         
         # decoder part
-        for i in range(len(self.decoder) // 2): #(0, 3)
+        for i in range(len(self.decoder) // 2):#(0, 3)
             x = self.decoder[2 * i](x)  # upsample
-            skip_x = skip_connections[i]
-            x = torch.cat([skip_x, x], dim=1)
+            if self.use_skip_connections:
+                skip_x = skip_connections[i]
+                x = torch.cat([skip_x, x], dim=1)
             x = self.decoder[2 * i + 1](x)  # double conv block
         
         # output layer
