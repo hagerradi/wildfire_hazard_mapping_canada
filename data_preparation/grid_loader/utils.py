@@ -97,6 +97,8 @@ def check_weather_list(weather_list:pd.DataFrame)->pd.DataFrame:
     """
     if set(list(column_full_form_abrevation_map.values())).issubset(weather_list.columns):
         return weather_list
+    if not set(list(column_full_form_abrevation_map.keys())).issubset(weather_list.columns):
+        raise ValueError("Missing columns/ weather df not in required format")
     print("==============hexel didnot have the req columns===================")
     weather_list = weather_list.rename(columns=column_full_form_abrevation_map)
     if check_column_format(weather_list, "season"):

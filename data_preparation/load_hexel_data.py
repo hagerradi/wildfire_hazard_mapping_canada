@@ -1,5 +1,6 @@
 import os
 from itertools import product
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -48,6 +49,8 @@ def load_features_per_hexel(root_dir: str, hex_id: str, modelling_approach: int 
 
     wind_grid = load_wind_grid(path = os.path.join(root_dir, WIND_GRID_DIR_PATH))
 
+    weather_list_file_path = str(list(Path(os.path.join(root_dir, WEATHER_LIST_PATH)).glob("*weather_list*.csv"))[0])
+
     # output TODO: this assumes we don't have the burn-prob map per seaon/cause yet
     out_burn_prob_grid = load_output_burn_prob_grid(path = find_burn_prob_file(root_dir, hex_id))
     
@@ -80,12 +83,8 @@ def load_features_per_hexel(root_dir: str, hex_id: str, modelling_approach: int 
          
         esc_fires_prob_grid = load_fire_density_grid(zone_grid_file_path=os.path.join(root_dir, FIRE_ZONE_GRID_PATH),
                              esc_fire_distribution_file_path=os.path.join(root_dir, ESC_FIRE_DIST_PATH + str(int(hex_id)) + ".csv"))
-        
-        if hex_id=="17":
-            weather_grid = load_weather_grid(weather_list_file_path=os.path.join(root_dir, WEATHER_LIST_PATH + f"/hex_{hex_id}_weather_list_mod.csv"),
-                        zone_grid_file_path=os.path.join(root_dir, FIRE_ZONE_GRID_PATH))
-        else:
-            weather_grid = load_weather_grid(weather_list_file_path=os.path.join(root_dir, WEATHER_LIST_PATH + f"/hex_{hex_id}_weather_list.csv"),
+
+        weather_grid = load_weather_grid(weather_list_file_path=weather_list_file_path,
                         zone_grid_file_path=os.path.join(root_dir, FIRE_ZONE_GRID_PATH))
 
         stacked_features, mask = stack_sample(
@@ -113,12 +112,8 @@ def load_features_per_hexel(root_dir: str, hex_id: str, modelling_approach: int 
                              esc_fire_distribution_file_path=os.path.join(root_dir, ESC_FIRE_DIST_PATH + str(int(hex_id)) + ".csv"),
                              season=season, cause=cause)
 
-        if hex_id=="17":
-            weather_grid = load_weather_grid(weather_list_file_path=os.path.join(root_dir, WEATHER_LIST_PATH + f"/hex_{hex_id}_weather_list_mod.csv"),
-                        zone_grid_file_path=os.path.join(root_dir, FIRE_ZONE_GRID_PATH), 
-                        season=season)
-        else:
-            weather_grid = load_weather_grid(weather_list_file_path=os.path.join(root_dir, WEATHER_LIST_PATH + f"/hex_{hex_id}_weather_list.csv"),
+
+        weather_grid = load_weather_grid(weather_list_file_path=weather_list_file_path,
                         zone_grid_file_path=os.path.join(root_dir, FIRE_ZONE_GRID_PATH), 
                         season=season)
 
