@@ -1,5 +1,5 @@
 ############################################################
-#### WARNING: AI generated code
+#### WARNING: lots of AI generated code
 # requirments: install R, open R terminal then,
 # remotes::install_github("cffdrs/cffdrs_r") # nolint: commented_code_linter.
 ## For Dev version, this is what i used:
@@ -14,6 +14,7 @@
 # Weather - bui.asc
 # Weather - ws.asc
 # Constant values required:
+# use_constant_fwi <- FALSE # otherwise, it will use constant values fixed in the script # nolint
 # latitude: value from the log file
 # longitude: value from the log file
 # julien_day: julien day (value from the log file) - median day of a season
@@ -29,15 +30,17 @@ base_dir <- "../yan_bp3/hex05/mapped_inputs"
 dem_path  <- file.path(base_dir, "elev.asc")
 fuel_path <- file.path(base_dir, "fbp.asc")
 
-# these are rasters of mean of weather list projected on fire zones
-ffmc_rast_path <- file.path(input_dir, "ffmc.asc")
-bui_rast_path  <- file.path(input_dir, "bui.asc")
-ws_rast_path   <- file.path(input_dir, "ws.asc")
-
+# manuallty set
+use_constant_fwi <- FALSE
 # this is from the log file
 latitude    <- 56.257371
 longitude   <- -115.114533
 aspect_const <- 0
+
+# these are rasters of mean of weather list projected on fire zones
+ffmc_rast_path <- file.path(input_dir, "ffmc.asc")
+bui_rast_path  <- file.path(input_dir, "bui.asc")
+ws_rast_path   <- file.path(input_dir, "ws.asc")
 
 mixedwood_season <- "green"
 
@@ -93,21 +96,36 @@ if (length(slope_vals) != ncells) {
   stop("Slope and fuel lengths differ unexpectedly.")
 }
 
-# ---------------- Weather setup -----------------
-ffmc_rast <- rast(ffmc_rast_path)
-bui_rast  <- rast(bui_rast_path)
-ws_rast   <- rast(ws_rast_path)
+if (use_constant_fwi) {
+  # manuallty set
+  ffmc_const <- 90
+  bui_const  <- 60
+  ws_const   <- 20
 
-ffmc_rast <- project(ffmc_rast, fuel)
-bui_rast  <- project(bui_rast, fuel)
-ws_rast   <- project(ws_rast, fuel)
-stopifnot(all(dim(fuel) == dim(ffmc_rast)))
-if (!compareGeom(fuel, ffmc_rast, stopOnError = FALSE)) {
-  stop("FFMC still does not match fuel after resampling/projection.")
+  ffmc_vals <- rep(ffmc_const, ncells)
+  bui_vals  <- rep(bui_const, ncells)
+  ws_vals   <- rep(ws_const, ncells)
+}else {
+  # ---------------- Weather rasters -----------------
+  ffmc_rast <- rast(ffmc_rast_path)
+  bui_rast  <- rast(bui_rast_path)
+  ws_rast   <- rast(ws_rast_path)
+
+  ffmc_rast <- project(ffmc_rast, fuel)
+  bui_rast  <- project(bui_rast, fuel)
+  ws_rast   <- project(ws_rast, fuel)
+
+  stopifnot(all(dim(fuel) == dim(ffmc_rast)))
+
+  if (!compareGeom(fuel, ffmc_rast, stopOnError = FALSE)) {
+    stop("FFMC still does not match fuel after resampling/projection.")
+  }
+
+  ffmc_vals <- values(ffmc_rast)
+  bui_vals  <- values(bui_rast)
+  ws_vals   <- values(ws_rast)
 }
-ffmc_vals <- values(ffmc_rast)
-bui_vals  <- values(bui_rast)
-ws_vals   <- values(ws_rast)
+
 
 # ---------------- Fuel lookup -----------------
 mixedwood_type_for <- function(default) {

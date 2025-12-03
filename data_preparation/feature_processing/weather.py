@@ -34,7 +34,7 @@ def preprocess_weather_list(weather_list:pd.DataFrame)->pd.DataFrame:
     weather_list["wd_sin"], weather_list["wd_cos"] = wd_sin, wd_cos
     return weather_list
 
-def load_weather_list(weather_list_file_path:str, season: int | None = None)->pd.DataFrame:
+def load_weather_list(weather_list_file_path:str, season: int | None = None, normalize_weatherlist: bool = True)->pd.DataFrame:
     """Load and preprocess the weather list csv"""
     path = Path(weather_list_file_path)
     if not path.exists():
@@ -42,5 +42,8 @@ def load_weather_list(weather_list_file_path:str, season: int | None = None)->pd
     weather_list = pd.read_csv(weather_list_file_path)
     weather_list = check_weather_list(weather_list)
     weather_list_subset = weather_list[weather_list["season"] == season].copy() if season else weather_list.copy()
-    weather_list_preprocessed = preprocess_weather_list(weather_list_subset)
-    return weather_list_preprocessed
+
+    if normalize_weatherlist:
+        return preprocess_weather_list(weather_list_subset)
+    
+    return weather_list_subset
