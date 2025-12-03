@@ -102,10 +102,10 @@ def check_weather_list(weather_list:pd.DataFrame)->pd.DataFrame:
     print("==============hexel didnot have the req columns===================")
     weather_list = weather_list.rename(columns=column_full_form_abrevation_map)
     if check_column_format(weather_list, "season"):
-        print("=============Season checck not passed==================")
+        print("=============Season check not passed==================")
         weather_list['season'] = weather_list['season'].astype(str).str.extract(r'(\d+)').astype(int)
     if check_column_format(weather_list, "wx_zone"):
-        print("=============wx_zone checck not passed==================")
+        print("=============wx_zone check not passed==================")
         weather_list['wx_zone'] = weather_list['wx_zone'].astype(str).str.extract(r'(\d+)').astype(int)
     return weather_list
 
