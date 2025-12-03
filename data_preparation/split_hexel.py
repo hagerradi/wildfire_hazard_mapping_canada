@@ -1,10 +1,29 @@
 import os
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
 from data_preparation.load_hexel_data import load_features_per_hexel
+from data_preparation.utils import find_hex_ids
 
+
+def read_append_csvs(folder_path):
+    folder = Path(folder_path)
+    
+    # 1. Get list of all csv files
+    csv_files = folder.glob("*.csv")
+    
+    # 2. Read each CSV into a list of DataFrames
+    #    (This is much faster than appending inside a loop)
+    dfs = [pd.read_csv(f) for f in csv_files]
+    
+    # 3. Concatenate them all at once
+    if dfs:
+        combined_df = pd.concat(dfs, ignore_index=True)
+        return combined_df
+    else:
+        return pd.DataFrame() # Return empty DF if no files found
 
 def save_split_hexel_windows(valid_window:np.ndarray, out_dir:str, win_id:int, season:str, cause:str, hex_id:str, format:str="npy")->str:
     """Save a hexel window"""
@@ -52,19 +71,38 @@ def get_split_hexel_window(season_cause_stacked_feats:np.ndarray, season_cause_m
     df_coords.to_csv(os.path.join(out_dir, f"meta_hex_{hex_id}.csv"), index=False)
     print(f"=====Hexel data Saved at {out_dir} ========")
 
-if __name__=="__main__":
-    root_dir = "../yan_bp3"
-    modelling_approach = 1
-    out_dir=f"../yan_bp3/data_samples_approach_{modelling_approach}"
-    stacked_feats, mask, season_cause_mapping = load_features_per_hexel(root_dir=root_dir, hex_id="05", modelling_approach=modelling_approach)
+def generate_data_samples(root_dir:str, out_dir:str, modelling_approach:int, win_h:int=128, win_w:int=128, overlap_ratio:float=0.2, mask_threshold:float=0.5):
     os.makedirs(out_dir, exist_ok=True)
     os.makedirs(os.path.join(out_dir, "numpy_files"), exist_ok=True)
-    get_split_hexel_window(season_cause_stacked_feats=stacked_feats, 
-                                        season_cause_mask=mask, 
-                                        season_cause_mapping=season_cause_mapping, 
-                                        out_dir=out_dir, 
-                                        hex_id="05",
-                                        win_h=128, 
-                                        win_w=128, 
-                                        overlap_ratio=0.2, 
-                                        mask_threshold=0.5) 
+    hex_ids = find_hex_ids(root_dir)
+    for hex_id in hex_ids:
+        if hex_id=="52":
+            print("======Skipping hex=======", hex_id)
+            continue
+        print(f"======Working on Hex ID: {hex_id}==========")
+        stacked_feats, mask, season_cause_mapping = load_features_per_hexel(root_dir=root_dir, hex_id=hex_id, modelling_approach=modelling_approach)
+        get_split_hexel_window(season_cause_stacked_feats=stacked_feats, 
+                                season_cause_mask=mask, 
+                                season_cause_mapping=season_cause_mapping, 
+                                out_dir=out_dir, 
+                                hex_id=hex_id,
+                                win_h=win_h, 
+                                win_w=win_w, 
+                                overlap_ratio=overlap_ratio, 
+                                mask_threshold=mask_threshold) 
+        print(f"======Processed Hex ID: {hex_id}==========")
+    combined_df = read_append_csvs(out_dir)
+    combined_df.to_csv(os.path.join(out_dir, "all_hexel_data_samples.csv"), index=False)
+
+
+if __name__=="__main__":
+    root_dir = "../yan_bp3"
+    modelling_approach = 2
+    out_dir=f"../yan_bp3/data_samples_approach_{modelling_approach}"
+    generate_data_samples(root_dir=root_dir, 
+                          out_dir=out_dir, 
+                          modelling_approach=modelling_approach,
+                          win_h=128, 
+                          win_w=128, 
+                          overlap_ratio=0.2, 
+                          mask_threshold=0.5)

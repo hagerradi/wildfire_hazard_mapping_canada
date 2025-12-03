@@ -27,6 +27,20 @@ def find_burn_prob_file(root_dir: str, hex_id: str) -> str:
 
     return str(matches[0])
 
+def find_hex_ids(root_dir:str)->list:
+    hex_ids = []
+    try:
+        with os.scandir(root_dir) as entries:
+            for entry in entries:
+                # Check if it's a directory AND starts with 'hex'
+                if entry.is_dir() and entry.name.startswith("hex"): 
+                    hex_ids.append(entry.name[3:])
+    except FileNotFoundError:
+        print(f"Directory not found: {root_dir}")
+        return []
+
+    return hex_ids
+
 def plot_split_window_hexel(windows, channel_index=0, max_cols=5, figsize=(15, 15)):
     """
     Plots a list/array of 3D windows in a subplot grid.
