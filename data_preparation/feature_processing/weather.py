@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 
-from data_preparation.grid_loader.utils import check_weather_list
+from data_preparation.feature_processing.utils import check_weather_list
 
 
 def wind_direction_to_sincos(wd:np.ndarray)-> tuple[np.ndarray, np.ndarray]:

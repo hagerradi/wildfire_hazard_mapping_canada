@@ -44,6 +44,7 @@ def load_weather_grid(weather_list_file_path:str, zone_grid_file_path: str):
         height=out_weather_params.shape[0],
         width=out_weather_params.shape[1],
         count=1,
+        # to unify with original fbp and elev - not unified with our NODATA
         nodata=-9999.0,
     )
     write_grid("data/fuel_input_data/ffmc.asc", out_weather_params[:, :, 0], weather_profile)
