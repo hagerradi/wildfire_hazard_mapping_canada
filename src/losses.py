@@ -6,14 +6,18 @@ import torch.nn as nn
 class BCELoss(nn.Module):
     def __init__(self):
         super().__init__()
-        self.bce = nn.BCEWithLogitsLoss()
-
-    def forward(self, logits: torch.tensor, targets: torch.tensor):
         # internally handles sigmoid
-        bce_loss = self.bce(logits, targets)
+        self.bce = nn.BCEWithLogitsLoss(reduction='none')
 
-        return bce_loss
-    
+    def forward(self, logits: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None):
+        bce_loss = self.bce(logits, targets)
+        
+        if mask is not None:
+            bce_loss = bce_loss * mask
+            return bce_loss.sum() / mask.sum()
+        
+        return bce_loss.mean()
+
 # TODO: remove later
 if __name__ == "__main__":
     preds = torch.randn(2, 1, 256, 256)
