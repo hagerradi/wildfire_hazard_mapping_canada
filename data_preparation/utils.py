@@ -16,16 +16,47 @@ feature_count_map = {
     "out_burn_prob": 1,
 }
 
-def find_burn_prob_file(root_dir: str, hex_id: str) -> str:
-    pattern = f"hex_{hex_id}_*_iter_bp.tif"
-    matches = list(Path(os.path.join(root_dir, OUTPUT_BURN_PROB_PATH)).glob(pattern))
+def find_fire_output_file(
+    root_dir: str, 
+    hex_id: str, 
+    output_type: str, 
+    season: str = None, 
+    cause: str = None
+) -> str:
+    """ 
+    Helper to get the right raster file. 
+    
+    Args:
+        root_dir (str): The root dir.
+        hex_id (str): The hexel ID.
+        output_type (str): Either 'count' or 'prob'.
+        season (str): The season.
+        cause (str): The cause.
+    
+    """
+    outputs_dir = os.path.join(root_dir, OUTPUT_BURN_PROB_PATH)
+    
+    if output_type == "count":
+        suffix = "_bc.tif"
+    elif output_type == "prob":
+        suffix = "_bp.tif"
+    else:
+        raise ValueError(f"Invalid output_type: {output_type}.")
 
-    if not matches:
-        raise FileNotFoundError(f"No bp.tif file found matching pattern {pattern}")
-    if len(matches) > 1:
-        raise RuntimeError(f"Multiple bp files found: {matches}")
+    if season is not None and cause is not None:
+        fname = f"hex_{hex_id}_season_{season}_cause_{cause}{suffix}"
+        return os.path.join(outputs_dir, fname)
 
-    return str(matches[0])
+    else:
+        pattern = f"hex_{hex_id}_*iter{suffix}"
+        matches = list(Path(outputs_dir).glob(pattern))
+        
+        if not matches:
+            raise FileNotFoundError(f"No global file found matching '{pattern}' in {outputs_dir}")
+        if len(matches) > 1:
+            raise RuntimeError(f"Multiple {output_type} files found: {matches}")
+
+        return str(matches[0])
 
 def find_hex_ids(root_dir:str)->list:
     hex_ids = []
