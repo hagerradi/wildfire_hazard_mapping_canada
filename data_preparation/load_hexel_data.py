@@ -39,6 +39,10 @@ def load_features_per_hexel(root_dir: str, hex_id: str, modelling_approach: int 
         all_masks: np.ndarray of shape (N, H, W)
         season_cause_mapping: dict mapping index to (season, cause)
     """
+    fire_output_types = ["count", "prob"] # for now we only support 2 types of outputs
+    if output_type not in fire_output_types:
+        raise ValueError(f"Invalid output_type: '{output_type}'. Must be one of {fire_output_types}.")
+    
     # identify all seasons and causes first
     root_dir = os.path.join(root_dir, "hex" + str(hex_id))
 
