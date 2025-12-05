@@ -5,7 +5,7 @@ from data_preparation.feature_processing.weather import load_weather_list
 from data_preparation.grid_loader.utils import NODATA, load_raster, selected_weather_features, visualize_weather_params
 
 
-def weather_list_to_grid(weather_list:pd.DataFrame, fire_weather_zone_grid: np.ma.MaskedArray, sampling: str="dist")->np.ndarray:
+def weather_list_to_grid(weather_list:pd.DataFrame, fire_weather_zone_grid: np.ma.MaskedArray, selected_weather_features: list[str], sampling: str="dist")->np.ndarray:
     """Project weather list onto the Fire Weather Zones"""
     fire_weather_zones = weather_list["wx_zone"].unique()
     
@@ -32,7 +32,7 @@ def load_weather_grid(weather_list_file_path:str, zone_grid_file_path: str, seas
     """Single function to run the weather grid creation"""
     weather_csv = load_weather_list(weather_list_file_path, season)
     data = load_raster(zone_grid_file_path)
-    out = weather_list_to_grid(weather_csv, data, sampling)
+    out = weather_list_to_grid(weather_csv, data, selected_weather_features, sampling)
     return out 
 
 #TODO: DELETE LATER
