@@ -5,27 +5,18 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from data_preparation.grid_loader import (
-    load_elevation_grid,
-    load_fire_density_grid,
-    load_fuel_grid,
-    load_ignition_grid,
-    load_output_burn_prob_grid,
-    load_weather_grid,
-    load_wind_grid,
-)
-from data_preparation.paths import (
-    ELEVATION_GRID_PATH,
-    ESC_FIRE_DIST_PATH,
-    FIRE_ZONE_GRID_PATH,
-    FUEL_GRID_PATH,
-    FUEL_TABLE_PATH,
-    IGNITION_PROB_PATH,
-    WEATHER_LIST_PATH,
-    WIND_GRID_DIR_PATH,
-)
+from data_preparation.grid_loader import (load_elevation_grid,
+                                          load_fire_density_grid,
+                                          load_fuel_grid, load_ignition_grid,
+                                          load_output_burn_prob_grid,
+                                          load_weather_grid, load_wind_grid)
+from data_preparation.grid_loader.output import (load_output_burn_count_grid,
+                                                 load_output_burn_prob_grid)
+from data_preparation.paths import (ELEVATION_GRID_PATH, ESC_FIRE_DIST_PATH,
+                                    FIRE_ZONE_GRID_PATH, FUEL_GRID_PATH,
+                                    FUEL_TABLE_PATH, IGNITION_PROB_PATH,
+                                    WEATHER_LIST_PATH, WIND_GRID_DIR_PATH)
 from data_preparation.utils import find_fire_output_file
-from data_preparation.grid_loader.output import load_output_burn_count_grid, load_output_burn_prob_grid
 
 
 def load_features_per_hexel(root_dir: str, hex_id: str, modelling_approach: int = 1, output_type: str = "prob") -> tuple[np.ndarray, np.ndarray, dict[int, tuple[int, int]]]:

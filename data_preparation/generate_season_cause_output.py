@@ -1,14 +1,16 @@
 import os
-import pandas as pd
-import numpy as np
-from typing import Any
-import rasterio
-from pathlib import Path
 from itertools import product
+from pathlib import Path
+from typing import Any
+
 import geopandas as gpd
-from rasterio.features import rasterize, MergeAlg
+import numpy as np
+import pandas as pd
+import rasterio
+from rasterio.features import MergeAlg, rasterize
 
 from data_preparation.paths import ESC_FIRE_DIST_PATH, OUTPUT_BURN_PROB_PATH
+
 
 def load_fire_shapefiles(hex_dir: str) -> list[Path]:
     """
@@ -180,7 +182,7 @@ def generate_season_cause_rasters(root_dir: str, hex_id: str) -> None:
 
 if __name__ == "__main__":
 
-    ROOT_DIR = "data" 
-    HEX_ID = "05"
+    root_dir = "../yan_bp3"
+    hex_ids = ["05", "10", "16"]
     
-    generate_season_cause_rasters(ROOT_DIR, HEX_ID)
+    generate_season_cause_rasters(root_dir, hex_ids[0])
