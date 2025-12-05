@@ -36,12 +36,9 @@ class GridDataset(Dataset):
         # 2. Construct full path
         file_path = os.path.join(self.root_dir, filename)
 
-        data = np.load(file_path)
-        
-        # Ensure data is explicitly float32 (common source of PyTorch errors)
-        data = data.astype(np.float32)
+        data = np.load(file_path).astype(np.float32)
         input_arr, output_arr = data[:,:,:-2], data[:,:,-1]
 
         #TODO: remove NaNs from the inp data (replace by mean)
-
+        #TODO: return a mask for the loss function
         return input_arr, output_arr
