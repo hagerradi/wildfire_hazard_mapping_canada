@@ -1,6 +1,6 @@
 # Data preparation pipeline
 
-TODO
+TODO for all steps
 
 To generate the rasters per season and cause:
 
