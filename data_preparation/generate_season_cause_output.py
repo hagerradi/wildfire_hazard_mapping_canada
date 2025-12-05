@@ -10,27 +10,7 @@ import rasterio
 from rasterio.features import MergeAlg, rasterize
 
 from data_preparation.paths import ESC_FIRE_DIST_PATH, OUTPUT_BURN_PROB_PATH
-
-
-def load_fire_shapefiles(hex_dir: str) -> list[Path]:
-    """
-    Helper that loads all shp files from a given hexel.
-
-    Args:
-        hex_dir (str): The path to the hexel folder
-    Returns:
-        (list[Path]): the list of shapefiles for the hexel
-    """
-    output_dir = Path(hex_dir) / "outputs"
-    if not output_dir.exists():
-        raise FileNotFoundError(f"Output directory not found: {output_dir}")
-    
-    shp_paths = sorted(list(output_dir.glob("*.shp")))
-    if not shp_paths:
-            raise FileNotFoundError(f"No .shp files found in {output_dir}")
-    
-    return shp_paths
-
+from data_preparation.grid_loader.utils import load_fire_shapefiles
 
 class FireCountRasterizer:
     """ Rasterization class to accumulate fire polygons from shapefiles. """
@@ -75,11 +55,11 @@ class FireCountRasterizer:
 
             # main raster loop
             for (run_id, iter_id) in iters:
-                sub = df[(df["run_id"] == run_id) & (df["iteration"] == iter_id)]
-                shapes = ((geom, 1) for geom in sub.geometry)
+                one_iter = df[(df["run_id"] == run_id) & (df["iteration"] == iter_id)]
+                fire_polygons = ((geom, 1) for geom in one_iter.geometry)
                 
                 iter_raster = rasterize(
-                    shapes=shapes,
+                    shapes=fire_polygons,
                     out_shape=self.out_shape,
                     transform=self.transform,
                     fill=0,
@@ -120,7 +100,7 @@ def save_raster(data: np.ndarray, template_profile: dict[str, Any], out_path: st
         dst.write(data, 1)
     print(f"Saved: {os.path.basename(out_path)}")
 
-def generate_season_cause_rasters(root_dir: str, hex_id: str) -> None:
+def generate_season_cause_burn_count_rasters(root_dir: str, hex_id: str) -> None:
     """
     Main function to generate and save list of raster files for a given hexel.
 
@@ -132,7 +112,6 @@ def generate_season_cause_rasters(root_dir: str, hex_id: str) -> None:
     print(f"--- Processing hexel {hex_id} ---")
     hex_dir = os.path.join(root_dir, f"hex{hex_id}")
     outputs_dir = os.path.join(hex_dir, OUTPUT_BURN_PROB_PATH)
-    print(outputs_dir)
     
     # get template for counts
     template_bc = next(Path(outputs_dir).glob("*_bc.tif"), None)
@@ -182,4 +161,4 @@ if __name__ == "__main__":
     root_dir = "../yan_bp3"
     hex_ids = ["05", "10", "16"]
     
-    generate_season_cause_rasters(root_dir, hex_ids[0])
+    generate_season_cause_burn_count_rasters(root_dir, hex_ids[0])
