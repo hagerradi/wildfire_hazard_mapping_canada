@@ -10,10 +10,11 @@ from data_preparation.grid_loader import (
     load_fire_density_grid,
     load_fuel_grid,
     load_ignition_grid,
+    load_output_burn_count_grid,
+    load_output_burn_prob_grid,
     load_weather_grid,
     load_wind_grid,
 )
-from data_preparation.grid_loader.output import load_output_burn_count_grid, load_output_burn_prob_grid
 from data_preparation.paths import (
     ELEVATION_GRID_PATH,
     ESC_FIRE_DIST_PATH,
@@ -24,16 +25,16 @@ from data_preparation.paths import (
     WEATHER_LIST_PATH,
     WIND_GRID_DIR_PATH,
 )
-from data_preparation.utils import find_fire_output_file
+from data_preparation.utils import find_simulation_output_file
 
 
 def load_features_per_hexel(root_dir: str, hex_id: str, modelling_approach: int = 1, output_type: str = "prob") -> tuple[np.ndarray, np.ndarray, dict[int, tuple[int, int]]]:
     """
     Load all data (features and output) per hexel
-    root_dir: root directory containing all hexels
-    hex_id: hexel id to load
-    modelling_approach: 1 for joint season-cause modelling, 2 for separate season-cause modelling
-    output_type (str): 'count' for counts, 'prob' for probs
+    root_dir: Root directory containing all hexels.
+    hex_id: Hexel id to load.
+    modelling_approach: 1 for joint season-cause modelling, 2 for separate season-cause modelling.
+    output_type (str): Type of fire output to use. Use 'count' for fire counts, or 'prob' for probs normalized by unique iterations.
     Returns:
         all_features: np.ndarray of shape (N, H, W, num_features)
         all_masks: np.ndarray of shape (N, H, W)
@@ -94,7 +95,7 @@ def load_features_per_hexel(root_dir: str, hex_id: str, modelling_approach: int 
                         zone_grid_file_path=os.path.join(root_dir, FIRE_ZONE_GRID_PATH))
         
         # for approach 1, we use the existing raster output
-        fpath = find_fire_output_file(root_dir, hex_id, output_type, season=None, cause=None)
+        fpath = find_simulation_output_file(root_dir, hex_id, output_type, season=None, cause=None)
         out_grid = load_output_grid(fpath)
 
         stacked_features, mask = stack_sample(
@@ -128,7 +129,7 @@ def load_features_per_hexel(root_dir: str, hex_id: str, modelling_approach: int 
                         season=season)
         
         # for approach 2, we use the season-cause rasters
-        fpath = find_fire_output_file(root_dir, hex_id, output_type, season=season, cause=cause)
+        fpath = find_simulation_output_file(root_dir, hex_id, output_type, season=season, cause=cause)
         out_grid = load_output_grid(fpath)
 
         # stack them all.

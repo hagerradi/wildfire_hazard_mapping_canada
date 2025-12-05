@@ -9,8 +9,9 @@ import pandas as pd
 import rasterio
 from rasterio.features import MergeAlg, rasterize
 
-from data_preparation.paths import ESC_FIRE_DIST_PATH, OUTPUT_BURN_PROB_PATH
 from data_preparation.grid_loader.utils import load_fire_shapefiles
+from data_preparation.paths import ESC_FIRE_DIST_PATH, OUTPUT_BURN_PROB_PATH
+
 
 class FireCountRasterizer:
     """ Rasterization class to accumulate fire polygons from shapefiles. """

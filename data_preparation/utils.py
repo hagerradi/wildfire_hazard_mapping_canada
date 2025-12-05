@@ -16,7 +16,7 @@ feature_count_map = {
     "out_burn_prob": 1,
 }
 
-def find_fire_output_file(
+def find_simulation_output_file(
     root_dir: str, 
     hex_id: str, 
     output_type: str, 
