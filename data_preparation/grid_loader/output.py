@@ -25,6 +25,11 @@ def load_output_burn_prob_grid(path: str)-> np.ndarray:
     output_burn_prob_grid = load_raster(path) #no norm because each pixel prob is independent of each other
     return output_burn_prob_grid.data
 
+def load_output_burn_count_grid(path: str)-> np.ndarray:
+    """Load burn count grid."""
+    output_burn_count_grid = load_raster(path) # norm needed
+    return output_burn_count_grid.data
+
 
 # TODO: delete later
 if __name__ == "__main__":
