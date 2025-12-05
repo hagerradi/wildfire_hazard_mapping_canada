@@ -10,8 +10,7 @@ from data_preparation.grid_loader import (
     load_fire_density_grid,
     load_fuel_grid,
     load_ignition_grid,
-    load_output_burn_count_grid,
-    load_output_burn_prob_grid,
+    load_output_burn_grid,
     load_weather_grid,
     load_wind_grid,
 )
@@ -76,12 +75,10 @@ def load_features_per_hexel(root_dir: str, hex_id: str, modelling_approach: int 
         return stacked, mask
     
     def load_output_grid(path):
-        if output_type == "count":
-            return load_output_burn_count_grid(path)
-        elif output_type == "prob":
-            return load_output_burn_prob_grid(path)
-        else:
-            raise ValueError(f"Invalid output_type: {output_type}.")
+        if not os.path.exists(path):
+            dtype = "int32" if output_type == "count" else "float32"
+            return np.zeros_like(elevation_grid, dtype=dtype) # in case no fires for a scenario
+        return load_output_burn_grid(path)
 
     if modelling_approach == 1:
         season_cause_mapping = None
