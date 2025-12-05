@@ -168,10 +168,7 @@ def generate_season_cause_rasters(root_dir: str, hex_id: str) -> None:
 
         count_grid, num_iters = rasterizer.compute_counts(season=season, cause=cause)
 
-        if num_iters > 0:
-            prob_grid = count_grid.astype("float32") / num_iters
-        else:
-            prob_grid = np.zeros_like(count_grid, dtype="float32")
+        prob_grid = count_grid.astype("float32") / num_iters if num_iters > 0 else np.zeros_like(count_grid, dtype="float32")
 
         fname_bp = f"hex_{hex_id}_season_{season}_cause_{cause}_bp.tif".replace(" ", "")
         fname_bc = f"hex_{hex_id}_season_{season}_cause_{cause}_bc.tif".replace(" ", "")
