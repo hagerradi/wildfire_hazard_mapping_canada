@@ -1,11 +1,9 @@
 import os
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import torch
 from torch.utils.data import DataLoader, Dataset
-# from torchvision import transforms
 
 
 def fill_nan_channel_mean_numpy(arr):
@@ -55,7 +53,7 @@ class GridDataset(Dataset):
         filename = self.all_files[idx]
         
         # 2. Construct full path
-        file_path = filename #os.path.join(self.root_dir, filename)
+        file_path = os.path.join(self.root_dir, filename)
 
         data = np.load(file_path).astype(np.float32)
         input_arr, output_arr = data[:,:,:-2], data[:,:,-1]
@@ -111,7 +109,6 @@ if __name__ == "__main__":
     for batch_idx, (data, target, mask) in enumerate(train_loader):
         print(f"Batch {batch_idx}: Data Shape: {data.shape}, Labels: {target.shape}, mask: {mask.shape}")
         print("NAN values in the loaded data",torch.isnan(data).sum().item())
-
         break
     print("\nIterating through val DataLoader:")
     for batch_idx, (data, target,_) in enumerate(val_loader):
