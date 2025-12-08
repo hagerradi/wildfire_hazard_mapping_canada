@@ -1,4 +1,5 @@
 import os
+from collections.abc import Callable
 
 import numpy as np
 import pandas as pd
@@ -38,14 +39,14 @@ class GridDataset(Dataset):
             filename_col (str): Column name in CSV containing the filenames.
             transform (callable, optional): Optional transform to be applied on a sample.
         """
-        self.data_frame = pd.read_csv(csv_path)
-        self.all_files = list(self.data_frame[filename_col])
+        self.metadata_df = pd.read_csv(csv_path)
+        self.all_files = list(self.metadata_df[filename_col])
         self.root_dir = root_dir
         self.filename_col = filename_col
         self.transform = transform
 
     def __len__(self):
-        return len(self.data_frame)
+        return len(self.metadata_df)
 
     def __getitem__(self, idx):
         # 1. Get the filename from the CSV
@@ -56,27 +57,27 @@ class GridDataset(Dataset):
 
         data = np.load(file_path).astype(np.float32)
         input_arr, output_arr = data[:,:,:-1], data[:,:,-1]
+        assert np.all(np.isnan(input_arr) == np.isnan(input_arr[..., :1])), "NaN mask differs across channels!"
         mask = np.isnan(input_arr[:,:,0]) #return a mask for the loss function
-        #TODO: Add assert for different masks (across channels)
         input_arr = fill_nan_channel_mean_numpy(input_arr) #remove NaNs from the inp data (replace by mean)
-        #TODO: process the output counts
-        return torch.from_numpy(input_arr), torch.from_numpy(output_arr).unsqueeze(-1), torch.from_numpy(mask.astype(np.uint8)) #(H,W,C), (H,W,1), (H,W)
+        #TODO: Normalize the output counts
+        return torch.from_numpy(input_arr), torch.from_numpy(np.expand_dims(output_arr, -1)), torch.from_numpy(mask.astype(np.uint8)) #(H,W,C), (H,W,1), (H,W)
     
-def get_train_val_dataloader(train_csv_path, val_csv_path, root_dir, batch_size=4, num_workers=0, transform=None):
+def get_train_val_dataloader(train_csv_path:str, val_csv_path:str, root_dir:str, filename_col:str="filename", batch_size:int=4, num_workers:int=0, transform:Callable|None=None):
     """
     Creates and returns a DataLoader 
     """
     train_dataset = GridDataset(
         csv_path=train_csv_path, 
         root_dir=root_dir, 
-        filename_col='filename', 
+        filename_col=filename_col, 
         transform=transform
     )
 
     val_dataset = GridDataset(
         csv_path=val_csv_path, 
         root_dir=root_dir, 
-        filename_col='filename', 
+        filename_col=filename_col, 
         transform=transform
     )
     
@@ -96,14 +97,14 @@ def get_train_val_dataloader(train_csv_path, val_csv_path, root_dir, batch_size=
     
     return train_loader, val_loader
 
-def get_test_loader(test_csv_path, root_dir, batch_size=4, num_workers=0, transform=None):
+def get_test_loader(test_csv_path:str, root_dir:str, filename_col:str="filename", batch_size:int=4, num_workers:int=0, transform:Callable|None=None):
     """
         Creates and returns the test loader
     """
     test_dataset = GridDataset(
         csv_path=test_csv_path, 
         root_dir=root_dir, 
-        filename_col='filename', 
+        filename_col=filename_col, 
         transform=transform
     )
     test_loader = DataLoader(
