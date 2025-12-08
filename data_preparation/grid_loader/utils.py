@@ -58,6 +58,25 @@ def load_csv(path: str) -> pd.DataFrame:
         return df
     else:
         raise FileNotFoundError(f"File not found: {path}")
+    
+def load_fire_shapefiles(hex_dir: str) -> list[Path]:
+    """
+    Helper that loads all shp files from a given hexel.
+
+    Args:
+        hex_dir (str): The path to the hexel folder
+    Returns:
+        (list[Path]): the list of shapefiles for the hexel
+    """
+    output_dir = Path(hex_dir) / "outputs"
+    if not output_dir.exists():
+        raise FileNotFoundError(f"Output directory not found: {output_dir}")
+    
+    shp_paths = sorted(list(output_dir.glob("*.shp")))
+    if not shp_paths:
+            raise FileNotFoundError(f"No .shp files found in {output_dir}")
+    
+    return shp_paths
 
 def get_max_wind_velocity(data_path:str)->float:
     """Get the global maximum wind velocity for normalization"""
