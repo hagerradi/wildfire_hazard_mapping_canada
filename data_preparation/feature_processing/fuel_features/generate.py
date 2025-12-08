@@ -32,8 +32,8 @@ def write_grid(path: str, arr2d: np.ndarray, profile: dict):
 
 def load_weather_grid(weather_list_file_path: str, zone_grid_file_path: str):
     """Single function to run the weather grid creation"""
-    selected_weather_features = ["ffmc", "bui", "ws"]
-    weather_csv = load_weather_list(weather_list_file_path, season=1, normalize_weatherlist=False)
+    selected_weather_features = ['ffmc', 'bui', 'ws', 'wd']
+    weather_csv = load_weather_list(weather_list_file_path, season = 1, normalize_weatherlist=False)
 
     with rasterio.open(zone_grid_file_path) as src:
         data = src.read(1, masked=True)
@@ -50,22 +50,21 @@ def load_weather_grid(weather_list_file_path: str, zone_grid_file_path: str):
         nodata=-9999.0,
     )
     write_grid("data/fuel_input_data/ffmc.asc", out_weather_params[:, :, 0], weather_profile)
-    write_grid("data/fuel_input_data/bui.asc", out_weather_params[:, :, 1], weather_profile)
-    write_grid("data/fuel_input_data/ws.asc", out_weather_params[:, :, 2], weather_profile)
+    write_grid("data/fuel_input_data/bui.asc",  out_weather_params[:, :, 1], weather_profile)
+    write_grid("data/fuel_input_data/ws.asc",   out_weather_params[:, :, 2], weather_profile)
+    write_grid("data/fuel_input_data/wd.asc",   out_weather_params[:, :, 3], weather_profile)
 
 
 if __name__ == "__main__":
     os.makedirs("data", exist_ok=True)
     os.makedirs("data/fuel_input_data", exist_ok=True)
 
-    use_constant_FWI = False  # this has to be the same as in the R script
-    if not use_constant_FWI:
-        # 1: generate weather features
-        load_weather_grid(
-            weather_list_file_path="../yan_bp3/hex05/burning_conditions_module/hex_05_weather_list.csv",
-            zone_grid_file_path="../yan_bp3/hex05/mapped_inputs/cfrs.asc",
-        )
-
+    # use_constant_FWI = False # this has to be the same as in the R script
+    # if not use_constant_FWI:
+    #     # 1: generate weather features
+    #     load_weather_grid(weather_list_file_path="../yan_bp3/hex05/burning_conditions_module/hex_05_weather_list.csv",
+    #                     zone_grid_file_path="../yan_bp3/hex05/mapped_inputs/cfrs.asc")
+    
     # # 2: run the R script (fbp_features.R) externally to generate ROS
     subprocess.run(["Rscript", "data_preparation/feature_processing/fuel_features/fbp_features.R"], check=True)
 
