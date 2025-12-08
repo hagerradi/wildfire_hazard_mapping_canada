@@ -36,7 +36,6 @@ class GridDataset(Dataset):
             csv_path (str): Path to the csv file with annotations.
             root_dir (str): Directory with all the .npy files.
             filename_col (str): Column name in CSV containing the filenames.
-            label_col (str, optional): Column name in CSV containing labels.
             transform (callable, optional): Optional transform to be applied on a sample.
         """
         self.data_frame = pd.read_csv(csv_path)
@@ -56,13 +55,14 @@ class GridDataset(Dataset):
         file_path = os.path.join(self.root_dir, filename)
 
         data = np.load(file_path).astype(np.float32)
-        input_arr, output_arr = data[:,:,:-2], data[:,:,-1]
+        input_arr, output_arr = data[:,:,:-1], data[:,:,-1]
         mask = np.isnan(input_arr[:,:,0]) #return a mask for the loss function
+        #TODO: Add assert for different masks (across channels)
         input_arr = fill_nan_channel_mean_numpy(input_arr) #remove NaNs from the inp data (replace by mean)
         #TODO: process the output counts
-        return torch.from_numpy(input_arr), torch.from_numpy(output_arr), torch.from_numpy(mask)
+        return torch.from_numpy(input_arr), torch.from_numpy(output_arr).unsqueeze(-1), torch.from_numpy(mask.astype(np.uint8)) #(H,W,C), (H,W,1), (H,W)
     
-def get_train_val_dataloader(train_csv_path, val_csv_path, root_dir, batch_size=4, shuffle=True, num_workers=0, transform=None):
+def get_train_val_dataloader(train_csv_path, val_csv_path, root_dir, batch_size=4, num_workers=0, transform=None):
     """
     Creates and returns a DataLoader 
     """
@@ -83,7 +83,7 @@ def get_train_val_dataloader(train_csv_path, val_csv_path, root_dir, batch_size=
     train_loader = DataLoader(
         train_dataset, 
         batch_size=batch_size, 
-        shuffle=shuffle, 
+        shuffle=True, 
         num_workers=num_workers
     )
 
@@ -96,11 +96,38 @@ def get_train_val_dataloader(train_csv_path, val_csv_path, root_dir, batch_size=
     
     return train_loader, val_loader
 
+def get_test_loader(test_csv_path, root_dir, batch_size=4, num_workers=0, transform=None):
+    """
+        Creates and returns the test loader
+    """
+    test_dataset = GridDataset(
+        csv_path=test_csv_path, 
+        root_dir=root_dir, 
+        filename_col='filename', 
+        transform=transform
+    )
+    test_loader = DataLoader(
+        test_dataset, 
+        batch_size=batch_size, 
+        shuffle=False, 
+        num_workers=num_workers
+    )
+
+    return test_loader
+
+
 if __name__ == "__main__":
     train_loader, val_loader = get_train_val_dataloader(
         train_csv_path="../yan_bp3/data_samples_approach_2/train.csv",
         val_csv_path="../yan_bp3/data_samples_approach_2/val.csv",
-        root_dir="./",
+        root_dir="../yan_bp3",
+        batch_size=4,
+        transform=None
+    )
+
+    test_loader = get_test_loader(
+        test_csv_path="../yan_bp3/data_samples_approach_2/test_indices.csv",
+        root_dir="../yan_bp3",
         batch_size=4,
         transform=None
     )
@@ -112,6 +139,12 @@ if __name__ == "__main__":
         break
     print("\nIterating through val DataLoader:")
     for batch_idx, (data, target,_) in enumerate(val_loader):
-        print(f"Batch {batch_idx}: Data Shape: {data.shape}, Labels: {target}")
+        print(f"Batch {batch_idx}: Data Shape: {data.shape}, Labels: {target.shape}")
+        print("NAN values in the loaded data",torch.isnan(data).sum().item())
+        break
+
+    print("\nIterating through test DataLoader:")
+    for batch_idx, (data, target,_) in enumerate(test_loader):
+        print(f"Batch {batch_idx}: Data Shape: {data.shape}, Labels: {target.shape}")
         print("NAN values in the loaded data",torch.isnan(data).sum().item())
         break
