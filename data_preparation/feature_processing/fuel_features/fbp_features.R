@@ -13,6 +13,7 @@
 # Weather - ffmc.asc
 # Weather - bui.asc
 # Weather - ws.asc
+# Weather - wd.asc
 # Constant values required:
 # use_constant_fwi <- FALSE # otherwise, it will use constant values fixed in the script # nolint
 # latitude: value from the log file
@@ -399,3 +400,6 @@ for (i in idx_test) {
     "  fbpRaster  ROS =", ros_rast, "  SFC =", sfc_rast, "\n\n"
   )
 }
+
+#TODO: ROS has valid values for both Water, Urban and NoFuel.
+#TODO: fbp and fbp-raster outputs don't match at the pixel level.
