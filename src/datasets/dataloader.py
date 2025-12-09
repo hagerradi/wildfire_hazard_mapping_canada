@@ -31,12 +31,13 @@ class GridDataset(Dataset):
     """
     Dataset class for loading the data
     """
-    def __init__(self, csv_path:str, root_dir:str, filename_col:str='filename', transform=None):
+    def __init__(self, csv_path:str, root_dir:str, filename_col:str='filename', out_norm:str="total_iters", transform=None):
         """
         Args:
             csv_path (str): Path to the csv file with annotations.
             root_dir (str): Directory with all the .npy files.
             filename_col (str): Column name in CSV containing the filenames.
+            out_norm (str): How to normalize the output burn counts. [Options: total_iters, season_cause_iters]
             transform (callable, optional): Optional transform to be applied on a sample.
         """
         self.metadata_df = pd.read_csv(csv_path)
@@ -44,7 +45,14 @@ class GridDataset(Dataset):
         self.root_dir = root_dir
         self.filename_col = filename_col
         self.transform = transform
-
+        self.out_norm = out_norm
+        if self.out_norm=="total_iters":
+            self.out_norm_array = list(self.metadata_df["total_unique_iters"])
+        elif self.out_norm=="season_cause_iters":
+            self.out_norm_array = list(self.metadata_df["season_cause_unique_iters"])
+        else:
+            self.out_norm_array = [1] * len(self.all_files) #if we want to predict the counts
+        
     def __len__(self):
         return len(self.metadata_df)
 
@@ -60,10 +68,11 @@ class GridDataset(Dataset):
         assert np.all(np.isnan(input_arr) == np.isnan(input_arr[..., :1])), "NaN mask differs across channels!"
         mask = np.isnan(input_arr[:,:,0]) #return a mask for the loss function
         input_arr = fill_nan_channel_mean_numpy(input_arr) #remove NaNs from the inp data (replace by mean)
-        #TODO: Normalize the output counts
+        output_arr /= self.out_norm_array[idx]
+        print("Norm values:", self.out_norm_array[idx])
         return torch.from_numpy(input_arr), torch.from_numpy(np.expand_dims(output_arr, -1)), torch.from_numpy(mask.astype(np.uint8)) #(H,W,C), (H,W,1), (H,W)
     
-def get_train_val_dataloader(train_csv_path:str, val_csv_path:str, root_dir:str, filename_col:str="filename", batch_size:int=4, num_workers:int=0, transform:Callable|None=None):
+def get_train_val_dataloader(train_csv_path:str, val_csv_path:str, root_dir:str, filename_col:str="filename", out_norm:str="total_iters", batch_size:int=4, num_workers:int=0, transform:Callable|None=None):
     """
     Creates and returns a DataLoader 
     """
@@ -71,6 +80,7 @@ def get_train_val_dataloader(train_csv_path:str, val_csv_path:str, root_dir:str,
         csv_path=train_csv_path, 
         root_dir=root_dir, 
         filename_col=filename_col, 
+        out_norm=out_norm,
         transform=transform
     )
 
@@ -78,6 +88,7 @@ def get_train_val_dataloader(train_csv_path:str, val_csv_path:str, root_dir:str,
         csv_path=val_csv_path, 
         root_dir=root_dir, 
         filename_col=filename_col, 
+        out_norm=out_norm,
         transform=transform
     )
     
@@ -97,7 +108,7 @@ def get_train_val_dataloader(train_csv_path:str, val_csv_path:str, root_dir:str,
     
     return train_loader, val_loader
 
-def get_test_loader(test_csv_path:str, root_dir:str, filename_col:str="filename", batch_size:int=4, num_workers:int=0, transform:Callable|None=None):
+def get_test_loader(test_csv_path:str, root_dir:str, filename_col:str="filename", out_norm:str="total_iters", batch_size:int=4, num_workers:int=0, transform:Callable|None=None):
     """
         Creates and returns the test loader
     """
@@ -105,6 +116,7 @@ def get_test_loader(test_csv_path:str, root_dir:str, filename_col:str="filename"
         csv_path=test_csv_path, 
         root_dir=root_dir, 
         filename_col=filename_col, 
+        out_norm=out_norm,
         transform=transform
     )
     test_loader = DataLoader(
@@ -118,10 +130,12 @@ def get_test_loader(test_csv_path:str, root_dir:str, filename_col:str="filename"
 
 
 if __name__ == "__main__":
+    out_norm = "season_cause_iters"
     train_loader, val_loader = get_train_val_dataloader(
-        train_csv_path="../yan_bp3/data_samples_approach_2/train.csv",
-        val_csv_path="../yan_bp3/data_samples_approach_2/val.csv",
+        train_csv_path="../yan_bp3/data_samples_approach_2/train_indices.csv",
+        val_csv_path="../yan_bp3/data_samples_approach_2/val_indices.csv",
         root_dir="../yan_bp3",
+        out_norm=out_norm,
         batch_size=4,
         transform=None
     )
@@ -130,6 +144,7 @@ if __name__ == "__main__":
         test_csv_path="../yan_bp3/data_samples_approach_2/test_indices.csv",
         root_dir="../yan_bp3",
         batch_size=4,
+        out_norm=out_norm,
         transform=None
     )
 
