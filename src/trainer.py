@@ -3,6 +3,7 @@ import time
 from typing import Any
 
 import torch
+import torch.optim as optim
 import yaml
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -18,10 +19,14 @@ class Trainer:
         config: dict,
     ):
         self.config = config
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+
+        self.device = (
+            "cuda" if torch.cuda.is_available()
+            else "mps" if torch.backends.mps.is_available() and torch.backends.mps.is_built()
+            else "cpu"
+        )
         
         self.save_dir = self.config.save_dir
-
         if self.save_dir:
             os.makedirs(self.save_dir, exist_ok=True)
 
@@ -35,7 +40,15 @@ class Trainer:
         self.model.to(self.device)
         self.loss_fn = BCELoss()
 
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.config.optimizer.lr)
+        # optimizer
+        opt_name = self.config.optimizer.name
+        # TODO: add other parameters
+        opt_params = {
+            "lr": self.config.optimizer.lr,
+        }
+
+        OptimizerClass = getattr(optim, opt_name)
+        self.optimizer = OptimizerClass(self.model.parameters(), **opt_params)
 
 
     def _step(self, batch: Any) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -116,30 +129,38 @@ class Trainer:
             train_res = self.train_epoch(train_loader)
             elapsed = time.time() - start
 
-            val_res = self.validate(val_loader) if val_loader is not None else None
+            val_result = self.validate(val_loader) if val_loader is not None else None
 
             # TODO: replace with logging
             if epoch % log_every_n_epoch == 0:
                 msg = f"Epoch {epoch}/{num_epochs} - train_loss: {train_res['loss']:.4f}"
-                if val_res is not None:
-                    msg += f", val_loss: {val_res['loss']:.4f}"
+                if val_result is not None:
+                    msg += f", val_loss: {val_result['loss']:.4f}"
                 msg += f", time: {elapsed:.1f}s"
                 print(msg)
 
             # save best checkpoint
-            if val_res is not None and (best_val_loss is None or val_res["loss"] < best_val_loss):
-                best_val_loss = val_res["loss"]
+            if val_result is not None and (best_val_loss is None or val_result["loss"] < best_val_loss):
+                best_val_loss = val_result["loss"]
                 # auto-save best if save_dir configured
                 if self.save_dir:
-                    self.save_model("best.pth")
+                    self.save_model(epoch=epoch, loss=val_result["loss"], filename="best")
+            
+            self.save_model(loss=val_result["loss"], epoch=epoch)
 
-    def save_model(self, filename: str = "checkpoint.pth"):
+    def save_model(self, epoch: int, loss: float, filename: str = "last"):
         if not self.save_dir:
             raise ValueError("save_dir not set")
-        path = os.path.join(self.save_dir, filename)
+
+        enriched_filename = f"{filename}_epoch={epoch}_loss={loss:.4f}.pth"
+
+        path = os.path.join(self.save_dir, enriched_filename)
+
         payload = {
             "model_state": self.model.state_dict(),
             "optimizer_state": self.optimizer.state_dict(),
+            "epoch": epoch,
+            "loss": loss,
         }
         torch.save(payload, path)
         return path

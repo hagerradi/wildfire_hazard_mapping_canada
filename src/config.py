@@ -8,6 +8,7 @@ class ModelConfig(BaseModel):
 
 
 class OptimizerConfig(BaseModel):
+    name: str | None = "AdamW"
     lr: float = 1e-3
 
 
@@ -17,7 +18,7 @@ class TrainingConfig(BaseModel):
 
 
 class Config(BaseModel):
-    save_dir: str | None = "checkpoints/default"
+    save_dir: str | None = "experiments/default"
     model: ModelConfig
     optimizer: OptimizerConfig
     training: TrainingConfig
