@@ -47,9 +47,9 @@ class GridDataset(Dataset):
         self.transform = transform
         self.out_norm = out_norm
         if self.out_norm=="total_iters":
-            self.out_norm_array = list(self.metadata_df["total_unique_iters"])
+            self.out_norm_array = list(self.metadata_df["total_unique_iters"]) #total number of unique interations that produced fires for all seasons and causes
         elif self.out_norm=="season_cause_iters":
-            self.out_norm_array = list(self.metadata_df["season_cause_unique_iters"])
+            self.out_norm_array = list(self.metadata_df["season_cause_unique_iters"]) #total number of unique interations that produced fires for a single season and cause
         else:
             self.out_norm_array = [1] * len(self.all_files) #if we want to predict the counts
         
