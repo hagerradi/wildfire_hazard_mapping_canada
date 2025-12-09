@@ -25,10 +25,10 @@ class Trainer:
             else "mps" if torch.backends.mps.is_available() and torch.backends.mps.is_built()
             else "cpu"
         )
-        
+        print(f"\n[Device] Using: {self.device}")
+
         self.save_dir = self.config.save_dir
-        if self.save_dir:
-            os.makedirs(self.save_dir, exist_ok=True)
+        os.makedirs(self.save_dir, exist_ok=True)
 
         self.setup()
 
@@ -144,17 +144,17 @@ class Trainer:
                 best_val_loss = val_result["loss"]
                 # auto-save best if save_dir configured
                 if self.save_dir:
-                    self.save_model(epoch=epoch, loss=val_result["loss"], filename="best")
-            
-            self.save_model(loss=val_result["loss"], epoch=epoch)
+                    self.save_model(epoch=epoch, loss=val_result["loss"], filename="best.pth")
 
-    def save_model(self, epoch: int, loss: float, filename: str = "last"):
+            # save most recent checkpoint
+            self.save_model(epoch=epoch, loss=val_result["loss"])
+
+    def save_model(self, epoch: int, loss: float, filename: str = "last.pth"):
         if not self.save_dir:
             raise ValueError("save_dir not set")
 
-        enriched_filename = f"{filename}_epoch={epoch}_loss={loss:.4f}.pth"
 
-        path = os.path.join(self.save_dir, enriched_filename)
+        path = os.path.join(self.save_dir, filename)
 
         payload = {
             "model_state": self.model.state_dict(),
@@ -165,7 +165,7 @@ class Trainer:
         torch.save(payload, path)
         return path
 
-    def load_model(self, path: str | None = None, filename: str = "checkpoint.pth", map_location: str | None = None):
+    def load_model(self, path: str | None = None, filename: str = "last.pth", map_location: str | None = None):
         if path is None:
             path = os.path.join(self.save_dir, filename)
 
