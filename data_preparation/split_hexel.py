@@ -4,6 +4,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from data_preparation.generate_season_cause_output import FireCountRasterizer
+from data_preparation.grid_loader.utils import load_fire_shapefiles
 from data_preparation.load_hexel_data import load_features_per_hexel
 from data_preparation.utils import find_hex_ids
 
@@ -22,6 +24,9 @@ def get_split_hexel_window(season_cause_stacked_feats:np.ndarray, season_cause_m
             season_cause_mask(np.ndarray): A bool array where True means to ignore the pixel (num_season_cause, H,W)
     """
     print("============Splitting the hexel==================")
+    shp_paths = load_fire_shapefiles(os.path.join(root_dir, "hex" + str(hex_id)))
+    rasterizer = FireCountRasterizer(shp_paths, None)
+    total_unique_iters = rasterizer.get_num_unique_iters(season=None, cause=None)
     num_season_cause,H,W,_ = season_cause_stacked_feats.shape
     stride_h = max(1,int(win_h * (1 - overlap_ratio))) #n_rows = (H-win_h)//stride_h + 1
     stride_w = max(1,int(win_w * (1 - overlap_ratio)))
@@ -33,8 +38,10 @@ def get_split_hexel_window(season_cause_stacked_feats:np.ndarray, season_cause_m
         mask = season_cause_mask[i]
         if season_cause_mapping is None:
             season, cause = "all", "all"
+            season_cause_unique_iters = None
         else:
             season, cause = season_cause_mapping[i]
+            season_cause_unique_iters = rasterizer.get_num_unique_iters(season=season, cause=cause)
         for row in range(0, H - win_h + 1, stride_h):
             for col in range(0, W - win_w + 1, stride_w):
                 num_total_windows+=1
@@ -48,14 +55,13 @@ def get_split_hexel_window(season_cause_stacked_feats:np.ndarray, season_cause_m
                     num_valid_windows+=1
                     window_data = stacked_feats[row : row + win_h, col : col + win_w, :]
                     filename = save_split_hexel_windows(window_data, out_dir, int(num_valid_windows), season, cause, hex_id)
-                    valid_coords.append([str(Path(filename).relative_to(root_dir)), season, cause, hex_id, num_valid_windows, row, col, valid_ratio])
-                    break
+                    valid_coords.append([str(Path(filename).relative_to(root_dir)), season, cause, hex_id, num_valid_windows, row, col, valid_ratio, total_unique_iters, season_cause_unique_iters])
     df_coords = pd.DataFrame(valid_coords)
-    df_coords.columns = ["filename", "season", "cause", "hex_id", "window_id", "row", "col", "valid_ratio"]
+    df_coords.columns = ["filename", "season", "cause", "hex_id", "window_id", "row", "col", "valid_ratio", "total_unique_iters", "season_cause_unique_iters"]
     df_coords.to_csv(os.path.join(out_dir, f"meta_hex_{hex_id}.csv"), index=False)
     print(f"=====Hexel data Saved at {out_dir} ========")
 
-def generate_data_samples(root_dir:str, out_dir:str, modelling_approach:int, win_h:int=128, win_w:int=128, overlap_ratio:float=0.2, mask_threshold:float=0.5):
+def generate_data_samples(root_dir:str, modelling_approach:int, win_h:int=128, win_w:int=128, overlap_ratio:float=0.2, mask_threshold:float=0.5):
     out_dir = os.path.join(root_dir, f"data_samples_approach_{modelling_approach}")
     os.makedirs(out_dir, exist_ok=True)
     os.makedirs(os.path.join(out_dir, "numpy_files"), exist_ok=True)
@@ -76,6 +82,7 @@ def generate_data_samples(root_dir:str, out_dir:str, modelling_approach:int, win
                                 win_w=win_w, 
                                 overlap_ratio=overlap_ratio, 
                                 mask_threshold=mask_threshold) 
+        
         print(f"======Processed Hex ID: {hex_id}==========")
 
 
