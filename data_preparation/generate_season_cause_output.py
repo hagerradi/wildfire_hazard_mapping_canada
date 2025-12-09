@@ -11,6 +11,7 @@ from rasterio.features import MergeAlg, rasterize
 
 from data_preparation.grid_loader.utils import load_fire_shapefiles
 from data_preparation.paths import ESC_FIRE_DIST_PATH, OUTPUT_BURN_PROB_PATH
+from data_preparation.utils import find_hex_ids
 
 
 class FireCountRasterizer:
@@ -186,6 +187,8 @@ def generate_season_cause_burn_count_rasters(root_dir: str, hex_id: str) -> None
 if __name__ == "__main__":
 
     root_dir = "../yan_bp3"
-    hex_ids = ["05", "10", "16"]
-    
-    generate_season_cause_burn_count_rasters(root_dir, hex_ids[0])
+    hex_ids = find_hex_ids(root_dir)
+    for hex_id in hex_ids:
+        if hex_id=="52":
+            continue
+        generate_season_cause_burn_count_rasters(root_dir,hex_id)
