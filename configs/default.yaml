@@ -8,6 +8,7 @@ model:
 optimizer:
   name: "AdamW" # "SGD", "Adam", "AdamW"
   lr: 1.0e-3
+  loss_name: "mse" # mse, bce, etc
 
 training:
   # Used by Trainer.run_training(...)

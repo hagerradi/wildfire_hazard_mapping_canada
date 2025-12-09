@@ -10,7 +10,7 @@ class ModelConfig(BaseModel):
 class OptimizerConfig(BaseModel):
     name: str | None = "AdamW"
     lr: float = 1e-3
-
+    loss_name: str
 
 class TrainingConfig(BaseModel):
     max_epochs: int = 50

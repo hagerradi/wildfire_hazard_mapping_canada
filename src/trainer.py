@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from src.config import Config
-from src.losses import BCELoss
+from src.losses import BCELoss, MSELoss
 from src.models.baselines import UNet
 
 
@@ -38,9 +38,18 @@ class Trainer:
         """
         self.model = UNet(input_channels=self.config.model.input_channels, num_classes=self.config.model.num_classes)
         self.model.to(self.device)
-        self.loss_fn = BCELoss()
+        
+        # setup loss
+        loss_name = str(self.config.optimizer.loss_name).lower()
 
-        # optimizer
+        if loss_name in ["bce", "bceloss"]:
+            self.loss_fn = BCELoss()
+        elif loss_name in ["mse", "mseloss"]:
+            self.loss_fn = MSELoss()
+        else:
+            raise ValueError(f"Unknown loss type in config.loss: {self.config.loss}")
+        
+        # setup optimizer
         opt_name = self.config.optimizer.name
         # TODO: add other parameters
         opt_params = {
