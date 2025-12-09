@@ -5,6 +5,7 @@ from typing import Any
 import torch
 import yaml
 from torch.utils.data import DataLoader
+from tqdm import tqdm
 
 from src.config import Config
 from src.losses import BCELoss
@@ -57,7 +58,9 @@ class Trainer:
         running_loss = 0.0
         running_batch_count = 0
 
-        for batch in loader:
+        training_loop = tqdm(loader, desc="Training", leave=True)
+        
+        for batch in training_loop:
             predictions, loss, targets = self._step(batch)
             self.optimizer.zero_grad()
             loss.backward()
@@ -66,7 +69,8 @@ class Trainer:
             batch_size = targets.size(0) if hasattr(targets, "size") else 1
             running_loss += loss.item() * batch_size
             running_batch_count += batch_size
-
+            
+            training_loop.set_description(f"Loss: {running_loss / running_batch_count:.4f}")
             #TODO: add metrics here
 
         avg_loss = running_loss / max(1, running_batch_count)
