@@ -18,6 +18,21 @@ class BCELoss(nn.Module):
         
         return bce_loss.mean()
 
+class MSELoss(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.mse = nn.MSELoss(reduction='none')
+
+    def forward(self, logits: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None):
+        mse_loss = self.mse(logits, targets)
+
+        if mask is not None:
+            mse_loss = mse_loss * mask
+            return mse_loss.sum() / mask.sum()
+
+        return mse_loss.mean()
+    
+    
 # TODO: remove later
 if __name__ == "__main__":
     preds = torch.randn(2, 1, 256, 256)
