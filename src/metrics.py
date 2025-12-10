@@ -34,6 +34,7 @@ def compute_ssim(preds: torch.Tensor, targets: torch.Tensor):
     """
     Computes Structural Similarity Index Measure (SSIM).
     """
+    # we assume here our preds range will be between 0-1
     return structural_similarity_index_measure(preds, targets, data_range=1.0)
 
 
