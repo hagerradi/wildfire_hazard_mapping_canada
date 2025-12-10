@@ -11,6 +11,9 @@ from matplotlib.colors import ListedColormap
 from matplotlib.patches import Patch
 from rasterio.plot import show
 
+from data_preparation.paths import OUTPUT_BURN_PROB_PATH
+from data_preparation.utils import find_hex_ids
+
 # value for nodata in the rasters
 NODATA = np.nan
 
@@ -39,6 +42,7 @@ fuel_grouping = {
     "grass": [31, 32],
     "nonfuel": [101, 102, 106],
 }
+
 # ranking fuel classes
 fuel_ranking = {
     # ----- Lowest spread / non-fuel -----
@@ -135,6 +139,23 @@ def get_range_output_fire_intensity(data_path: str) -> tuple[float, float]:
         max_fire_intensity = max(max_fire_intensity, output_fire_intensity_grid.max())
         min_fire_intensity = min(min_fire_intensity, output_fire_intensity_grid.min())
     return float(max_fire_intensity), float(min_fire_intensity)
+
+
+def get_range_burn_count(root_dir: str) -> tuple[float, float]:
+    """Get the maximum and minimum burn counts for normalization"""
+    all_hex_ids = find_hex_ids(root_dir)
+    BURN_COUNT_MAX, BURN_COUNT_MIN = -np.inf, np.inf
+    for hex_id in all_hex_ids:
+        print("In hex ID", hex_id)
+        hex_dir = os.path.join(root_dir, f"hex{hex_id}")
+        outputs_dir = os.path.join(hex_dir, OUTPUT_BURN_PROB_PATH)
+        pattern = f"hex_{hex_id}_season_*_cause_*_bc.tif"
+        list_burn_count_season_cause_map_paths = list(Path(outputs_dir).glob(pattern))
+        for burn_count_season_cause_map_path in list_burn_count_season_cause_map_paths:
+            out_grid = load_raster(str(burn_count_season_cause_map_path))
+            BURN_COUNT_MAX = max(BURN_COUNT_MAX, out_grid.max())
+            BURN_COUNT_MIN = min(BURN_COUNT_MIN, out_grid.min())
+    return (BURN_COUNT_MAX, BURN_COUNT_MIN)
 
 
 def visualize_ignition_grid(grid: np.ndarray, cause: int, season: int):

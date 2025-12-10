@@ -19,4 +19,4 @@ training:
 
 logger:
 
-metrics:
+metrics: ["mse", "mae", "spearman", "ssim"]

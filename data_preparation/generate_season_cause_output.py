@@ -11,16 +11,21 @@ from rasterio.features import MergeAlg, rasterize
 
 from data_preparation.grid_loader.utils import load_fire_shapefiles
 from data_preparation.paths import ESC_FIRE_DIST_PATH, OUTPUT_BURN_PROB_PATH
+from data_preparation.utils import find_hex_ids
 
 
 class FireCountRasterizer:
     """Rasterization class to accumulate fire polygons from shapefiles."""
 
-    def __init__(self, shp_paths: list[Path], template_raster_path: str):
+    def __init__(self, shp_paths: list[Path], template_raster_path: str | None):
         """Init. reading of shapefiles once."""
-        with rasterio.open(template_raster_path) as src:
-            self.out_shape = (src.height, src.width)
-            self.transform = src.transform
+        if template_raster_path:
+            with rasterio.open(template_raster_path) as src:
+                self.out_shape = (src.height, src.width)
+                self.transform = src.transform
+        else:
+            self.out_shape = None  # type:ignore
+            self.transform = None  # type:ignore
 
         gdfs = []
         print(f"Using {len(shp_paths)} shp files...")
@@ -34,8 +39,30 @@ class FireCountRasterizer:
         else:
             self.g_all = gpd.GeoDataFrame(pd.concat(gdfs, ignore_index=True), crs=gdfs[0].crs)
 
-    def compute_counts(self, season: str = None, cause: str = None) -> tuple[np.ndarray, int]:
+    def get_num_unique_iters(self, season: str | None, cause: str | None) -> int:
+        """Finding the unique iterations for normalization"""
+        if self.g_all.empty:
+            return 0
+
+        df = self.g_all
+        if season:
+            df = df[df["season"] == season]
+        if cause:
+            df = df[df["cause"] == cause]
+
+        if df.empty:
+            return 0
+
+        # keeping only unique iterations
+        iters = df[["run_id", "iteration"]].drop_duplicates().to_records(index=False)
+        num_unique_iterations = len(iters)
+        return num_unique_iterations
+
+    def compute_counts(self, season: str | None = None, cause: str | None = None) -> tuple[np.ndarray, int]:
         """Method to accumulate the fire polygons."""
+
+        if (self.out_shape is None) or (self.transform is None):
+            raise ValueError("Input template_raster_path to use this function")
 
         if self.g_all.empty:
             return np.zeros(self.out_shape, dtype="int32"), 0
@@ -155,6 +182,8 @@ def generate_season_cause_burn_count_rasters(root_dir: str, hex_id: str) -> None
 
 if __name__ == "__main__":
     root_dir = "../yan_bp3"
-    hex_ids = ["05", "10", "16"]
-
-    generate_season_cause_burn_count_rasters(root_dir, hex_ids[0])
+    hex_ids = find_hex_ids(root_dir)
+    for hex_id in hex_ids:
+        if hex_id == "52":
+            continue
+        generate_season_cause_burn_count_rasters(root_dir, hex_id)
