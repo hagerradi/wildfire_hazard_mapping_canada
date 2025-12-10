@@ -17,15 +17,15 @@ from data_preparation.utils import find_hex_ids
 class FireCountRasterizer:
     """Rasterization class to accumulate fire polygons from shapefiles."""
 
-    def __init__(self, shp_paths: list[Path], template_raster_path: str|None):
+    def __init__(self, shp_paths: list[Path], template_raster_path: str | None):
         """Init. reading of shapefiles once."""
         if template_raster_path:
             with rasterio.open(template_raster_path) as src:
                 self.out_shape = (src.height, src.width)
                 self.transform = src.transform
         else:
-            self.out_shape = None
-            self.transform = None
+            self.out_shape = None  # type:ignore
+            self.transform = None  # type:ignore
 
         gdfs = []
         print(f"Using {len(shp_paths)} shp files...")
@@ -39,7 +39,7 @@ class FireCountRasterizer:
         else:
             self.g_all = gpd.GeoDataFrame(pd.concat(gdfs, ignore_index=True), crs=gdfs[0].crs)
 
-    def get_num_unique_iters(self, season:str|None, cause:str|None)-> int:
+    def get_num_unique_iters(self, season: str | None, cause: str | None) -> int:
         """Finding the unique iterations for normalization"""
         if self.g_all.empty:
             return 0
@@ -49,56 +49,56 @@ class FireCountRasterizer:
             df = df[df["season"] == season]
         if cause:
             df = df[df["cause"] == cause]
-            
+
         if df.empty:
             return 0
-        
+
         # keeping only unique iterations
         iters = df[["run_id", "iteration"]].drop_duplicates().to_records(index=False)
         num_unique_iterations = len(iters)
         return num_unique_iterations
-    
-    def compute_counts(self, season: str|None = None, cause: str|None = None) -> tuple[np.ndarray, int]:
-            """Method to accumulate the fire polygons. """
 
-            if (self.out_shape is None) or (self.transform is None):
-                raise ValueError("Input template_raster_path to use this function")
-            
-            if self.g_all.empty:
-                return np.zeros(self.out_shape, dtype="int32"), 0
+    def compute_counts(self, season: str | None = None, cause: str | None = None) -> tuple[np.ndarray, int]:
+        """Method to accumulate the fire polygons."""
 
-            df = self.g_all
-            if season:
-                df = df[df["season"] == season]
-            if cause:
-                df = df[df["cause"] == cause]
-                
-            if df.empty:
-                return np.zeros(self.out_shape, dtype="int32"), 0
-            
-            # keeping only unique iterations
-            iters = df[["run_id", "iteration"]].drop_duplicates().to_records(index=False)
-            num_unique_iterations = len(iters)
-            
-            count_grid = np.zeros(self.out_shape, dtype="int32")
+        if (self.out_shape is None) or (self.transform is None):
+            raise ValueError("Input template_raster_path to use this function")
 
-            # main raster loop
-            for (run_id, iter_id) in iters:
-                one_iter = df[(df["run_id"] == run_id) & (df["iteration"] == iter_id)]
-                fire_polygons = ((geom, 1) for geom in one_iter.geometry)
-                
-                iter_raster = rasterize(
-                    shapes=fire_polygons,
-                    out_shape=self.out_shape,
-                    transform=self.transform,
-                    fill=0,
-                    all_touched=False,
-                    merge_alg=MergeAlg.replace, 
-                    dtype="int16",
-                )
-                count_grid += iter_raster
+        if self.g_all.empty:
+            return np.zeros(self.out_shape, dtype="int32"), 0
 
-            return count_grid, num_unique_iterations
+        df = self.g_all
+        if season:
+            df = df[df["season"] == season]
+        if cause:
+            df = df[df["cause"] == cause]
+
+        if df.empty:
+            return np.zeros(self.out_shape, dtype="int32"), 0
+
+        # keeping only unique iterations
+        iters = df[["run_id", "iteration"]].drop_duplicates().to_records(index=False)
+        num_unique_iterations = len(iters)
+
+        count_grid = np.zeros(self.out_shape, dtype="int32")
+
+        # main raster loop
+        for run_id, iter_id in iters:
+            one_iter = df[(df["run_id"] == run_id) & (df["iteration"] == iter_id)]
+            fire_polygons = ((geom, 1) for geom in one_iter.geometry)
+
+            iter_raster = rasterize(
+                shapes=fire_polygons,
+                out_shape=self.out_shape,
+                transform=self.transform,
+                fill=0,
+                all_touched=False,
+                merge_alg=MergeAlg.replace,
+                dtype="int16",
+            )
+            count_grid += iter_raster
+
+        return count_grid, num_unique_iterations
 
 
 def save_raster(data: np.ndarray, template_profile: dict[str, Any], out_path: str) -> None:
@@ -184,6 +184,6 @@ if __name__ == "__main__":
     root_dir = "../yan_bp3"
     hex_ids = find_hex_ids(root_dir)
     for hex_id in hex_ids:
-        if hex_id=="52":
+        if hex_id == "52":
             continue
-        generate_season_cause_burn_count_rasters(root_dir,hex_id)
+        generate_season_cause_burn_count_rasters(root_dir, hex_id)
