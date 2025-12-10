@@ -14,7 +14,8 @@ from data_preparation.grid_loader.utils import load_raster, visualize_ignition_g
 from data_preparation.grid_loader.weather import weather_list_to_grid
 
 
-def write_grid(path: str, data_arr: np.ndarray, profile: dict):
+def save_grid(path: str, data_arr: np.ndarray, profile: dict):
+    """save grid as .asc file"""
     # Ensure nodata in profile matches what we use
     profile = profile.copy()
 
@@ -46,28 +47,26 @@ def load_weather_grid(weather_list_file_path: str, zone_grid_file_path: str):
         # to unify with original fbp and elev - not unified with our NODATA
         nodata=-9999.0,
     )
-    write_grid("data/fuel_input_data/ffmc.asc", out_weather_params[:, :, 0], weather_profile)
-    write_grid("data/fuel_input_data/bui.asc", out_weather_params[:, :, 1], weather_profile)
-    write_grid("data/fuel_input_data/ws.asc", out_weather_params[:, :, 2], weather_profile)
-    write_grid("data/fuel_input_data/wd.asc", out_weather_params[:, :, 3], weather_profile)
+    save_grid("data/fuel_input_data/ffmc.asc", out_weather_params[:, :, 0], weather_profile)
+    save_grid("data/fuel_input_data/bui.asc", out_weather_params[:, :, 1], weather_profile)
+    save_grid("data/fuel_input_data/ws.asc", out_weather_params[:, :, 2], weather_profile)
+    save_grid("data/fuel_input_data/wd.asc", out_weather_params[:, :, 3], weather_profile)
 
 
 if __name__ == "__main__":
     os.makedirs("data", exist_ok=True)
     os.makedirs("data/fuel_input_data", exist_ok=True)
 
-    use_constant_FWI = False  # this has to be the same as in the R script
-    if not use_constant_FWI:
-        # 1: generate weather features
-        load_weather_grid(
-            weather_list_file_path="../yan_bp3/hex05/burning_conditions_module/hex_05_weather_list.csv",
-            zone_grid_file_path="../yan_bp3/hex05/mapped_inputs/cfrs.asc",
-        )
+    # 1: generate weather features
+    load_weather_grid(
+        weather_list_file_path="../yan_bp3/hex05/burning_conditions_module/hex_05_weather_list.csv",
+        zone_grid_file_path="../yan_bp3/hex05/mapped_inputs/cfrs.asc",
+    )
 
     # 2: run the R script (fbp_features.R) externally to generate ROS
     subprocess.run(["Rscript", "data_preparation/feature_processing/fuel_features/fbp_features.R"], check=True)
 
     # 3: visualize outputs
-    ros_output = load_raster("data/fuel_input_data/TFC.asc")
-    print(np.unique_counts(ros_output))
+    ros_output = load_raster("data/fuel_input_data/ROS.asc")
+    print(np.unique(ros_output))
     visualize_ignition_grid(ros_output, cause=1, season=1)
