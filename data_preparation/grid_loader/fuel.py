@@ -30,7 +30,7 @@ def load_fuel_grid(path: str, fuel_table_path: str, group_fuels: bool = False, r
     """
     Load an FBP fuel raster and group fuel types if selected
     group_fuels: boolean flag to choose if we can group fuels into 5 distinct groups
-    rerank_fuels: boolean flag to choose if we can rerank fuel IDs for ordinal encoding 
+    rerank_fuels: boolean flag to choose if we can rerank fuel IDs for ordinal encoding. Fuels are ranked from lowest to highest based on their Rate of Spread.
     """
 
     fuel_grid = load_raster(path)
