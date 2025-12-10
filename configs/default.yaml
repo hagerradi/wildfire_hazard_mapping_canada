@@ -1,0 +1,22 @@
+# Where to save checkpoints
+save_dir: "experiments/unet_run_001"
+
+
+model:
+  input_channels: 20
+  num_classes: 1
+
+optimizer:
+  name: "AdamW" # "SGD", "Adam", "AdamW"
+  lr: 1.0e-3
+  loss_name: "mse" # mse, bce, etc
+
+training:
+  # Used by Trainer.run_training(...)
+  max_epochs: 2
+  # Logging frequency in epochs
+  log_every_n_epoch: 1
+
+logger:
+
+metrics:

@@ -9,33 +9,28 @@ from data_preparation.paths import OUTPUT_BURN_PROB_PATH
 feature_count_map = {
     "ignition_prob": 1,
     "esc_fire_prob": 1,
-    "weather_params": 16, # mean, var for 8 features
+    "weather_params": 16,  # mean, var for 8 features
     "fuel_grid": 1,
     "wind_grid": 16,  # u, v for 8 directions
     "elevation_grid": 1,
     "out_burn_prob": 1,
 }
 
-def find_simulation_output_file(
-    root_dir: str, 
-    hex_id: str, 
-    output_type: str, 
-    season: str = None, 
-    cause: str = None
-) -> str:
-    """ 
-    Helper to get the right raster file. 
-    
+
+def find_simulation_output_file(root_dir: str, hex_id: str, output_type: str, season: str = None, cause: str = None) -> str:
+    """
+    Helper to get the right raster file.
+
     Args:
         root_dir (str): The root dir.
         hex_id (str): The hexel ID.
         output_type (str): Either 'count' or 'prob'.
         season (str): The season.
         cause (str): The cause.
-    
+
     """
     outputs_dir = os.path.join(root_dir, OUTPUT_BURN_PROB_PATH)
-    
+
     if output_type == "count":
         suffix = "_bc.tif"
     elif output_type == "prob":
@@ -50,7 +45,7 @@ def find_simulation_output_file(
     else:
         pattern = f"hex_{hex_id}_*iter{suffix}"
         matches = list(Path(outputs_dir).glob(pattern))
-        
+
         if not matches:
             raise FileNotFoundError(f"No global file found matching '{pattern}' in {outputs_dir}")
         if len(matches) > 1:
@@ -58,19 +53,21 @@ def find_simulation_output_file(
 
         return str(matches[0])
 
-def find_hex_ids(root_dir:str)->list:
+
+def find_hex_ids(root_dir: str) -> list:
     hex_ids = []
     try:
         with os.scandir(root_dir) as entries:
             for entry in entries:
                 # Check if it's a directory AND starts with 'hex'
-                if entry.is_dir() and entry.name.startswith("hex"): 
+                if entry.is_dir() and entry.name.startswith("hex"):
                     hex_ids.append(entry.name[3:])
     except FileNotFoundError:
         print(f"Directory not found: {root_dir}")
         return []
 
     return hex_ids
+
 
 def plot_split_window_hexel(windows, channel_index=0, max_cols=5, figsize=(15, 15)):
     """
@@ -83,7 +80,7 @@ def plot_split_window_hexel(windows, channel_index=0, max_cols=5, figsize=(15, 1
         figsize (tuple): Figure size (width, height).
     """
     num_windows = len(windows)
-    
+
     if num_windows == 0:
         print("No windows to plot.")
         return
@@ -91,19 +88,19 @@ def plot_split_window_hexel(windows, channel_index=0, max_cols=5, figsize=(15, 1
     # Calculate grid dimensions
     num_cols = min(num_windows, max_cols)
     num_rows = math.ceil(num_windows / num_cols)
-    
+
     # Create subplots
     fig, axes = plt.subplots(num_rows, num_cols, figsize=figsize)
-    
+
     # Flatten axes for easy iteration (handle case where axes is not a list)
     axes = [axes] if num_windows == 1 else axes.flatten()
 
     for i in range(len(axes)):
         ax = axes[i]
-        
+
         if i < num_windows:
             window = windows[i]
-            
+
             # Extract specific channel
             if window.ndim == 3:  # noqa: SIM108
                 # Shape (H, W, C) -> Extract channel
@@ -111,13 +108,13 @@ def plot_split_window_hexel(windows, channel_index=0, max_cols=5, figsize=(15, 1
             else:
                 # Fallback if window is already 2D
                 img_data = window
-            
+
             # Plot
-            im = ax.imshow(img_data, cmap='gray')  # noqa: F841
+            im = ax.imshow(img_data, cmap="gray")  # noqa: F841
             ax.set_title(f"Window {i}")
-        
+
         # Hide axis ticks for all subplots (cleaner look)
-        ax.axis('off')
+        ax.axis("off")
 
     plt.tight_layout()
     plt.show()

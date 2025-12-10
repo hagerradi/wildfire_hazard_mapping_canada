@@ -27,7 +27,9 @@ from data_preparation.paths import (
 from data_preparation.utils import find_simulation_output_file
 
 
-def load_features_per_hexel(root_dir: str, hex_id: str, modelling_approach: int = 1, output_type: str = "prob") -> tuple[np.ndarray, np.ndarray, dict[int, tuple[int, int]]]:
+def load_features_per_hexel(
+    root_dir: str, hex_id: str, modelling_approach: int = 1, output_type: str = "prob"
+) -> tuple[np.ndarray, np.ndarray, dict[int, tuple[int, int]] | None]:
     """
     Load all data (features and output) per hexel
     root_dir: Root directory containing all hexels.
@@ -39,23 +41,22 @@ def load_features_per_hexel(root_dir: str, hex_id: str, modelling_approach: int 
         all_masks: np.ndarray of shape (N, H, W)
         season_cause_mapping: dict mapping index to (season, cause)
     """
-    fire_output_types = ["count", "prob"] # for now we only support 2 types of outputs
+    fire_output_types = ["count", "prob"]  # for now we only support 2 types of outputs
     if output_type not in fire_output_types:
         raise ValueError(f"Invalid output_type: '{output_type}'. Must be one of {fire_output_types}.")
-    
+
     # identify all seasons and causes first
     root_dir = os.path.join(root_dir, "hex" + str(hex_id))
 
     # load all common grids
-    fuel_grid = load_fuel_grid(path=os.path.join(root_dir, FUEL_GRID_PATH),
-                        fuel_table_path=os.path.join(root_dir, FUEL_TABLE_PATH))  # noqa: F821
+    fuel_grid = load_fuel_grid(path=os.path.join(root_dir, FUEL_GRID_PATH), fuel_table_path=os.path.join(root_dir, FUEL_TABLE_PATH))  # noqa: F821
 
     elevation_grid = load_elevation_grid(path=os.path.join(root_dir, ELEVATION_GRID_PATH))  # noqa: F821
 
-    wind_grid = load_wind_grid(path = os.path.join(root_dir, WIND_GRID_DIR_PATH))
+    wind_grid = load_wind_grid(path=os.path.join(root_dir, WIND_GRID_DIR_PATH))
 
     weather_list_file_path = str(list(Path(os.path.join(root_dir, WEATHER_LIST_PATH)).glob("*weather_list*.csv"))[0])
-    
+
     def stack_sample(
         ignition_prob_grid: np.ndarray,
         esc_fires_prob_grid: np.ndarray,
@@ -77,31 +78,32 @@ def load_features_per_hexel(root_dir: str, hex_id: str, modelling_approach: int 
         )
         mask = np.isnan(elevation_grid)
         return stacked, mask
-    
+
     def load_output_grid(path):
         if not os.path.exists(path):
             dtype = "int32" if output_type == "count" else "float32"
-            return np.zeros_like(elevation_grid, dtype=dtype) # in case no fires for a scenario
+            return np.zeros_like(elevation_grid, dtype=dtype)  # in case no fires for a scenario
         return load_output_burn_grid(path)
 
     if modelling_approach == 1:
         season_cause_mapping = None
         # input
         ignition_prob_grid = load_ignition_grid(ignition_grids_folder_path=os.path.join(root_dir, IGNITION_PROB_PATH))
-         
-        esc_fires_prob_grid = load_fire_density_grid(zone_grid_file_path=os.path.join(root_dir, FIRE_ZONE_GRID_PATH),
-                             esc_fire_distribution_file_path=os.path.join(root_dir, ESC_FIRE_DIST_PATH + str(int(hex_id)) + ".csv"))
 
-        weather_grid = load_weather_grid(weather_list_file_path=weather_list_file_path,
-                        zone_grid_file_path=os.path.join(root_dir, FIRE_ZONE_GRID_PATH))
-        
+        esc_fires_prob_grid = load_fire_density_grid(
+            zone_grid_file_path=os.path.join(root_dir, FIRE_ZONE_GRID_PATH),
+            esc_fire_distribution_file_path=os.path.join(root_dir, ESC_FIRE_DIST_PATH + str(int(hex_id)) + ".csv"),
+        )
+
+        weather_grid = load_weather_grid(
+            weather_list_file_path=weather_list_file_path, zone_grid_file_path=os.path.join(root_dir, FIRE_ZONE_GRID_PATH)
+        )
+
         # for approach 1, we use the existing raster output
         fpath = find_simulation_output_file(root_dir, hex_id, output_type, season=None, cause=None)
         out_grid = load_output_grid(fpath)
 
-        stacked_features, mask = stack_sample(
-            ignition_prob_grid, esc_fires_prob_grid, weather_grid, out_grid
-        )
+        stacked_features, mask = stack_sample(ignition_prob_grid, esc_fires_prob_grid, weather_grid, out_grid)
 
         return np.expand_dims(stacked_features, axis=0), np.expand_dims(mask, axis=0), None
 
@@ -118,41 +120,43 @@ def load_features_per_hexel(root_dir: str, hex_id: str, modelling_approach: int 
     for i, season_cause in enumerate(product(seasons, causes)):
         season, cause = season_cause
         # input
-        ignition_prob_grid = load_ignition_grid(ignition_grids_folder_path=os.path.join(root_dir, IGNITION_PROB_PATH), season=season, cause=cause)
-        
-        esc_fires_prob_grid = load_fire_density_grid(zone_grid_file_path=os.path.join(root_dir, FIRE_ZONE_GRID_PATH),
-                             esc_fire_distribution_file_path=os.path.join(root_dir, ESC_FIRE_DIST_PATH + str(int(hex_id)) + ".csv"),
-                             season=season, cause=cause)
+        ignition_prob_grid = load_ignition_grid(
+            ignition_grids_folder_path=os.path.join(root_dir, IGNITION_PROB_PATH), season=season, cause=cause
+        )
 
+        esc_fires_prob_grid = load_fire_density_grid(
+            zone_grid_file_path=os.path.join(root_dir, FIRE_ZONE_GRID_PATH),
+            esc_fire_distribution_file_path=os.path.join(root_dir, ESC_FIRE_DIST_PATH + str(int(hex_id)) + ".csv"),
+            season=season,
+            cause=cause,
+        )
 
-        weather_grid = load_weather_grid(weather_list_file_path=weather_list_file_path,
-                        zone_grid_file_path=os.path.join(root_dir, FIRE_ZONE_GRID_PATH), 
-                        season=season)
-        
+        weather_grid = load_weather_grid(
+            weather_list_file_path=weather_list_file_path, zone_grid_file_path=os.path.join(root_dir, FIRE_ZONE_GRID_PATH), season=season
+        )
+
         # for approach 2, we use the season-cause rasters
         fpath = find_simulation_output_file(root_dir, hex_id, output_type, season=season, cause=cause)
         out_grid = load_output_grid(fpath)
 
         # stack them all.
-        stacked_features, mask = stack_sample(
-            ignition_prob_grid, esc_fires_prob_grid, weather_grid, out_grid
-        )
-        
+        stacked_features, mask = stack_sample(ignition_prob_grid, esc_fires_prob_grid, weather_grid, out_grid)
+
         all_features.append(stacked_features)
         all_masks.append(mask)
         season_cause_mapping[i] = season_cause
 
     return np.stack(all_features), np.stack(all_masks), season_cause_mapping
 
+
 # TODO: delete later
 if __name__ == "__main__":
     root_dir = "../yan_bp3"
     hex_ids = ["05", "10", "16"]
-    
-    all_features, all_masks, season_cause_mapping = load_features_per_hexel(root_dir=root_dir,
-                                                                            hex_id=hex_ids[0],
-                                                                            modelling_approach=1,
-                                                                            output_type="count")
+
+    all_features, all_masks, season_cause_mapping = load_features_per_hexel(
+        root_dir=root_dir, hex_id=hex_ids[0], modelling_approach=1, output_type="count"
+    )
     print(all_features.shape)
     print(all_masks.shape)
     print(season_cause_mapping)

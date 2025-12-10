@@ -12,17 +12,18 @@ from data_preparation.grid_loader.utils import (
 )
 
 
-def load_output_fire_intensity_grid(path: str)-> np.ndarray:
+def load_output_fire_intensity_grid(path: str) -> np.ndarray:
     """Load elevation grid and normalize values."""
     output_fire_intensity_grid = load_raster(path)
     # normalize fire intensity data
-    output_fire_intensity_grid = ((output_fire_intensity_grid - FIRE_INTENSITY_MIN) / (FIRE_INTENSITY_MAX - FIRE_INTENSITY_MIN))
+    output_fire_intensity_grid = (output_fire_intensity_grid - FIRE_INTENSITY_MIN) / (FIRE_INTENSITY_MAX - FIRE_INTENSITY_MIN)
     output_fire_intensity_grid = output_fire_intensity_grid.filled(NODATA)
     return output_fire_intensity_grid
 
-def load_output_burn_grid(path: str)-> np.ndarray:
+
+def load_output_burn_grid(path: str) -> np.ndarray:
     """Load burn count or probability grid."""
-    output_burn_grid = load_raster(path) #no norm because each pixel prob is independent of each other
+    output_burn_grid = load_raster(path)  # no norm because each pixel prob is independent of each other
     return output_burn_grid.data
 
 
