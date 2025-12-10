@@ -104,7 +104,7 @@ class Trainer:
             # compute the metrics
             with torch.no_grad():
                 for name, metric_fn in self.metric_functions.items():
-                    value = metric_fn(predictions, targets)
+                    value = metric_fn(predictions.detach(), targets)
                     running_metrics[name] += value.item() * batch_size
 
         avg_loss = running_loss / max(1, running_batch_count)
