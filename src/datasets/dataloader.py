@@ -78,6 +78,8 @@ class GridDataset(Dataset):
         assert np.all(np.isnan(input_arr) == np.isnan(input_arr[..., :1])), "NaN mask differs across channels!"
         mask = np.isnan(input_arr[:, :, 0])  # return a mask for the loss function
         input_arr = fill_nan_channel_mean_numpy(input_arr)  # remove NaNs from the inp data (replace by mean)
+
+        # TODO/Assumption: this min_max normalization supports season/cause scenarios only
         if self.out_norm == "min_max":
             output_arr = (output_arr - BURN_COUNT_MIN) / (BURN_COUNT_MAX - BURN_COUNT_MIN)
         else:
