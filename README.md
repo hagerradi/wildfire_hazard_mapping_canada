@@ -28,6 +28,13 @@ To activate the pre-commit hooks, run:
 uv run pre-commit install
 ```
 
+### Logging with Comet
+
+To set up the logging with Comet, add your API key via:
+```bash
+export COMET_API_KEY=<YOUR_KEY>
+```
+
 ### Data preparation
 
 For all the data preparation steps, refer to [the following section](data_preparation/README.md).
