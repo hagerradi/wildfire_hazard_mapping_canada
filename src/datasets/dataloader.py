@@ -37,7 +37,7 @@ class GridDataset(Dataset):
     Dataset class for loading the data
     """
 
-    def __init__(self, csv_path: str, root_dir: str, filename_col: str = "filename", out_norm: str = "total_iters", transform=None):
+    def __init__(self, csv_path: str, root_dir: str, filename_col: str = "filename", out_norm: str = "min_max", transform=None):
         """
         Args:
             csv_path (str): Path to the csv file with annotations.

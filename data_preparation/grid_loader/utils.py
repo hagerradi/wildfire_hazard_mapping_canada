@@ -142,6 +142,7 @@ def get_range_output_fire_intensity(data_path: str) -> tuple[float, float]:
 
 
 def get_range_burn_count(root_dir: str) -> tuple[float, float]:
+    """Get the maximum and minimum burn counts for normalization"""
     all_hex_ids = find_hex_ids(root_dir)
     BURN_COUNT_MAX, BURN_COUNT_MIN = -np.inf, np.inf
     for hex_id in all_hex_ids:
