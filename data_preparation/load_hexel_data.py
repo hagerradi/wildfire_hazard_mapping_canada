@@ -122,7 +122,8 @@ def load_features_per_hexel(
         )
 
         # for approach 1, we use the existing raster output
-        fpath = find_simulation_output_file(root_dir, hex_id, output_type, season=None, cause=None)
+        # ASSUMPTION: we only support probability for approach 1
+        fpath = find_simulation_output_file(root_dir, hex_id, output_type="prob", season=None, cause=None)
         out_grid = load_output_grid(fpath)
 
         stacked_features, mask = stack_sample(ignition_prob_grid, esc_fires_prob_grid, weather_grid, out_grid)
