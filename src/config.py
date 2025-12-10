@@ -2,6 +2,13 @@
 from pydantic import BaseModel
 
 
+class LoggerConfig(BaseModel):
+    project_name: str
+    workspace: str
+    experiment_name: str
+    tags: list[str] = []
+
+
 class ModelConfig(BaseModel):
     input_channels: int
     num_classes: int
@@ -23,3 +30,4 @@ class Config(BaseModel):
     model: ModelConfig
     optimizer: OptimizerConfig
     training: TrainingConfig
+    logger: LoggerConfig

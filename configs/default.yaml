@@ -18,5 +18,9 @@ training:
   log_every_n_epoch: 1
 
 logger:
+  project_name: "nrcan-wildfire"
+  workspace: "mila-amlrt"
+  experiment_name: "unet-baseline-v1"
+  tags: ["baseline", "first-exp"]
 
 metrics:
