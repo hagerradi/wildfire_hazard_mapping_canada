@@ -41,9 +41,9 @@ def get_split_hexel_window(
     shp_paths = load_fire_shapefiles(os.path.join(root_dir, "hex" + str(hex_id)))
     rasterizer = FireCountRasterizer(shp_paths, None)
     total_unique_iters = rasterizer.get_num_unique_iters(season=None, cause=None)
-    num_season_cause,H,W,_ = season_cause_stacked_feats.shape
-    stride_h = max(1,int(win_h * (1 - overlap_ratio))) #n_rows = (H-win_h)//stride_h + 1
-    stride_w = max(1,int(win_w * (1 - overlap_ratio)))
+    num_season_cause, H, W, _ = season_cause_stacked_feats.shape
+    stride_h = max(1, int(win_h * (1 - overlap_ratio)))  # n_rows = (H-win_h)//stride_h + 1
+    stride_w = max(1, int(win_w * (1 - overlap_ratio)))
     window_area = win_h * win_w
     num_total_windows, num_valid_windows = 0.0, 0.0
     valid_coords = []
@@ -69,9 +69,33 @@ def get_split_hexel_window(
                     num_valid_windows += 1
                     window_data = stacked_feats[row : row + win_h, col : col + win_w, :]
                     filename = save_split_hexel_windows(window_data, out_dir, int(num_valid_windows), season, cause, hex_id)
-                    valid_coords.append([str(Path(filename).relative_to(root_dir)), season, cause, hex_id, num_valid_windows, row, col, valid_ratio, total_unique_iters, season_cause_unique_iters])
+                    valid_coords.append(
+                        [
+                            str(Path(filename).relative_to(root_dir)),
+                            season,
+                            cause,
+                            hex_id,
+                            num_valid_windows,
+                            row,
+                            col,
+                            valid_ratio,
+                            total_unique_iters,
+                            season_cause_unique_iters,
+                        ]
+                    )
     df_coords = pd.DataFrame(valid_coords)
-    df_coords.columns = ["filename", "season", "cause", "hex_id", "window_id", "row", "col", "valid_ratio", "total_unique_iters", "season_cause_unique_iters"]
+    df_coords.columns = [
+        "filename",
+        "season",
+        "cause",
+        "hex_id",
+        "window_id",
+        "row",
+        "col",
+        "valid_ratio",
+        "total_unique_iters",
+        "season_cause_unique_iters",
+    ]
     df_coords.to_csv(os.path.join(out_dir, f"meta_hex_{hex_id}.csv"), index=False)
     print(f"=====Hexel data Saved at {out_dir} ========")
 
