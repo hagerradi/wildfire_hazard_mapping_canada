@@ -15,9 +15,10 @@ from data_preparation.utils import find_hex_ids
 
 
 class FireCountRasterizer:
-    """ Rasterization class to accumulate fire polygons from shapefiles. """
+    """Rasterization class to accumulate fire polygons from shapefiles."""
+
     def __init__(self, shp_paths: list[Path], template_raster_path: str|None):
-        """ Init. reading of shapefiles once. """
+        """Init. reading of shapefiles once."""
         if template_raster_path:
             with rasterio.open(template_raster_path) as src:
                 self.out_shape = (src.height, src.width)
@@ -99,34 +100,29 @@ class FireCountRasterizer:
 
             return count_grid, num_unique_iterations
 
+
 def save_raster(data: np.ndarray, template_profile: dict[str, Any], out_path: str) -> None:
     """Saves a given ndarray to a GeoTIFF based on type.
-    
+
     Args:
         data (np.ndarray): 2D array to save.
         template_profile (dict[str, Any]): Rasterio profile dictionary from the template file.
         out_path (str): The output file path.
-    
+
     """
     profile = template_profile.copy()
 
     # for counts (int)
     if np.issubdtype(data.dtype, np.integer):
-        profile.update(
-            dtype='int32',
-            nodata=-9999,
-            compress='lzw'
-        )
+        profile.update(dtype="int32", nodata=-9999, compress="lzw")
     # for probs (float)
     else:
-        profile.update(
-            dtype='float32',
-            compress='lzw'
-        )
-    
-    with rasterio.open(out_path, 'w', **profile) as dst:
+        profile.update(dtype="float32", compress="lzw")
+
+    with rasterio.open(out_path, "w", **profile) as dst:
         dst.write(data, 1)
     print(f"Saved: {os.path.basename(out_path)}")
+
 
 def generate_season_cause_burn_count_rasters(root_dir: str, hex_id: str) -> None:
     """
@@ -135,12 +131,12 @@ def generate_season_cause_burn_count_rasters(root_dir: str, hex_id: str) -> None
     Args:
         root_dir (str): The root dir.
         hex_id (str): The hexel ID.
-    
+
     """
     print(f"--- Processing hexel {hex_id} ---")
     hex_dir = os.path.join(root_dir, f"hex{hex_id}")
     outputs_dir = os.path.join(hex_dir, OUTPUT_BURN_PROB_PATH)
-    
+
     # get template for counts
     template_bc = next(Path(outputs_dir).glob("*_bc.tif"), None)
     if not template_bc:
@@ -152,15 +148,15 @@ def generate_season_cause_burn_count_rasters(root_dir: str, hex_id: str) -> None
     if not template_bp:
         print(f"Skipping hexel {hex_id}: no template tif for probs found.")
         return
-    
+
     with rasterio.open(str(template_bc)) as src:
-            profile_bc = src.profile
+        profile_bc = src.profile
     with rasterio.open(str(template_bp)) as src:
-            profile_bp = src.profile
-    
+        profile_bp = src.profile
+
     try:
         shp_paths = load_fire_shapefiles(hex_dir)
-        rasterizer = FireCountRasterizer(shp_paths, template_bc)
+        rasterizer = FireCountRasterizer(shp_paths, str(template_bc))
     except Exception as e:
         print(f"Skipping {hex_id}: {e}")
         return
@@ -179,13 +175,12 @@ def generate_season_cause_burn_count_rasters(root_dir: str, hex_id: str) -> None
 
         fname_bp = f"hex_{hex_id}_season_{season}_cause_{cause}_bp.tif".replace(" ", "")
         fname_bc = f"hex_{hex_id}_season_{season}_cause_{cause}_bc.tif".replace(" ", "")
-        
+
         save_raster(count_grid, profile_bc, os.path.join(outputs_dir, fname_bc))
         save_raster(prob_grid, profile_bp, os.path.join(outputs_dir, fname_bp))
 
 
 if __name__ == "__main__":
-
     root_dir = "../yan_bp3"
     hex_ids = find_hex_ids(root_dir)
     for hex_id in hex_ids:

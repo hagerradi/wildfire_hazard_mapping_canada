@@ -1,11 +1,11 @@
 IGNITIONS_DIR = "ignitions_module"
 
-IGNITION_PROB_PATH =  IGNITIONS_DIR + "/ignition_grids"
+IGNITION_PROB_PATH = IGNITIONS_DIR + "/ignition_grids"
 ESC_FIRE_DIST_PATH = IGNITIONS_DIR + "/Nb_ignitions_zone_season_cause_"
 
 MAPPED_INPUTS_DIR = "mapped_inputs"
 
-FIRE_ZONE_GRID_PATH =  MAPPED_INPUTS_DIR + "/cfrs.asc"
+FIRE_ZONE_GRID_PATH = MAPPED_INPUTS_DIR + "/cfrs.asc"
 FUEL_GRID_PATH = MAPPED_INPUTS_DIR + "/fbp.asc"
 FUEL_TABLE_PATH = MAPPED_INPUTS_DIR + "/Fuel_table.lut"
 ELEVATION_GRID_PATH = MAPPED_INPUTS_DIR + "/elev.asc"
