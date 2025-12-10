@@ -206,7 +206,10 @@ class Trainer:
                 best_val_loss = val_result["loss"]
                 # auto-save best if save_dir configured
                 if self.save_dir:
-                    self.save_model(epoch=epoch, loss=val_result["loss"], filename="best.pth")
+                    best_path = self.save_model(epoch=epoch, loss=val_result["loss"], filename="best.pth")
+
+                    # log best model to comet
+                    self.logger.experiment.log_model(name="best", file_or_folder=best_path, overwrite=True)
 
             # save most recent checkpoint
             self.save_model(epoch=epoch, loss=val_result["loss"])
