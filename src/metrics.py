@@ -38,6 +38,7 @@ def compute_ssim(preds: torch.Tensor, targets: torch.Tensor):
     return structural_similarity_index_measure(preds, targets, data_range=1.0)
 
 
+# TODO: remove later
 if __name__ == "__main__":
     target = torch.rand(8, 1, 64, 64)
     pred = target * 0.75

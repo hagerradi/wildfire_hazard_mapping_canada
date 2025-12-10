@@ -58,13 +58,21 @@ class Trainer:
         OptimizerClass = getattr(optim, opt_name)
         self.optimizer = OptimizerClass(self.model.parameters(), **opt_params)
 
-        # define metrics to compute (at all times)
-        self.metric_functions = {
+        # get metrics to compute
+        available_metrics = {
             "mse": compute_mse,
             "mae": compute_mae,
             "spearman": compute_spearman,
             "ssim": compute_ssim,
         }
+
+        self.metric_functions = {}
+
+        for name in self.config.metrics:
+            if name in available_metrics:
+                self.metric_functions[name] = available_metrics[name]
+            else:
+                raise ValueError(f"Metric '{name}' in config. is not implemented." f"Available options: {list(available_metrics.keys())}")
 
     def _step(self, batch: Any) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
