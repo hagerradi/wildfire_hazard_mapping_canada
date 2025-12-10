@@ -10,6 +10,7 @@ from tqdm import tqdm
 
 from src.config import Config
 from src.losses import BCELoss, MSELoss
+from src.metrics import compute_mae, compute_mse, compute_spearman, compute_ssim
 from src.models.baselines import UNet
 
 
@@ -57,6 +58,14 @@ class Trainer:
         OptimizerClass = getattr(optim, opt_name)
         self.optimizer = OptimizerClass(self.model.parameters(), **opt_params)
 
+        # define metrics to compute (at all times)
+        self.metric_functions = {
+            "mse": compute_mse,
+            "mae": compute_mae,
+            "spearman": compute_spearman,
+            "ssim": compute_ssim,
+        }
+
     def _step(self, batch: Any) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Default step. Expects batch -> (inputs, targets, masks).
@@ -76,6 +85,7 @@ class Trainer:
         self.model.train()
         running_loss = 0.0
         running_batch_count = 0
+        running_metrics = {name: 0.0 for name in self.metric_functions}
 
         training_loop = tqdm(loader, desc="Training", leave=True)
 
@@ -90,10 +100,19 @@ class Trainer:
             running_batch_count += batch_size
 
             training_loop.set_description(f"Loss: {running_loss / running_batch_count:.4f}")
-            # TODO: add metrics here
+
+            # compute the metrics
+            with torch.no_grad():
+                for name, metric_fn in self.metric_functions.items():
+                    value = metric_fn(predictions, targets)
+                    running_metrics[name] += value.item() * batch_size
 
         avg_loss = running_loss / max(1, running_batch_count)
         results = {"loss": avg_loss}
+
+        # add averaged metrics to results
+        for name, total_value in running_metrics.items():
+            results[name] = total_value / max(1, running_batch_count)
 
         return results
 
@@ -102,18 +121,27 @@ class Trainer:
         self.model.eval()
         running_loss = 0.0
         running_batch_count = 0
+        running_metrics = {name: 0.0 for name in self.metric_functions}
 
         for batch in loader:
             predictions, loss, targets = self._step(batch)
 
-            bs = targets.size(0) if hasattr(targets, "size") else 1
-            running_loss += loss.item() * bs
-            running_batch_count += bs
+            batch_size = targets.size(0) if hasattr(targets, "size") else 1
+            running_loss += loss.item() * batch_size
+            running_batch_count += batch_size
 
-            # TODO: add metrics here
+            # compute the metrics
+            with torch.no_grad():
+                for name, metric_fn in self.metric_functions.items():
+                    value = metric_fn(predictions.detach(), targets)
+                    running_metrics[name] += value.item() * batch_size
 
         avg_loss = running_loss / max(1, running_batch_count)
         results = {"loss": avg_loss}
+
+        # add averaged metrics to results
+        for name, total_value in running_metrics.items():
+            results[name] = total_value / max(1, running_batch_count)
 
         return results
 
