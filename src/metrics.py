@@ -27,7 +27,7 @@ def compute_spearman(preds: torch.Tensor, targets: torch.Tensor):
 
     # We compute spearman between each pair of preds-targets, then average
     corrs = [spearman_corrcoef(flat_preds[i], flat_targets[i]) for i in range(batch_size)]
-    return torch.tensor(corrs, device=preds.device).mean()
+    return torch.stack(corrs).mean()
 
 
 def compute_ssim(preds: torch.Tensor, targets: torch.Tensor):
