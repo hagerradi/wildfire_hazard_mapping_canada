@@ -6,9 +6,10 @@ import pandas as pd
 import torch
 from torch.utils.data import DataLoader, Dataset
 
-#Global Burn Count Min Max
+# Global Burn Count Min Max
 BURN_COUNT_MAX = 1336.0
 BURN_COUNT_MIN = 0.0
+
 
 def fill_nan_channel_mean_numpy(arr):
     """
@@ -36,7 +37,7 @@ class GridDataset(Dataset):
     Dataset class for loading the data
     """
 
-    def __init__(self, csv_path: str, root_dir: str, filename_col: str = "filename", out_norm:str="total_iters", transform=None):
+    def __init__(self, csv_path: str, root_dir: str, filename_col: str = "filename", out_norm: str = "total_iters", transform=None):
         """
         Args:
             csv_path (str): Path to the csv file with annotations.
@@ -51,13 +52,17 @@ class GridDataset(Dataset):
         self.filename_col = filename_col
         self.transform = transform
         self.out_norm = out_norm
-        if self.out_norm=="total_iters":
-            self.out_norm_array = list(self.metadata_df["total_unique_iters"]) #total number of unique interations that produced fires for all seasons and causes
-        elif self.out_norm=="season_cause_iters":
-            self.out_norm_array = list(self.metadata_df["season_cause_unique_iters"]) #total number of unique interations that produced fires for a single season and cause
+        if self.out_norm == "total_iters":
+            self.out_norm_array = list(
+                self.metadata_df["total_unique_iters"]
+            )  # total number of unique interations that produced fires for all seasons and causes
+        elif self.out_norm == "season_cause_iters":
+            self.out_norm_array = list(
+                self.metadata_df["season_cause_unique_iters"]
+            )  # total number of unique interations that produced fires for a single season and cause
         else:
-            self.out_norm_array = [1] * len(self.all_files) #if we want to predict the counts
-        
+            self.out_norm_array = [1] * len(self.all_files)  # if we want to predict the counts
+
     def __len__(self):
         return len(self.metadata_df)
 
@@ -71,10 +76,10 @@ class GridDataset(Dataset):
         data = np.load(file_path).astype(np.float32)
         input_arr, output_arr = data[:, :, :-1], data[:, :, -1]
         assert np.all(np.isnan(input_arr) == np.isnan(input_arr[..., :1])), "NaN mask differs across channels!"
-        mask = np.isnan(input_arr[:,:,0]) #return a mask for the loss function
-        input_arr = fill_nan_channel_mean_numpy(input_arr) #remove NaNs from the inp data (replace by mean)
-        if self.out_norm=="min_max":
-            output_arr = (output_arr-BURN_COUNT_MIN)/(BURN_COUNT_MAX-BURN_COUNT_MIN)
+        mask = np.isnan(input_arr[:, :, 0])  # return a mask for the loss function
+        input_arr = fill_nan_channel_mean_numpy(input_arr)  # remove NaNs from the inp data (replace by mean)
+        if self.out_norm == "min_max":
+            output_arr = (output_arr - BURN_COUNT_MIN) / (BURN_COUNT_MAX - BURN_COUNT_MIN)
         else:
             output_arr /= self.out_norm_array[idx]
         return (
@@ -98,28 +103,13 @@ def get_train_val_dataloader(
     Creates and returns a DataLoader
     """
     train_dataset = GridDataset(
-        csv_path=train_csv_path, 
-        root_dir=root_dir, 
-        filename_col=filename_col, 
-        out_norm=out_norm,
-        transform=transform
+        csv_path=train_csv_path, root_dir=root_dir, filename_col=filename_col, out_norm=out_norm, transform=transform
     )
     train_dataset = GridDataset(csv_path=train_csv_path, root_dir=root_dir, filename_col=filename_col, transform=transform)
 
-    val_dataset = GridDataset(
-        csv_path=val_csv_path, 
-        root_dir=root_dir, 
-        filename_col=filename_col, 
-        out_norm=out_norm,
-        transform=transform
-    )
-    
-    train_loader = DataLoader(
-        train_dataset, 
-        batch_size=batch_size, 
-        shuffle=True, 
-        num_workers=num_workers
-    )
+    val_dataset = GridDataset(csv_path=val_csv_path, root_dir=root_dir, filename_col=filename_col, out_norm=out_norm, transform=transform)
+
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
     val_dataset = GridDataset(csv_path=val_csv_path, root_dir=root_dir, filename_col=filename_col, transform=transform)
 
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
@@ -141,19 +131,8 @@ def get_test_loader(
     """
     Creates and returns the test loader
     """
-    test_dataset = GridDataset(
-        csv_path=test_csv_path, 
-        root_dir=root_dir, 
-        filename_col=filename_col, 
-        out_norm=out_norm,
-        transform=transform
-    )
-    test_loader = DataLoader(
-        test_dataset, 
-        batch_size=batch_size, 
-        shuffle=False, 
-        num_workers=num_workers
-    )
+    test_dataset = GridDataset(csv_path=test_csv_path, root_dir=root_dir, filename_col=filename_col, out_norm=out_norm, transform=transform)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
     test_dataset = GridDataset(csv_path=test_csv_path, root_dir=root_dir, filename_col=filename_col, transform=transform)
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
 
@@ -176,7 +155,7 @@ if __name__ == "__main__":
         root_dir="../yan_bp3",
         batch_size=4,
         out_norm=out_norm,
-        transform=None
+        transform=None,
     )
 
     print("\nIterating through Train DataLoader:")
