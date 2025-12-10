@@ -44,6 +44,7 @@ class GridDataset(Dataset):
         root_dir: str,
         filename_col: str = "filename",
         out_norm: str = "min_max",
+        modelling_approach: str = "2",
         transform=None,
         feature_list: list | None = None,
     ):
@@ -53,7 +54,9 @@ class GridDataset(Dataset):
             root_dir (str): Directory with all the .npy files.
             filename_col (str): Column name in CSV containing the filenames.
             out_norm (str): How to normalize the output burn counts. [Options: total_iters, season_cause_iters, min_max]
+            modelling_approach (str): The approach used for modelling
             transform (callable, optional): Optional transform to be applied on a sample.
+            feature_list (list): List of features being used for training ((options: None or feature list) All feats: ["ignition_grid", "esc_fires_grid", "fuel_grid", "elevation_grid", "weather_grid", "wind_grid"])
         """
         self.metadata_df = pd.read_csv(csv_path)
         self.all_files = list(self.metadata_df[filename_col])
@@ -74,7 +77,7 @@ class GridDataset(Dataset):
 
         self.channel_indices = None
         if feature_list:
-            with open("./src/datasets/feature_channel_map_1.json", "r") as f:
+            with open(f"./src/datasets/feature_channel_map_{modelling_approach}.json", "r") as f:
                 channel_feature_map = json.load(f)
                 self.channel_indices = [item for key in feature_list for item in channel_feature_map[key]]
 
@@ -115,6 +118,7 @@ def get_train_val_dataloader(
     batch_size: int = 4,
     num_workers: int = 0,
     out_norm: str = "min_max",
+    modelling_approach: str = "2",
     transform: Callable | None = None,
     feature_list: list | None = None,
 ):
@@ -126,6 +130,7 @@ def get_train_val_dataloader(
         root_dir=root_dir,
         filename_col=filename_col,
         out_norm=out_norm,
+        modelling_approach=modelling_approach,
         transform=transform,
         feature_list=feature_list,
     )
@@ -134,6 +139,7 @@ def get_train_val_dataloader(
         root_dir=root_dir,
         filename_col=filename_col,
         out_norm=out_norm,
+        modelling_approach=modelling_approach,
         transform=transform,
         feature_list=feature_list,
     )
@@ -152,6 +158,7 @@ def get_test_loader(
     batch_size: int = 4,
     num_workers: int = 0,
     out_norm: str = "min_max",
+    modelling_approach: str = "2",
     transform: Callable | None = None,
     feature_list: list | None = None,
 ):
@@ -163,6 +170,7 @@ def get_test_loader(
         root_dir=root_dir,
         filename_col=filename_col,
         out_norm=out_norm,
+        modelling_approach=modelling_approach,
         transform=transform,
         feature_list=feature_list,
     )
@@ -173,13 +181,15 @@ def get_test_loader(
 
 if __name__ == "__main__":
     out_norm = "min_max"
-    # feature_list = ["ignition_grid", "esc_fires_grid", "fuel_grid", "elevation_grid", "weather_grid", "wind_grid"]
-    feature_list = ["ignition_grid", "esc_fires_grid", "fuel_grid", "elevation_grid"]
+    feature_list = ["ignition_grid", "esc_fires_grid", "fuel_grid", "elevation_grid", "weather_grid", "wind_grid"]
+    # feature_list = ["ignition_grid", "esc_fires_grid", "fuel_grid", "elevation_grid"]
+    modelling_approach = "2"
     train_loader, val_loader = get_train_val_dataloader(
         train_csv_path="../yan_bp3/data_samples_approach_2/train_indices.csv",
         val_csv_path="../yan_bp3/data_samples_approach_2/val_indices.csv",
         root_dir="../yan_bp3",
         out_norm=out_norm,
+        modelling_approach=modelling_approach,
         batch_size=4,
         transform=None,
         feature_list=feature_list,
@@ -190,6 +200,7 @@ if __name__ == "__main__":
         root_dir="../yan_bp3",
         batch_size=4,
         out_norm=out_norm,
+        modelling_approach=modelling_approach,
         transform=None,
         feature_list=feature_list,
     )

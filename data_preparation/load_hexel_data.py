@@ -29,12 +29,14 @@ from data_preparation.utils import find_simulation_output_file
 
 
 def get_num_channels_array(arr: np.ndarray) -> int:
+    """Returns the number of channel a particular feature will take"""
     if len(arr.shape) == 2:
         return 1
     return arr.shape[-1]
 
 
 def get_feature_channel_map(feature_list, feature_channel_map_path):
+    """Maps the feature names to the correspinding channels in our input stack"""
     feature_channel_map = dict()
     feature_names = ["ignition_grid", "esc_fires_grid", "fuel_grid", "elevation_grid", "weather_grid", "wind_grid", "out_grid"]
     channel = 0
