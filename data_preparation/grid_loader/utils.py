@@ -39,6 +39,43 @@ fuel_grouping = {
     "grass":   [31, 32],
     "nonfuel": [101, 102, 106],
 }
+# ranking fuel classes
+fuel_ranking = {
+    # ----- Lowest spread / non-fuel -----
+    102: 0,   # Water
+    101: 0,   # Non-fuel
+    106: 0,   # Urban / Non-fuel
+
+    # ----- Aspen / hardwoods -----
+    12:  1,   # D-2 Green Aspen (with BUI thresholding)
+    13:  2,   # D-1/D-2 Aspen (intermediate)
+
+    # ----- Mixedwood 25% conifer -----
+    425: 3,   # M-1 Leafless (25% conifer)
+    525: 3,   # M-2 Green (25% conifer)
+    625: 3,   # M-1/M-2 (25% conifer)
+
+    # ----- Grass -----
+    31:  4,   # O-1a Matted Grass
+    32:  4,   # O-1b Standing Grass
+
+    # ----- Mixedwood 35–65% conifer -----
+    635: 5,   # M-1/M-2 (35% conifer)
+    650: 6,   # M-1/M-2 (50% conifer)
+    665: 7,   # M-1/M-2 (65% conifer)
+
+    # ----- Aspen (leafless, higher spread but < pure conifer) -----
+    11:  8,   # D-1 Leafless Aspen
+
+    # ----- Conifer stands (high → extreme spread) -----
+    1:  9,    # C-1 Spruce-Lichen Woodland
+    2:  10,   # C-2 Boreal Spruce
+    7:  11,   # C-7 Ponderosa Pine / Douglas-fir
+    5:  12,   # C-5 Red and White Pine
+    6:  12,   # C-6 Conifer Plantation  (≈ C-5)
+    3:  13,   # C-3 Mature Jack or Lodgepole Pine
+    4:  14,   # C-4 Immature Jack or Lodgepole Pine  # highest spread
+}
 
 def load_raster(path: str) -> np.ma.MaskedArray:
     """ Load raster from given path"""
