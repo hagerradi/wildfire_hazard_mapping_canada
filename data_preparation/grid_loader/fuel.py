@@ -26,7 +26,7 @@ def group_fuels_in_grid(data: np.ndarray) -> np.ndarray:
     return fuel_grid_data
 
 
-def load_fuel_grid(path: str, fuel_table_path: str, group_fuels: bool = False, rerank_fuels: bool = True)-> np.ndarray:
+def load_fuel_grid(path: str, fuel_table_path: str, group_fuels: bool = False, rerank_fuels: bool = True) -> np.ndarray:
     """
     Load an FBP fuel raster and group fuel types if selected
     group_fuels: boolean flag to choose if we can group fuels into 5 distinct groups
@@ -37,9 +37,9 @@ def load_fuel_grid(path: str, fuel_table_path: str, group_fuels: bool = False, r
 
     # option 1: group fuels
     if group_fuels:
-        # convert classes to be in the range 0 - num_groups       
+        # convert classes to be in the range 0 - num_groups
         return group_fuels_in_grid(data=fuel_grid)
-    
+
     # option 2: re-rank fuels
     if rerank_fuels:
         fuel_grid_data = np.full(fuel_grid.shape, fill_value=NODATA, dtype=np.float32)
@@ -48,7 +48,7 @@ def load_fuel_grid(path: str, fuel_table_path: str, group_fuels: bool = False, r
             fuel_grid_data[fuel_grid == cls] = idx
 
         return fuel_grid_data
-   
+
     # option 3: keep grid as is, re-assign classes to be between 0 - num_classes
     fuel_table = load_csv(fuel_table_path)
     grid_values = fuel_table["grid_value"].tolist()
@@ -65,8 +65,9 @@ def load_fuel_grid(path: str, fuel_table_path: str, group_fuels: bool = False, r
 if __name__ == "__main__":
     root_dir = "../yan_bp3/hex05"
 
-    out_fuel_grid = load_fuel_grid(path=os.path.join(root_dir, "mapped_inputs/fbp.asc"),
-                                fuel_table_path=os.path.join(root_dir, "mapped_inputs/Fuel_table.lut"))  # noqa: F821
-    
+    out_fuel_grid = load_fuel_grid(
+        path=os.path.join(root_dir, "mapped_inputs/fbp.asc"), fuel_table_path=os.path.join(root_dir, "mapped_inputs/Fuel_table.lut")
+    )  # noqa: F821
+
     print(np.unique_counts(out_fuel_grid))
     visualize_fuel_grid(out_fuel_grid)

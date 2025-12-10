@@ -7,21 +7,22 @@ class BCELoss(nn.Module):
     def __init__(self):
         super().__init__()
         # internally handles sigmoid
-        self.bce = nn.BCEWithLogitsLoss(reduction='none')
+        self.bce = nn.BCEWithLogitsLoss(reduction="none")
 
     def forward(self, logits: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None):
         bce_loss = self.bce(logits, targets)
-        
+
         if mask is not None:
             bce_loss = bce_loss * mask
             return bce_loss.sum() / mask.sum()
-        
+
         return bce_loss.mean()
+
 
 class MSELoss(nn.Module):
     def __init__(self):
         super().__init__()
-        self.mse = nn.MSELoss(reduction='none')
+        self.mse = nn.MSELoss(reduction="none")
 
     def forward(self, logits: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None):
         mse_loss = self.mse(logits, targets)
@@ -31,8 +32,8 @@ class MSELoss(nn.Module):
             return mse_loss.sum() / mask.sum()
 
         return mse_loss.mean()
-    
-    
+
+
 # TODO: remove later
 if __name__ == "__main__":
     preds = torch.randn(2, 1, 256, 256)

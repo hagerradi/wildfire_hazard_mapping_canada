@@ -16,14 +16,12 @@ from src.models.baselines import UNet
 class Trainer:
     def __init__(
         self,
-        config: dict,
+        config: Config,
     ):
         self.config = config
 
         self.device = (
-            "cuda" if torch.cuda.is_available()
-            else "mps" if torch.backends.mps.is_available() and torch.backends.mps.is_built()
-            else "cpu"
+            "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() and torch.backends.mps.is_built() else "cpu"
         )
         print(f"\n[Device] Using: {self.device}")
 
@@ -38,7 +36,7 @@ class Trainer:
         """
         self.model = UNet(input_channels=self.config.model.input_channels, num_classes=self.config.model.num_classes)
         self.model.to(self.device)
-        
+
         # setup loss
         loss_name = str(self.config.optimizer.loss_name).lower()
 
@@ -48,7 +46,7 @@ class Trainer:
             self.loss_fn = MSELoss()
         else:
             raise ValueError(f"Unknown loss type in config.loss: {self.config.loss}")
-        
+
         # setup optimizer
         opt_name = self.config.optimizer.name
         # TODO: add other parameters
@@ -58,7 +56,6 @@ class Trainer:
 
         OptimizerClass = getattr(optim, opt_name)
         self.optimizer = OptimizerClass(self.model.parameters(), **opt_params)
-
 
     def _step(self, batch: Any) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
@@ -81,7 +78,7 @@ class Trainer:
         running_batch_count = 0
 
         training_loop = tqdm(loader, desc="Training", leave=True)
-        
+
         for batch in training_loop:
             predictions, loss, targets = self._step(batch)
             self.optimizer.zero_grad()
@@ -91,9 +88,9 @@ class Trainer:
             batch_size = targets.size(0) if hasattr(targets, "size") else 1
             running_loss += loss.item() * batch_size
             running_batch_count += batch_size
-            
+
             training_loop.set_description(f"Loss: {running_loss / running_batch_count:.4f}")
-            #TODO: add metrics here
+            # TODO: add metrics here
 
         avg_loss = running_loss / max(1, running_batch_count)
         results = {"loss": avg_loss}
@@ -113,7 +110,7 @@ class Trainer:
             running_loss += loss.item() * bs
             running_batch_count += bs
 
-            #TODO: add metrics here
+            # TODO: add metrics here
 
         avg_loss = running_loss / max(1, running_batch_count)
         results = {"loss": avg_loss}
@@ -132,7 +129,7 @@ class Trainer:
         num_epochs = self.config.training.max_epochs
         log_every_n_epoch = self.config.training.log_every_n_epoch
         best_val_loss = None
-        
+
         for epoch in range(1, num_epochs + 1):
             start = time.time()
             train_res = self.train_epoch(train_loader)
@@ -162,7 +159,6 @@ class Trainer:
         if not self.save_dir:
             raise ValueError("save_dir not set")
 
-
         path = os.path.join(self.save_dir, filename)
 
         payload = {
@@ -180,7 +176,7 @@ class Trainer:
 
         map_location = map_location or self.device
         checkpoint = torch.load(path, map_location=map_location)
-        
+
         self.model.load_state_dict(checkpoint["model_state"])
         self.optimizer.load_state_dict(checkpoint["optimizer_state"])
         return checkpoint
