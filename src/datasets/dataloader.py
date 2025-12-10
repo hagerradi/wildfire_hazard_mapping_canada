@@ -1,3 +1,4 @@
+import json
 import os
 from collections.abc import Callable
 
@@ -37,7 +38,15 @@ class GridDataset(Dataset):
     Dataset class for loading the data
     """
 
-    def __init__(self, csv_path: str, root_dir: str, filename_col: str = "filename", out_norm: str = "min_max", transform=None):
+    def __init__(
+        self,
+        csv_path: str,
+        root_dir: str,
+        filename_col: str = "filename",
+        out_norm: str = "min_max",
+        transform=None,
+        feature_list: list | None = None,
+    ):
         """
         Args:
             csv_path (str): Path to the csv file with annotations.
@@ -63,6 +72,12 @@ class GridDataset(Dataset):
         else:
             self.out_norm_array = [1] * len(self.all_files)  # if we want to predict the counts
 
+        self.channel_indices = None
+        if feature_list:
+            with open("./src/datasets/feature_channel_map_1.json", "r") as f:
+                channel_feature_map = json.load(f)
+                self.channel_indices = [item for key in feature_list for item in channel_feature_map[key]]
+
     def __len__(self):
         return len(self.metadata_df)
 
@@ -75,6 +90,7 @@ class GridDataset(Dataset):
 
         data = np.load(file_path).astype(np.float32)
         input_arr, output_arr = data[:, :, :-1], data[:, :, -1]
+        input_arr = input_arr[:, :, self.channel_indices] if self.channel_indices else input_arr
         assert np.all(np.isnan(input_arr) == np.isnan(input_arr[..., :1])), "NaN mask differs across channels!"
         mask = np.isnan(input_arr[:, :, 0])  # return a mask for the loss function
         input_arr = fill_nan_channel_mean_numpy(input_arr)  # remove NaNs from the inp data (replace by mean)
@@ -100,19 +116,27 @@ def get_train_val_dataloader(
     num_workers: int = 0,
     out_norm: str = "min_max",
     transform: Callable | None = None,
+    feature_list: list | None = None,
 ):
     """
     Creates and returns a DataLoader
     """
     train_dataset = GridDataset(
-        csv_path=train_csv_path, root_dir=root_dir, filename_col=filename_col, out_norm=out_norm, transform=transform
+        csv_path=train_csv_path,
+        root_dir=root_dir,
+        filename_col=filename_col,
+        out_norm=out_norm,
+        transform=transform,
+        feature_list=feature_list,
     )
-    train_dataset = GridDataset(csv_path=train_csv_path, root_dir=root_dir, filename_col=filename_col, transform=transform)
-
-    val_dataset = GridDataset(csv_path=val_csv_path, root_dir=root_dir, filename_col=filename_col, out_norm=out_norm, transform=transform)
-
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
-    val_dataset = GridDataset(csv_path=val_csv_path, root_dir=root_dir, filename_col=filename_col, transform=transform)
+    val_dataset = GridDataset(
+        csv_path=val_csv_path,
+        root_dir=root_dir,
+        filename_col=filename_col,
+        out_norm=out_norm,
+        transform=transform,
+        feature_list=feature_list,
+    )
 
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
 
@@ -129,13 +153,19 @@ def get_test_loader(
     num_workers: int = 0,
     out_norm: str = "min_max",
     transform: Callable | None = None,
+    feature_list: list | None = None,
 ):
     """
     Creates and returns the test loader
     """
-    test_dataset = GridDataset(csv_path=test_csv_path, root_dir=root_dir, filename_col=filename_col, out_norm=out_norm, transform=transform)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
-    test_dataset = GridDataset(csv_path=test_csv_path, root_dir=root_dir, filename_col=filename_col, transform=transform)
+    test_dataset = GridDataset(
+        csv_path=test_csv_path,
+        root_dir=root_dir,
+        filename_col=filename_col,
+        out_norm=out_norm,
+        transform=transform,
+        feature_list=feature_list,
+    )
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
 
     return test_loader
@@ -143,6 +173,8 @@ def get_test_loader(
 
 if __name__ == "__main__":
     out_norm = "min_max"
+    # feature_list = ["ignition_grid", "esc_fires_grid", "fuel_grid", "elevation_grid", "weather_grid", "wind_grid"]
+    feature_list = ["ignition_grid", "esc_fires_grid", "fuel_grid", "elevation_grid"]
     train_loader, val_loader = get_train_val_dataloader(
         train_csv_path="../yan_bp3/data_samples_approach_2/train_indices.csv",
         val_csv_path="../yan_bp3/data_samples_approach_2/val_indices.csv",
@@ -150,6 +182,7 @@ if __name__ == "__main__":
         out_norm=out_norm,
         batch_size=4,
         transform=None,
+        feature_list=feature_list,
     )
 
     test_loader = get_test_loader(
@@ -158,6 +191,7 @@ if __name__ == "__main__":
         batch_size=4,
         out_norm=out_norm,
         transform=None,
+        feature_list=feature_list,
     )
 
     print("\nIterating through Train DataLoader:")
