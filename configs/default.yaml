@@ -23,4 +23,4 @@ logger:
   experiment_name: "unet-baseline-v1"
   tags: ["baseline", "first-exp"]
 
-metrics:
+metrics: ["mse", "mae", "spearman", "ssim"]

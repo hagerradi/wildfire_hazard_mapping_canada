@@ -31,3 +31,4 @@ class Config(BaseModel):
     optimizer: OptimizerConfig
     training: TrainingConfig
     logger: LoggerConfig
+    metrics: list[str] = ["mse", "mae", "spearman", "ssim"]
