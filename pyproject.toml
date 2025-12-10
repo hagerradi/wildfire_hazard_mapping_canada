@@ -4,6 +4,7 @@ version = "0.1.0"
 authors = [
     {name = "Hager Radi", email = "hager.radi@mila.quebec"},
     {name = "Chirag Goel", email = "chirag.goel@mila.quebec"},
+    {name = "Aldo Zaimi", email = "aldo.zaimi@mila.quebec"},
 ]
 readme = "README.md"
 requires-python = ">=3.12"
@@ -12,9 +13,12 @@ dependencies = [
     "matplotlib>=3.10.7",
     "numpy>=2.3.5",
     "pandas>=2.3.3",
+    "pydantic>=2.12.5",
+    "pyyaml>=6.0.3",
     "rasterio>=1.4.3",
     "scikit-learn>=1.7.2",
     "torch>=2.9.1",
+    "tqdm>=4.67.1",
 ]
 
 [project.optional-dependencies]

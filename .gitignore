@@ -7,6 +7,9 @@ __pycache__/
 *.egg-info/
 *.egg
 
+#--- model checkpoints ---
+experiments/
+
 # --- UV ---
 .venv/
 .uv/

@@ -2,7 +2,7 @@ import os
 
 import numpy as np
 
-from data_preparation.grid_loader.utils import NODATA, fuel_grouping, load_csv, load_raster, visualize_fuel_grid
+from data_preparation.grid_loader.utils import NODATA, fuel_grouping, fuel_ranking, load_csv, load_raster, visualize_fuel_grid
 
 
 def group_fuels_in_grid(data: np.ndarray) -> np.ndarray:
@@ -26,8 +26,12 @@ def group_fuels_in_grid(data: np.ndarray) -> np.ndarray:
     return fuel_grid_data
 
 
-def load_fuel_grid(path: str, fuel_table_path: str, group_fuels: bool = False) -> np.ndarray:
-    """Load an FBP fuel raster and group fuel types if selected"""
+def load_fuel_grid(path: str, fuel_table_path: str, group_fuels: bool = False, rerank_fuels: bool = True) -> np.ndarray:
+    """
+    Load an FBP fuel raster and group fuel types if selected
+    group_fuels: boolean flag to choose if we can group fuels into 5 distinct groups
+    rerank_fuels: boolean flag to choose if we can rerank fuel IDs for ordinal encoding. Fuels are ranked from lowest to highest based on their Rate of Spread.
+    """
 
     fuel_grid = load_raster(path)
 
@@ -36,7 +40,16 @@ def load_fuel_grid(path: str, fuel_table_path: str, group_fuels: bool = False) -
         # convert classes to be in the range 0 - num_groups
         return group_fuels_in_grid(data=fuel_grid)
 
-    # option 2: keep grid as is, re-assign classes to be between 0 - num_classes
+    # option 2: re-rank fuels
+    if rerank_fuels:
+        fuel_grid_data = np.full(fuel_grid.shape, fill_value=NODATA, dtype=np.float32)
+
+        for cls, idx in fuel_ranking.items():
+            fuel_grid_data[fuel_grid == cls] = idx
+
+        return fuel_grid_data
+
+    # option 3: keep grid as is, re-assign classes to be between 0 - num_classes
     fuel_table = load_csv(fuel_table_path)
     grid_values = fuel_table["grid_value"].tolist()
     class_to_index = {cls: i for i, cls in enumerate(grid_values)}
