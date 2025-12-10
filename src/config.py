@@ -23,3 +23,4 @@ class Config(BaseModel):
     model: ModelConfig
     optimizer: OptimizerConfig
     training: TrainingConfig
+    metrics: list[str] = ["mse", "mae", "spearman", "ssim"]
