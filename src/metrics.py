@@ -7,18 +7,18 @@ from torchmetrics.functional.regression import spearman_corrcoef
 
 
 def compute_mse(preds: torch.Tensor, targets: torch.Tensor):
-    """Mean Squared Error"""
+    """Computes Mean Squared Error (MSE)."""
     return F.mse_loss(preds, targets)
 
 
 def compute_mae(preds: torch.Tensor, targets: torch.Tensor):
-    """Mean Absolute Error"""
+    """Computes Mean Absolute Error (MAE)."""
     return F.l1_loss(preds, targets)
 
 
 def compute_spearman(preds: torch.Tensor, targets: torch.Tensor):
     """
-    Calculates Spearman correlation per sample, then averages.
+    Computes Spearman correlation per sample, then averages.
     """
     # Generate flattened preds and targets
     batch_size = preds.size(0)
@@ -32,7 +32,7 @@ def compute_spearman(preds: torch.Tensor, targets: torch.Tensor):
 
 def compute_ssim(preds: torch.Tensor, targets: torch.Tensor):
     """
-    Calculates SSIM.
+    Computes Structural Similarity Index Measure (SSIM).
     """
     return structural_similarity_index_measure(preds, targets, data_range=1.0)
 
