@@ -52,7 +52,7 @@ class UNet(nn.Module):
                     nn.Sequential(
                         nn.ConvTranspose2d(h_feature * 2, h_feature, kernel_size=2, stride=2),
                         nn.BatchNorm2d(h_feature),
-                        nn.ReLU(inplace=True),
+                        nn.LeakyReLU(inplace=True),
                     )
                 )
             else:
@@ -67,10 +67,10 @@ class UNet(nn.Module):
         return nn.Sequential(
             nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
             nn.BatchNorm2d(out_channels),
-            nn.ReLU(inplace=True),
+            nn.LeakyReLU(inplace=True),
             nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1),
             nn.BatchNorm2d(out_channels),
-            nn.ReLU(inplace=True),
+            nn.LeakyReLU(inplace=True),
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
