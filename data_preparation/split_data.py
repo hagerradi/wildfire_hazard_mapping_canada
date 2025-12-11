@@ -1,3 +1,4 @@
+import argparse
 import os
 from pathlib import Path
 
@@ -45,6 +46,40 @@ def get_data_splits(data_dir: str, val_hex_id: list, test_hex_id: list):
     eval_df.to_csv(os.path.join(data_dir, "test_indices.csv"), index=False)
 
 
+def main():
+    parser = argparse.ArgumentParser(description="Generate train/val/test data splits for wildfire hexels.")
+
+    parser.add_argument(
+        "--data_dir",
+        type=str,
+        required=True,
+        help="Directory containing the preprocessed data samples.",
+    )
+
+    parser.add_argument(
+        "--val_hex_id",
+        type=str,
+        nargs="+",
+        required=True,
+        help="List of hex IDs to use for the validation set: ids seperated by space",
+    )
+
+    parser.add_argument(
+        "--test_hex_id",
+        type=str,
+        nargs="+",
+        required=True,
+        help="List of hex IDs to use for the test set: ids seperated by space",
+    )
+
+    args = parser.parse_args()
+
+    get_data_splits(
+        data_dir=args.data_dir,
+        val_hex_id=args.val_hex_id,
+        test_hex_id=args.test_hex_id,
+    )
+
+
 if __name__ == "__main__":
-    data_dir = "../yan_bp3/data_samples_approach_2"
-    get_data_splits(data_dir=data_dir, val_hex_id=["16"], test_hex_id=["41"])
+    main()

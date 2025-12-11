@@ -1,3 +1,4 @@
+import argparse
 import os
 from itertools import product
 from pathlib import Path
@@ -180,10 +181,19 @@ def generate_season_cause_burn_count_rasters(root_dir: str, hex_id: str) -> None
         save_raster(prob_grid, profile_bp, os.path.join(outputs_dir, fname_bp))
 
 
-if __name__ == "__main__":
-    root_dir = "../yan_bp3"
-    hex_ids = find_hex_ids(root_dir)
+def main():
+    parser = argparse.ArgumentParser(description="Generate data samples from each hexel")
+    parser.add_argument("--root_dir", type=str, help="data root directory", required=True)
+
+    args = parser.parse_args()
+
+    hex_ids = find_hex_ids(args.root_dir)
+
     for hex_id in hex_ids:
         if hex_id == "52":
             continue
-        generate_season_cause_burn_count_rasters(root_dir, hex_id)
+        generate_season_cause_burn_count_rasters(args.root_dir, hex_id)
+
+
+if __name__ == "__main__":
+    main()

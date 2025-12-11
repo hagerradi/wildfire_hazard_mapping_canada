@@ -1,3 +1,4 @@
+import argparse
 import os
 from pathlib import Path
 
@@ -6,7 +7,7 @@ import pandas as pd
 
 from data_preparation.generate_season_cause_output import FireCountRasterizer
 from data_preparation.grid_loader.utils import load_fire_shapefiles
-from data_preparation.load_hexel_data import load_features_per_hexel
+from data_preparation.hexel_loader import load_features_per_hexel
 from data_preparation.utils import find_hex_ids
 
 
@@ -138,9 +139,27 @@ def generate_data_samples(
         print(f"======Processed Hex ID: {hex_id}==========")
 
 
-if __name__ == "__main__":
-    root_dir = "../yan_bp3"
-    modelling_approach = 2
+def main():
+    parser = argparse.ArgumentParser(description="Generate data samples from each hexel")
+
+    parser.add_argument("--root_dir", type=str, help="data root directory", required=True)
+    parser.add_argument("--modelling_approach", type=int, help="Either 1 or 2", default=2)
+    parser.add_argument("--win_h", type=int, help="Height of the window", default=128)
+    parser.add_argument("--win_w", type=int, help="Height of the window", default=128)
+    parser.add_argument("--overlap_ratio", type=float, help="Overlap ratio between windows", default=0.2)
+    parser.add_argument("--mask_threshold", type=float, help="Threshold to consider window as valid", default=0.5)
+
+    args = parser.parse_args()
+
     generate_data_samples(
-        root_dir=root_dir, modelling_approach=modelling_approach, win_h=128, win_w=128, overlap_ratio=0.2, mask_threshold=0.5
+        root_dir=args.root_dir,
+        modelling_approach=args.modelling_approach,
+        win_h=args.win_h,
+        win_w=args.win_w,
+        overlap_ratio=args.overlap_ratio,
+        mask_threshold=args.mask_threshold,
     )
+
+
+if __name__ == "__main__":
+    main()
