@@ -118,7 +118,10 @@ def generate_data_samples(
             continue
         print(f"======Working on Hex ID: {hex_id}==========")
         stacked_feats, mask, season_cause_mapping = load_features_per_hexel(
-            root_dir=root_dir, hex_id=hex_id, modelling_approach=modelling_approach
+            root_dir=root_dir,
+            hex_id=hex_id,
+            feature_channel_map_path=f"./src/datasets/feature_channel_map_{modelling_approach}.json",
+            modelling_approach=modelling_approach,
         )
         get_split_hexel_window(
             season_cause_stacked_feats=stacked_feats,
