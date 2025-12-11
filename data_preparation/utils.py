@@ -6,6 +6,9 @@ from matplotlib import pyplot as plt
 
 from data_preparation.paths import OUTPUT_BURN_PROB_PATH
 
+feature_names = ["ignition_grid", "esc_fires_grid", "fuel_grid", "elevation_grid", "weather_grid", "wind_grid", "out_grid"]
+
+
 feature_count_map = {
     "ignition_prob": 1,
     "esc_fire_prob": 1,
