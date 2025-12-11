@@ -45,8 +45,8 @@ class GridDataset(Dataset):
         filename_col: str = "filename",
         out_norm: str = "min_max",
         modelling_approach: str = "2",
-        transform=None,
-        feature_list: list | None = None,
+        transform: Callable | None = None,
+        feature_names_list: list[str] | None = None,
     ):
         """
         Args:
@@ -56,7 +56,7 @@ class GridDataset(Dataset):
             out_norm (str): How to normalize the output burn counts. [Options: total_iters, season_cause_iters, min_max]
             modelling_approach (str): The approach used for modelling
             transform (callable, optional): Optional transform to be applied on a sample.
-            feature_list (list): List of features being used for training ((options: None or feature list) All feats: ["ignition_grid", "esc_fires_grid", "fuel_grid", "elevation_grid", "weather_grid", "wind_grid"])
+            feature_names_list (list): List of features being used for training ((options: None or feature list) All feats: ["ignition_grid", "esc_fires_grid", "fuel_grid", "elevation_grid", "weather_grid", "wind_grid"])
         """
         self.metadata_df = pd.read_csv(csv_path)
         self.all_files = list(self.metadata_df[filename_col])
@@ -76,10 +76,10 @@ class GridDataset(Dataset):
             self.out_norm_array = [1] * len(self.all_files)  # if we want to predict the counts
 
         self.channel_indices = None
-        if feature_list:
-            with open(f"./src/datasets/feature_channel_map_{modelling_approach}.json", "r") as f:
+        if feature_names_list:
+            with open(os.path.join(root_dir, f"feature_channel_maps/feature_channel_map_{modelling_approach}.json"), "r") as f:
                 channel_feature_map = json.load(f)
-                self.channel_indices = [item for key in feature_list for item in channel_feature_map[key]]
+                self.channel_indices = [item for key in feature_names_list for item in channel_feature_map[key]]
 
     def __len__(self):
         return len(self.metadata_df)
@@ -120,7 +120,7 @@ def get_train_val_dataloader(
     out_norm: str = "min_max",
     modelling_approach: str = "2",
     transform: Callable | None = None,
-    feature_list: list | None = None,
+    feature_names_list: list[str] | None = None,
 ):
     """
     Creates and returns a DataLoader
@@ -132,7 +132,7 @@ def get_train_val_dataloader(
         out_norm=out_norm,
         modelling_approach=modelling_approach,
         transform=transform,
-        feature_list=feature_list,
+        feature_names_list=feature_names_list,
     )
     val_dataset = GridDataset(
         csv_path=val_csv_path,
@@ -141,7 +141,7 @@ def get_train_val_dataloader(
         out_norm=out_norm,
         modelling_approach=modelling_approach,
         transform=transform,
-        feature_list=feature_list,
+        feature_names_list=feature_names_list,
     )
 
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
@@ -160,7 +160,7 @@ def get_test_loader(
     out_norm: str = "min_max",
     modelling_approach: str = "2",
     transform: Callable | None = None,
-    feature_list: list | None = None,
+    feature_names_list: list[str] | None = None,
 ):
     """
     Creates and returns the test loader
@@ -172,7 +172,7 @@ def get_test_loader(
         out_norm=out_norm,
         modelling_approach=modelling_approach,
         transform=transform,
-        feature_list=feature_list,
+        feature_names_list=feature_names_list,
     )
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
 
@@ -181,8 +181,8 @@ def get_test_loader(
 
 if __name__ == "__main__":
     out_norm = "min_max"
-    feature_list = ["ignition_grid", "esc_fires_grid", "fuel_grid", "elevation_grid", "weather_grid", "wind_grid"]
-    # feature_list = ["ignition_grid", "esc_fires_grid", "fuel_grid", "elevation_grid"]
+    # feature_names_list = ["ignition_grid", "esc_fires_grid", "fuel_grid", "elevation_grid", "weather_grid", "wind_grid"]
+    feature_names_list = ["ignition_grid", "esc_fires_grid", "fuel_grid", "elevation_grid"]
     modelling_approach = "2"
     train_loader, val_loader = get_train_val_dataloader(
         train_csv_path="../yan_bp3/data_samples_approach_2/train_indices.csv",
@@ -192,7 +192,7 @@ if __name__ == "__main__":
         modelling_approach=modelling_approach,
         batch_size=4,
         transform=None,
-        feature_list=feature_list,
+        feature_names_list=feature_names_list,
     )
 
     test_loader = get_test_loader(
@@ -202,7 +202,7 @@ if __name__ == "__main__":
         out_norm=out_norm,
         modelling_approach=modelling_approach,
         transform=None,
-        feature_list=feature_list,
+        feature_names_list=feature_names_list,
     )
 
     print("\nIterating through Train DataLoader:")
