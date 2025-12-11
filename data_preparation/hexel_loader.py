@@ -172,20 +172,3 @@ def load_features_per_hexel(
         season_cause_mapping[i] = season_cause
 
     return np.stack(all_features), np.stack(all_masks), season_cause_mapping
-
-
-# TODO: delete later
-if __name__ == "__main__":
-    root_dir = "../yan_bp3"
-    hex_ids = ["05", "10", "16"]
-    modelling_approach = 2
-    all_features, all_masks, season_cause_mapping = load_features_per_hexel(
-        root_dir=root_dir,
-        hex_id=hex_ids[0],
-        feature_channel_map_path=os.path.join(root_dir, f"feature_channel_maps/feature_channel_map_{modelling_approach}.json"),
-        modelling_approach=modelling_approach,
-        output_type="count",
-    )
-    print(all_features.shape)
-    print(all_masks.shape)
-    print(season_cause_mapping)
