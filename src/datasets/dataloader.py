@@ -11,6 +11,9 @@ from torch.utils.data import DataLoader, Dataset
 BURN_COUNT_MAX = 1336.0
 BURN_COUNT_MIN = 0.0
 
+MAX_FUEL_GRID = 20.0
+MIN_FUEL_GRID = 0.0
+
 
 def fill_nan_channel_mean_numpy(arr):
     """
@@ -33,6 +36,40 @@ def fill_nan_channel_mean_numpy(arr):
     return arr
 
 
+def one_hot_encode(arr, channel_idx, num_classes):
+    """
+    Replaces the nth channel with its one-hot encoded version.
+    Input: (H, W, C)
+    Output: (H, W, C - 1 + num_classes)
+    """
+    # 1. Split the array
+    # left: (H, W, n)
+    left_part = arr[:, :, :channel_idx]
+
+    # right: (H, W, C - n - 1)
+    right_part = arr[:, :, channel_idx + 1 :]
+
+    # target: (H, W) - We cast to int for indexing
+    target_channel = arr[:, :, channel_idx].astype(int)
+
+    nan_mask = np.isnan(target_channel)
+
+    # Replace NaN with 0 (or any safe index) temporarily so .astype(int) doesn't crash
+    # We use np.nan_to_num to swap NaN -> 0 safely
+    safe_target = np.nan_to_num(target_channel, nan=0).astype(int)
+
+    # 3. One-Hot Encode using the "safe" integers
+    encoded_part = np.eye(num_classes, dtype=arr.dtype)[safe_target]
+
+    # 4. Zero out the vectors where the original value was NaN
+    # Before this, the NaNs were encoded as Class 0 (because we filled with 0)
+    # This step corrects that by setting them to [0, 0, 0...]
+    encoded_part[nan_mask] = 0
+
+    # 3. Concatenate along the channel axis (last axis)
+    return np.concatenate([left_part, encoded_part.astype(float), right_part], axis=-1)
+
+
 class GridDataset(Dataset):
     """
     Dataset class for loading the data
@@ -44,6 +81,8 @@ class GridDataset(Dataset):
         root_dir: str,
         filename_col: str = "filename",
         out_norm: str = "min_max",
+        fuel_feats_processing: str = "ordinal",
+        fuel_feats_ordinal_is_norm: bool | None = True,
         modelling_approach: str = "2",
         transform: Callable | None = None,
         feature_names_list: list[str] | None = None,
@@ -64,6 +103,8 @@ class GridDataset(Dataset):
         self.filename_col = filename_col
         self.transform = transform
         self.out_norm = out_norm
+        self.fuel_feats_processing = fuel_feats_processing
+        self.fuel_feats_ordinal_is_norm = fuel_feats_ordinal_is_norm
         if self.out_norm == "total_iters":
             self.out_norm_array = list(
                 self.metadata_df["total_unique_iters"]
@@ -76,10 +117,13 @@ class GridDataset(Dataset):
             self.out_norm_array = [1] * len(self.all_files)  # if we want to predict the counts
 
         self.channel_indices = None
+        with open(os.path.join(root_dir, f"feature_channel_maps/feature_channel_map_{modelling_approach}.json"), "r") as f:
+            channel_feature_map = json.load(f)
+        self.fuel_feat_index = channel_feature_map["fuel_grid"][0]
         if feature_names_list:
-            with open(os.path.join(root_dir, f"feature_channel_maps/feature_channel_map_{modelling_approach}.json"), "r") as f:
-                channel_feature_map = json.load(f)
-                self.channel_indices = [item for key in feature_names_list for item in channel_feature_map[key]]
+            self.channel_indices = [item for key in feature_names_list for item in channel_feature_map[key]]
+            print(self.channel_indices)
+            self.fuel_feat_index = self.channel_indices.index(self.fuel_feat_index)
 
     def __len__(self):
         return len(self.metadata_df)
@@ -94,9 +138,22 @@ class GridDataset(Dataset):
         data = np.load(file_path).astype(np.float32)
         input_arr, output_arr = data[:, :, :-1], data[:, :, -1]
         input_arr = input_arr[:, :, self.channel_indices] if self.channel_indices else input_arr
+
         assert np.all(np.isnan(input_arr) == np.isnan(input_arr[..., :1])), "NaN mask differs across channels!"
         mask = np.isnan(input_arr[:, :, 0])  # return a mask for the loss function
+        # Processing one hot encoding
+        if self.fuel_feats_processing == "one_hot":
+            input_arr = one_hot_encode(arr=input_arr, channel_idx=self.fuel_feat_index, num_classes=int(MAX_FUEL_GRID + 1))
+
         input_arr = fill_nan_channel_mean_numpy(input_arr)  # remove NaNs from the inp data (replace by mean)
+
+        # Processing ordinal encoding norm (if not norm do nothing)
+        if self.fuel_feats_processing == "ordinal":
+            input_arr[:, :, self.fuel_feat_index][mask] = 0.0
+            if self.fuel_feats_ordinal_is_norm:
+                input_arr[:, :, self.fuel_feat_index] = (input_arr[:, :, self.fuel_feat_index] - MIN_FUEL_GRID) / (
+                    MAX_FUEL_GRID - MIN_FUEL_GRID
+                )
 
         # TODO/Assumption: this min_max normalization supports season/cause scenarios only
         if self.out_norm == "min_max":
@@ -118,6 +175,8 @@ def get_train_val_dataloader(
     batch_size: int = 4,
     num_workers: int = 0,
     out_norm: str = "min_max",
+    fuel_feats_processing: str = "ordinal",
+    fuel_feats_ordinal_is_norm: bool | None = True,
     modelling_approach: str = "2",
     transform: Callable | None = None,
     feature_names_list: list[str] | None = None,
@@ -130,6 +189,8 @@ def get_train_val_dataloader(
         root_dir=root_dir,
         filename_col=filename_col,
         out_norm=out_norm,
+        fuel_feats_processing=fuel_feats_processing,
+        fuel_feats_ordinal_is_norm=fuel_feats_ordinal_is_norm,
         modelling_approach=modelling_approach,
         transform=transform,
         feature_names_list=feature_names_list,
@@ -139,6 +200,8 @@ def get_train_val_dataloader(
         root_dir=root_dir,
         filename_col=filename_col,
         out_norm=out_norm,
+        fuel_feats_processing=fuel_feats_processing,
+        fuel_feats_ordinal_is_norm=fuel_feats_ordinal_is_norm,
         modelling_approach=modelling_approach,
         transform=transform,
         feature_names_list=feature_names_list,
@@ -158,6 +221,8 @@ def get_test_loader(
     batch_size: int = 4,
     num_workers: int = 0,
     out_norm: str = "min_max",
+    fuel_feats_processing: str = "ordinal",
+    fuel_feats_ordinal_is_norm: bool | None = True,
     modelling_approach: str = "2",
     transform: Callable | None = None,
     feature_names_list: list[str] | None = None,
@@ -170,6 +235,8 @@ def get_test_loader(
         root_dir=root_dir,
         filename_col=filename_col,
         out_norm=out_norm,
+        fuel_feats_processing=fuel_feats_processing,
+        fuel_feats_ordinal_is_norm=fuel_feats_ordinal_is_norm,
         modelling_approach=modelling_approach,
         transform=transform,
         feature_names_list=feature_names_list,
@@ -189,6 +256,8 @@ if __name__ == "__main__":
         val_csv_path="../yan_bp3/data_samples_approach_2/val_indices.csv",
         root_dir="../yan_bp3",
         out_norm=out_norm,
+        fuel_feats_processing="one_hot",
+        fuel_feats_ordinal_is_norm=True,
         modelling_approach=modelling_approach,
         batch_size=4,
         transform=None,
@@ -200,6 +269,8 @@ if __name__ == "__main__":
         root_dir="../yan_bp3",
         batch_size=4,
         out_norm=out_norm,
+        fuel_feats_processing="one_hot",
+        fuel_feats_ordinal_is_norm=True,
         modelling_approach=modelling_approach,
         transform=None,
         feature_names_list=feature_names_list,
