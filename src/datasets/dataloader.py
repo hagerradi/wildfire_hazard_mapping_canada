@@ -40,7 +40,7 @@ class GridDataset(Dataset):
 
     def __init__(
         self,
-        csv_path: str,
+        csv_name: str,
         root_dir: str,
         filename_col: str = "filename",
         out_norm: str = "min_max",
@@ -50,7 +50,7 @@ class GridDataset(Dataset):
     ):
         """
         Args:
-            csv_path (str): Path to the csv file with annotations.
+            csv_name (str): Path to the csv file with annotations.
             root_dir (str): Directory with all the .npy files.
             filename_col (str): Column name in CSV containing the filenames.
             out_norm (str): How to normalize the output burn counts. [Options: total_iters, season_cause_iters, min_max]
@@ -58,12 +58,14 @@ class GridDataset(Dataset):
             transform (callable, optional): Optional transform to be applied on a sample.
             feature_names_list (list): List of features being used for training ((options: None or feature list) All feats: ["ignition_grid", "esc_fires_grid", "fuel_grid", "elevation_grid", "weather_grid", "wind_grid"])
         """
-        self.metadata_df = pd.read_csv(csv_path)
-        self.all_files = list(self.metadata_df[filename_col])
-        self.root_dir = root_dir
         self.filename_col = filename_col
         self.transform = transform
         self.out_norm = out_norm
+
+        self.root_dir = root_dir
+        self.metadata_df = pd.read_csv(os.path.join(self.root_dir, csv_name))
+        self.all_files = list(self.metadata_df[filename_col])
+
         if self.out_norm == "total_iters":
             self.out_norm_array = list(
                 self.metadata_df["total_unique_iters"]
@@ -77,7 +79,7 @@ class GridDataset(Dataset):
 
         self.channel_indices = None
         if feature_names_list:
-            with open(os.path.join(root_dir, f"feature_channel_maps/feature_channel_map_{modelling_approach}.json"), "r") as f:
+            with open(os.path.join(self.root_dir, f"feature_channel_map_{modelling_approach}.json")) as f:
                 channel_feature_map = json.load(f)
                 self.channel_indices = [item for key in feature_names_list for item in channel_feature_map[key]]
 
@@ -104,15 +106,15 @@ class GridDataset(Dataset):
         else:
             output_arr /= self.out_norm_array[idx]
         return (
-            torch.from_numpy(input_arr),
-            torch.from_numpy(np.expand_dims(output_arr, -1)),
-            torch.from_numpy(mask.astype(np.uint8)),
-        )  # (H,W,C), (H,W,1), (H,W)
+            torch.from_numpy(input_arr).permute(2, 0, 1),
+            torch.from_numpy(np.expand_dims(output_arr, 0)),
+            torch.from_numpy(np.expand_dims(mask.astype(np.uint8), 0)),
+        )  # (C, H, W), (1, H, W), (1, H, W)
 
 
 def get_train_val_dataloader(
-    train_csv_path: str,
-    val_csv_path: str,
+    train_csv_name: str,
+    val_csv_name: str,
     root_dir: str,
     filename_col: str = "filename",
     batch_size: int = 4,
@@ -126,7 +128,7 @@ def get_train_val_dataloader(
     Creates and returns a DataLoader
     """
     train_dataset = GridDataset(
-        csv_path=train_csv_path,
+        csv_name=train_csv_name,
         root_dir=root_dir,
         filename_col=filename_col,
         out_norm=out_norm,
@@ -135,7 +137,7 @@ def get_train_val_dataloader(
         feature_names_list=feature_names_list,
     )
     val_dataset = GridDataset(
-        csv_path=val_csv_path,
+        csv_name=val_csv_name,
         root_dir=root_dir,
         filename_col=filename_col,
         out_norm=out_norm,
@@ -152,7 +154,7 @@ def get_train_val_dataloader(
 
 
 def get_test_loader(
-    test_csv_path: str,
+    test_csv_name: str,
     root_dir: str,
     filename_col: str = "filename",
     batch_size: int = 4,
@@ -166,7 +168,7 @@ def get_test_loader(
     Creates and returns the test loader
     """
     test_dataset = GridDataset(
-        csv_path=test_csv_path,
+        csv_name=test_csv_name,
         root_dir=root_dir,
         filename_col=filename_col,
         out_norm=out_norm,
@@ -179,15 +181,16 @@ def get_test_loader(
     return test_loader
 
 
+# TODO: convert to unit test and delete
 if __name__ == "__main__":
-    out_norm = "min_max"
+    out_norm = "prob"
     # feature_names_list = ["ignition_grid", "esc_fires_grid", "fuel_grid", "elevation_grid", "weather_grid", "wind_grid"]
-    feature_names_list = ["ignition_grid", "esc_fires_grid", "fuel_grid", "elevation_grid"]
+    feature_names_list = ["ignition_grid", "esc_fires_grid", "fuel_grid", "elevation_grid", "weather_grid", "wind_grid"]
     modelling_approach = "2"
     train_loader, val_loader = get_train_val_dataloader(
-        train_csv_path="../yan_bp3/data_samples_approach_2/train_indices.csv",
-        val_csv_path="../yan_bp3/data_samples_approach_2/val_indices.csv",
-        root_dir="../yan_bp3",
+        train_csv_name="train_indices.csv",
+        val_csv_name="val_indices.csv",
+        root_dir="../yan_bp3/data_samples_approach_2",
         out_norm=out_norm,
         modelling_approach=modelling_approach,
         batch_size=4,
@@ -196,8 +199,8 @@ if __name__ == "__main__":
     )
 
     test_loader = get_test_loader(
-        test_csv_path="../yan_bp3/data_samples_approach_2/test_indices.csv",
-        root_dir="../yan_bp3",
+        test_csv_name="test_indices.csv",
+        root_dir="../yan_bp3/data_samples_approach_2",
         batch_size=4,
         out_norm=out_norm,
         modelling_approach=modelling_approach,

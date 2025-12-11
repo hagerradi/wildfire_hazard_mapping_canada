@@ -15,8 +15,10 @@ def save_split_hexel_windows(
     valid_window: np.ndarray, out_dir: str, win_id: int, season: str, cause: str, hex_id: str, format: str = "npy"
 ) -> str:
     """Save a hexel window"""
-    filename = os.path.join(out_dir, f"numpy_files/hex_{hex_id}_{str(win_id)}_{season}_{cause}.{format}")
-    np.save(filename, valid_window) if format == "npy" else np.savez_compressed(filename, arr=valid_window)
+    filename = os.path.join(f"numpy_files/hex_{hex_id}_{str(win_id)}_{season}_{cause}.{format}")
+    np.save(os.path.join(out_dir, filename), valid_window) if format == "npy" else np.savez_compressed(
+        os.path.join(out_dir, filename), arr=valid_window
+    )
     return filename
 
 
@@ -72,7 +74,7 @@ def get_split_hexel_window(
                     filename = save_split_hexel_windows(window_data, out_dir, int(num_valid_windows), season, cause, hex_id)
                     valid_coords.append(
                         [
-                            str(Path(filename).relative_to(root_dir)),
+                            str(Path(filename)),
                             season,
                             cause,
                             hex_id,
@@ -121,7 +123,7 @@ def generate_data_samples(
         stacked_feats, mask, season_cause_mapping = load_features_per_hexel(
             root_dir=root_dir,
             hex_id=hex_id,
-            feature_channel_map_path=f"./src/datasets/feature_channel_map_{modelling_approach}.json",
+            feature_channel_map_path=os.path.join(out_dir, f"feature_channel_map_{modelling_approach}.json"),
             modelling_approach=modelling_approach,
         )
         get_split_hexel_window(
