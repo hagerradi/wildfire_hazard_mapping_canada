@@ -1,4 +1,6 @@
 # base configurations for experiments
+from collections.abc import Callable
+
 from pydantic import BaseModel
 
 
@@ -27,15 +29,16 @@ class TrainingConfig(BaseModel):
 
 class DataConfig(BaseModel):
     root_dir: str
-
     train_split: str
     val_split: str
     test_split: str
 
     batch_size: int = 64
+    filename_col: str = "filename"
+    num_workers: int = 0
+    transform: Callable | None = None
 
     output_normalization: str = "min_max"  # options: min_max for approach 2, prob for approach 1
-
     feature_names_list: list[str] = ["ignition_grid", "esc_fires_grid", "fuel_grid", "elevation_grid", "wind_grid"]
 
 

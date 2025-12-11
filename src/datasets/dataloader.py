@@ -7,6 +7,8 @@ import pandas as pd
 import torch
 from torch.utils.data import DataLoader, Dataset
 
+from config import DataConfig
+
 # Global Burn Count Min Max
 BURN_COUNT_MAX = 1336.0
 BURN_COUNT_MIN = 0.0
@@ -113,20 +115,22 @@ class GridDataset(Dataset):
 
 
 def get_train_val_dataloader(
-    train_csv_name: str,
-    val_csv_name: str,
-    root_dir: str,
-    filename_col: str = "filename",
-    batch_size: int = 4,
-    num_workers: int = 0,
-    out_norm: str = "min_max",
+    config: DataConfig,
     modelling_approach: str = "2",
-    transform: Callable | None = None,
-    feature_names_list: list[str] | None = None,
 ):
     """
     Creates and returns a DataLoader
     """
+    root_dir = config.root_dir
+    train_csv_name = config.train_split
+    val_csv_name = config.val_split
+    filename_col = config.filename_col
+    batch_size = config.batch_size
+    num_workers = config.num_workers
+    out_norm = config.output_normalization
+    transform = config.transform
+    feature_names_list = config.feature_names_list
+
     train_dataset = GridDataset(
         csv_name=train_csv_name,
         root_dir=root_dir,
@@ -154,19 +158,21 @@ def get_train_val_dataloader(
 
 
 def get_test_loader(
-    test_csv_name: str,
-    root_dir: str,
-    filename_col: str = "filename",
-    batch_size: int = 4,
-    num_workers: int = 0,
-    out_norm: str = "min_max",
+    config: DataConfig,
     modelling_approach: str = "2",
-    transform: Callable | None = None,
-    feature_names_list: list[str] | None = None,
 ):
     """
     Creates and returns the test loader
     """
+    root_dir = config.root_dir
+    test_csv_name = config.test_split
+    filename_col = config.filename_col
+    batch_size = config.batch_size
+    num_workers = config.num_workers
+    out_norm = config.output_normalization
+    transform = config.transform
+    feature_names_list = config.feature_names_list
+
     test_dataset = GridDataset(
         csv_name=test_csv_name,
         root_dir=root_dir,
@@ -179,48 +185,3 @@ def get_test_loader(
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
 
     return test_loader
-
-
-# TODO: convert to unit test and delete
-if __name__ == "__main__":
-    out_norm = "prob"
-    # feature_names_list = ["ignition_grid", "esc_fires_grid", "fuel_grid", "elevation_grid", "weather_grid", "wind_grid"]
-    feature_names_list = ["ignition_grid", "esc_fires_grid", "fuel_grid", "elevation_grid", "weather_grid", "wind_grid"]
-    modelling_approach = "2"
-    train_loader, val_loader = get_train_val_dataloader(
-        train_csv_name="train_indices.csv",
-        val_csv_name="val_indices.csv",
-        root_dir="../yan_bp3/data_samples_approach_2",
-        out_norm=out_norm,
-        modelling_approach=modelling_approach,
-        batch_size=4,
-        transform=None,
-        feature_names_list=feature_names_list,
-    )
-
-    test_loader = get_test_loader(
-        test_csv_name="test_indices.csv",
-        root_dir="../yan_bp3/data_samples_approach_2",
-        batch_size=4,
-        out_norm=out_norm,
-        modelling_approach=modelling_approach,
-        transform=None,
-        feature_names_list=feature_names_list,
-    )
-
-    print("\nIterating through Train DataLoader:")
-    for batch_idx, (data, target, mask) in enumerate(train_loader):
-        print(f"Batch {batch_idx}: Data Shape: {data.shape}, Labels: {target.shape}, mask: {mask.shape}")
-        print("NAN values in the loaded data", torch.isnan(data).sum().item())
-        break
-    print("\nIterating through val DataLoader:")
-    for batch_idx, (data, target, _) in enumerate(val_loader):
-        print(f"Batch {batch_idx}: Data Shape: {data.shape}, Labels: {target.shape}")
-        print("NAN values in the loaded data", torch.isnan(data).sum().item())
-        break
-
-    print("\nIterating through test DataLoader:")
-    for batch_idx, (data, target, _) in enumerate(test_loader):
-        print(f"Batch {batch_idx}: Data Shape: {data.shape}, Labels: {target.shape}")
-        print("NAN values in the loaded data", torch.isnan(data).sum().item())
-        break

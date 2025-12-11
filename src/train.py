@@ -25,6 +25,9 @@ def parse_args() -> argparse.Namespace:
 
 
 def load_config(path: str) -> Config:
+    """
+    load yaml config
+    """
     if not os.path.isfile(path):
         raise FileNotFoundError(f"Config file not found: {path}")
 
@@ -40,19 +43,12 @@ def main() -> None:
 
     # ---------- Data ----------
     train_loader, val_loader = get_train_val_dataloader(
-        root_dir=config.data.root_dir,
-        train_csv_name=config.data.train_split,
-        val_csv_name=config.data.val_split,
-        out_norm=config.data.output_normalization,
-        batch_size=config.data.batch_size,
-        feature_names_list=config.data.feature_names_list,
+        config=config.data,
         modelling_approach=config.modelling_approach,
     )
 
-    # ---------- Trainer ----------
-    trainer = Trainer(config)
-
     # ---------- Training ----------
+    trainer = Trainer(config)
     trainer.run_training(
         train_loader=train_loader,
         val_loader=val_loader,
@@ -74,11 +70,7 @@ def main() -> None:
     # ---------- Evaluation ----------
     print("\n[Evaluation] Running on test set...")
     test_loader = get_test_loader(
-        root_dir=config.data.root_dir,
-        test_csv_name=config.data.test_split,
-        batch_size=config.data.batch_size,
-        out_norm=config.data.output_normalization,
-        feature_names_list=config.data.feature_names_list,
+        config=config.data,
         modelling_approach=config.modelling_approach,
     )
     test_metrics = trainer.test(test_loader)
