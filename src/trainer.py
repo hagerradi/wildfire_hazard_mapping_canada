@@ -37,6 +37,7 @@ class Trainer:
             experiment_name=self.config.logger.experiment_name,
             experiment_tags=self.config.logger.tags,
         )
+        self.log_every_n_step = self.config.logger.log_every_n_step
 
         # log all the params.
         self.logger.log_params(self.config.model_dump())
@@ -120,7 +121,8 @@ class Trainer:
             running_loss += loss.item() * batch_size
             running_batch_count += batch_size
 
-            self.logger.log_metrics({"train_step_loss": loss.item()}, step=self.global_step)
+            if self.global_step % self.log_every_n_step == 0:
+                self.logger.log_metrics({"train_step_loss": loss.item()}, step=self.global_step)
 
             training_loop.set_description(f"Loss: {running_loss / running_batch_count:.4f}")
 
@@ -129,7 +131,9 @@ class Trainer:
                 for name, metric_fn in self.metric_functions.items():
                     value = metric_fn(predictions.detach(), targets)
                     running_metrics[name] += value.item() * batch_size
-                    self.logger.log_metrics({f"train_step_{name}": value.item()}, step=self.global_step)
+                    if self.global_step % self.log_every_n_step == 0:
+                        self.logger.log_metrics({f"train_step_{name}": value.item()}, step=self.global_step)
+
             self.global_step += 1
 
         avg_loss = running_loss / max(1, running_batch_count)

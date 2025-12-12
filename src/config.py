@@ -9,6 +9,7 @@ class LoggerConfig(BaseModel):
     workspace: str
     experiment_name: str
     tags: list[str] = []
+    log_every_n_step: int = 1
 
 
 class ModelConfig(BaseModel):

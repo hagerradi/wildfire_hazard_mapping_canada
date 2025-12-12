@@ -26,7 +26,7 @@ data:
   test_split: "test_indices.csv"
 
   batch_size: 128
-  num_workers: 8
+  num_workers: 0
 
   output_normalization: "min_max" # options: min_max for approach 2, prob for approach 1
 
@@ -37,5 +37,7 @@ logger:
   workspace: "mila-amlrt"
   experiment_name: "unet-baseline-v1"
   tags: ["baseline", "first-exp"]
+  # log loss and metrics on comet every n steps
+  log_every_n_step: 5
 
 metrics: ["mse", "mae", "spearman", "ssim"]
