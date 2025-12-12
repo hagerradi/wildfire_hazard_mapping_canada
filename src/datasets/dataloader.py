@@ -52,8 +52,8 @@ def one_hot_encode(arr: np.ndarray, channel_idx: int, num_classes: int) -> np.nd
     # right: (H, W, C - n - 1)
     right_part = arr[:, :, channel_idx + 1 :]
 
-    # target: (H, W) - We cast to int for indexing
-    target_channel = arr[:, :, channel_idx].astype(int)
+    # target: (H, W)
+    target_channel = arr[:, :, channel_idx]
 
     nan_mask = np.isnan(target_channel)
 
