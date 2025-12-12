@@ -39,6 +39,9 @@ export COMET_API_KEY=<YOUR_KEY>
 
 For all the data preparation steps, refer to [the following section](data_preparation/README.md).
 
-### Training & Inference
+### Training
 
+```python src/train.py --config=configs/default.yaml```
+
+### Inference
 TODO
