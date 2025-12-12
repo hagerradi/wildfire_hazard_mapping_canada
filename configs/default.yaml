@@ -1,9 +1,11 @@
 # Where to save checkpoints
 save_dir: "experiments/unet_run_001"
 
+# approaches 1 or 2
+modelling_approach: "2"
 
 model:
-  input_channels: 20
+  input_channels: 50 # if using one hot encoding, we add more 14 more features
   num_classes: 1
 
 optimizer:
@@ -12,15 +14,32 @@ optimizer:
   loss_name: "mse" # mse, bce, etc
 
 training:
-  # Used by Trainer.run_training(...)
-  max_epochs: 2
+  max_epochs: 1
   # Logging frequency in epochs
   log_every_n_epoch: 1
+
+data:
+  root_dir: "../yan_bp3/data_samples_approach_2"
+
+  train_split: "train_indices.csv"
+  val_split: "val_indices.csv"
+  test_split: "test_indices.csv"
+
+  batch_size: 128
+  num_workers: 0
+
+  output_normalization: "min_max" # options: min_max for approach 2, prob for approach 1
+
+  feature_names_list: ["ignition_grid", "esc_fires_grid", "fuel_grid", "elevation_grid", "weather_grid", "wind_grid"]
+  fuel_feats_encoding: "one_hot" # ordinal, one_hot
+  normalize_fuel_feats_ordinal: "true"
 
 logger:
   project_name: "nrcan-wildfireriskmapping"
   workspace: "mila-amlrt"
   experiment_name: "unet-baseline-v1"
   tags: ["baseline", "first-exp"]
+  # log loss and metrics on comet every n steps
+  log_every_n_step: 5
 
 metrics: ["mse", "mae", "spearman", "ssim"]
