@@ -30,17 +30,12 @@ jobs:
           restore-keys: |
             pre-commit-${{ runner.os }}-
 
-#      - name: Install GDAL system libraries
-#        run: |
-#          sudo apt-get update
-#          sudo apt-get install -y gdal-bin libgdal-dev
-
-      - name: Install the project
-        run: uv sync --locked --all-extras --dev
-
       # ruff linting is now done in pre-commit
       - name: Run pre-commit hooks
         run: uv run pre-commit run --all-files --color=always
+
+      - name: Install the project
+        run: uv sync --locked --all-extras --dev
 
       - name: Run unit tests
         run: uv run python -m pytest tests
