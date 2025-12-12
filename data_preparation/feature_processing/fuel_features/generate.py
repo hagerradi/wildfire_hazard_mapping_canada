@@ -64,7 +64,7 @@ if __name__ == "__main__":
     )
 
     # 2: run the R script (fbp_features.R) externally to generate ROS
-    subprocess.run(["Rscript", "data_preparation/feature_processing/fuel_features/fbp_features.R"], check=True)
+    subprocess.run(["Rscript", "data_preparation/feature_processing/fuel_features/compute_fbp_features.R"], check=True)
 
     # 3: visualize outputs
     ros_output = load_raster("data/fuel_input_data/ROS.asc")

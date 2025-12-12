@@ -5,8 +5,8 @@
 ## For Dev version, this is what i used:
 ## remotes::install_github("cffdrs/cffdrs_r", ref="dev") # nolint
 ################
-# To run this file: source('data_preparation/feature_processing/fuel_features/fbp_features.R') # nolint
-# fbp_features.R: main R script to generate features of fuel, at the raster level # nolint
+# To run this file: source('data_preparation/feature_processing/fuel_features/compute_fbp_features.R') # nolint
+# compute_fbp_features.R: main R script to generate features of fuel, at the raster level # nolint
 # raster inputs required:
 # elevation: elev.asc
 # FBP: fbp.asc
@@ -27,10 +27,6 @@ base_dir <- "../yan_bp3/hex05/mapped_inputs"
 
 dem_path  <- file.path(base_dir, "elev.asc")
 fuel_path <- file.path(base_dir, "fbp.asc")
-
-# this is from the log file
-latitude    <- 56.257371
-longitude   <- -115.114533
 
 # these are rasters of mean of weather list projected on fire zones
 ffmc_rast_path <- file.path(input_dir, "ffmc.asc")
@@ -395,5 +391,4 @@ for (i in idx_test) {
   )
 }
 
-#TODO: fbp and fbp-raster outputs don't match at the pixel level.
-#TODO: ROS has valid values for water and non-fuel
+#TODO: fbp and fbp-raster outputs don't exactly match at the pixel level.
