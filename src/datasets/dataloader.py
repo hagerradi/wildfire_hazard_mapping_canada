@@ -70,7 +70,7 @@ def one_hot_encode(arr: np.ndarray, channel_idx: int, num_classes: int) -> np.nd
     encoded_part[nan_mask] = 0  # Nan is no fuel
 
     # 3. Concatenate along the channel axis (last axis)
-    return np.concatenate([left_part, encoded_part.astype(float), right_part], axis=-1)  # (H,W,C+20)
+    return np.concatenate([left_part, encoded_part.astype(np.float32), right_part], axis=-1)  # (H,W,C+14)
 
 
 class GridDataset(Dataset):
@@ -124,7 +124,7 @@ class GridDataset(Dataset):
             self.out_norm_array = [1] * len(self.all_files)  # if we want to predict the counts
 
         self.channel_indices = None
-        with open(os.path.join(root_dir, f"feature_channel_maps/feature_channel_map_{modelling_approach}.json"), "r") as f:
+        with open(os.path.join(root_dir, f"feature_channel_map_{modelling_approach}.json"), "r") as f:
             channel_feature_map = json.load(f)
         self.fuel_feat_index = channel_feature_map["fuel_grid"][0]
         if feature_names_list:
@@ -159,7 +159,6 @@ class GridDataset(Dataset):
         if self.fuel_feats_encoding == "ordinal":
             input_arr[:, :, self.fuel_feat_index][mask] = 0.0  # Nan is no fuel
             if self.normalize_fuel_feats_ordinal:
-                print(MAX_FUEL_GRID, MIN_FUEL_GRID)
                 input_arr[:, :, self.fuel_feat_index] = (input_arr[:, :, self.fuel_feat_index] - MIN_FUEL_GRID) / (
                     MAX_FUEL_GRID - MIN_FUEL_GRID
                 )
@@ -192,6 +191,8 @@ def get_train_val_dataloader(
     out_norm = config.output_normalization
     transform = config.transform
     feature_names_list = config.feature_names_list
+    fuel_feats_encoding = config.fuel_feats_encoding
+    normalize_fuel_feats_ordinal = config.normalize_fuel_feats_ordinal
 
     train_dataset = GridDataset(
         csv_name=train_csv_name,
@@ -238,6 +239,8 @@ def get_test_loader(
     out_norm = config.output_normalization
     transform = config.transform
     feature_names_list = config.feature_names_list
+    fuel_feats_encoding = config.fuel_feats_encoding
+    normalize_fuel_feats_ordinal = config.normalize_fuel_feats_ordinal
 
     test_dataset = GridDataset(
         csv_name=test_csv_name,

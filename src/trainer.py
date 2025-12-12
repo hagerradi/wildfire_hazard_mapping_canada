@@ -250,7 +250,7 @@ class Trainer:
         return checkpoint
 
 
-# TODO: remove -  example for quick testing
+# TODO: convert to unit test
 if __name__ == "__main__":
     from torch.utils.data import DataLoader, TensorDataset
 

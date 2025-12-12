@@ -5,7 +5,7 @@ save_dir: "experiments/unet_run_001"
 modelling_approach: "2"
 
 model:
-  input_channels: 36
+  input_channels: 50 # if using one hot encoding, we add more 14 more features
   num_classes: 1
 
 optimizer:
@@ -31,6 +31,8 @@ data:
   output_normalization: "min_max" # options: min_max for approach 2, prob for approach 1
 
   feature_names_list: ["ignition_grid", "esc_fires_grid", "fuel_grid", "elevation_grid", "weather_grid", "wind_grid"]
+  fuel_feats_encoding: "one_hot" # ordinal, one_hot
+  normalize_fuel_feats_ordinal: "true"
 
 logger:
   project_name: "nrcan-wildfireriskmapping"

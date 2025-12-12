@@ -41,6 +41,8 @@ class DataConfig(BaseModel):
 
     output_normalization: str = "min_max"  # options: min_max for approach 2, prob for approach 1
     feature_names_list: list[str] = ["ignition_grid", "esc_fires_grid", "fuel_grid", "elevation_grid", "wind_grid"]
+    fuel_feats_encoding: str  # ordinal, one_hot
+    normalize_fuel_feats_ordinal: bool = True
 
 
 class Config(BaseModel):

@@ -15,7 +15,7 @@ def save_split_hexel_windows(
     valid_window: np.ndarray, out_dir: str, win_id: int, season: str, cause: str, hex_id: str, format: str = "npy"
 ) -> str:
     """Save a hexel window"""
-    filename = os.path.join(f"numpy_files/hex_{hex_id}_{str(win_id)}_{season}_{cause}.{format}")
+    filename = f"numpy_files/hex_{hex_id}_{str(win_id)}_{season}_{cause}.{format}"
     np.save(os.path.join(out_dir, filename), valid_window) if format == "npy" else np.savez_compressed(
         os.path.join(out_dir, filename), arr=valid_window
     )
