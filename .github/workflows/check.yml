@@ -41,3 +41,6 @@ jobs:
       # ruff linting is now done in pre-commit
       - name: Run pre-commit hooks
         run: uv run pre-commit run --all-files --color=always
+
+      - name: Run unit tests
+        run: uv run python -m pytest tests
