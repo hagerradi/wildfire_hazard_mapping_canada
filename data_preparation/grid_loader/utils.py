@@ -254,27 +254,51 @@ def visualize_weather_params(weather_cube: np.ndarray, sampling: str = "dist", c
     plt.show()
 
 
-def visualize_fuel_grid(fuel_grid: np.ndarray):
-    """Visualize fuel grid"""
-    classes = np.unique(fuel_grid)[:-1]  # ignore the noData class
+def visualize_fuel_grid(fuel_grid: np.ndarray, nodata_value: int = -1) -> None:
+    """Visualize fuel grid with a discrete color per fuel class."""
 
-    # Reapply mask: -1 = nodata
-    masked_grid = np.ma.masked_invalid(fuel_grid)
+    # Mask out nodata
+    masked_grid = np.ma.masked_where(fuel_grid == nodata_value, fuel_grid)
 
-    colors = plt.get_cmap("tab20")(np.linspace(0, 1, len(classes)))  # or any discrete cmap
+    # Unique valid fuel classes (exclude nodata)
+    classes = np.unique(masked_grid.compressed())  # ignores masked values
 
+    # Map fuel codes -> 0..N-1 indices for stable coloring
+    class_to_idx = {cls: i for i, cls in enumerate(classes)}
+    idx_grid = np.full(fuel_grid.shape, fill_value=-1, dtype=int)
+
+    for cls, i in class_to_idx.items():
+        idx_grid[fuel_grid == cls] = i
+
+    idx_grid = np.ma.masked_where(fuel_grid == nodata_value, idx_grid)
+
+    # Build discrete colormap
+    colors = plt.get_cmap("tab20")(np.linspace(0, 1, len(classes)))
     cmap = ListedColormap(colors)
 
     plt.figure(figsize=(8, 6))
-    plt.imshow(masked_grid, cmap=cmap, origin="upper", vmin=0, vmax=len(classes) - 1)
+    # Now values are 0..len(classes)-1, so vmin/vmax make sense
+    plt.imshow(
+        idx_grid,
+        cmap=cmap,
+        origin="upper",
+        vmin=0,
+        vmax=len(classes) - 1,
+    )
 
     plt.title("FBP fuel map")
     plt.xlabel("Easting (m)")
     plt.ylabel("Northing (m)")
 
-    # Classification legend instead of colorbar
+    # Legend with fuel codes
     legend_patches = [Patch(facecolor=colors[i], edgecolor="black", label=str(cls)) for i, cls in enumerate(classes)]
-    plt.legend(handles=legend_patches, title="Fuel Classes", loc="upper right", bbox_to_anchor=(1.32, 1.0), frameon=True)
+    plt.legend(
+        handles=legend_patches,
+        title="Fuel Classes",
+        loc="upper right",
+        bbox_to_anchor=(1.32, 1.0),
+        frameon=True,
+    )
 
     plt.tight_layout()
     plt.show()
