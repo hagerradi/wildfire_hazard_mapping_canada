@@ -17,7 +17,7 @@ MAX_FUEL_GRID = float(max(fuel_ranking.values()))
 MIN_FUEL_GRID = float(min(fuel_ranking.values()))
 
 
-def fill_nan_channel_mean_numpy(arr):
+def fill_nan_channel_mean_numpy(arr: np.ndarray) -> np.ndarray:
     """
     Fills NaNs in a (H, W, C) array with the mean of the corresponding channel.
     Modifies the array in-place.
@@ -38,7 +38,7 @@ def fill_nan_channel_mean_numpy(arr):
     return arr
 
 
-def one_hot_encode(arr, channel_idx, num_classes):
+def one_hot_encode(arr: np.ndarray, channel_idx: int, num_classes: int) -> np.ndarray:
     """
     Replaces the nth channel with its one-hot encoded version.
     Input: (H, W, C)
@@ -69,7 +69,7 @@ def one_hot_encode(arr, channel_idx, num_classes):
     encoded_part[nan_mask] = 0  # Nan is no fuel
 
     # 3. Concatenate along the channel axis (last axis)
-    return np.concatenate([left_part, encoded_part.astype(float), right_part], axis=-1)
+    return np.concatenate([left_part, encoded_part.astype(float), right_part], axis=-1)  # (H,W,C+20)
 
 
 class GridDataset(Dataset):
