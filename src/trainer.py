@@ -9,6 +9,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from src.config import Config
+from src.logger import CometLogger
 from src.losses import BCELoss, MSELoss
 from src.metrics import compute_mae, compute_mse, compute_spearman, compute_ssim
 from src.models.baselines import UNet
@@ -28,6 +29,17 @@ class Trainer:
 
         self.save_dir = self.config.save_dir
         os.makedirs(self.save_dir, exist_ok=True)
+
+        # setup of the logger
+        self.logger = CometLogger(
+            project_name=self.config.logger.project_name,
+            workspace=self.config.logger.workspace,
+            experiment_name=self.config.logger.experiment_name,
+            experiment_tags=self.config.logger.tags,
+        )
+
+        # log all the params.
+        self.logger.log_params(self.config.model_dump())
 
         self.setup()
 
@@ -173,7 +185,7 @@ class Trainer:
 
             val_result = self.validate(val_loader) if val_loader is not None else None
 
-            # TODO: replace with logging
+            # log metrics and loss
             if epoch % log_every_n_epoch == 0:
                 msg = f"Epoch {epoch}/{num_epochs} - train_loss: {train_res['loss']:.4f}"
                 if val_result is not None:
@@ -181,12 +193,23 @@ class Trainer:
                 msg += f", time: {elapsed:.1f}s"
                 print(msg)
 
+                metrics_to_log = {f"train_{k}": v for k, v in train_res.items()}
+                metrics_to_log["epoch_duration"] = elapsed
+
+                if val_result:
+                    metrics_to_log.update({f"val_{k}": v for k, v in val_result.items()})
+
+                self.logger.log_metrics(metrics_to_log, epoch=epoch)
+
             # save best checkpoint
             if val_result is not None and (best_val_loss is None or val_result["loss"] < best_val_loss):
                 best_val_loss = val_result["loss"]
                 # auto-save best if save_dir configured
                 if self.save_dir:
-                    self.save_model(epoch=epoch, loss=val_result["loss"], filename="best.pth")
+                    best_path = self.save_model(epoch=epoch, loss=val_result["loss"], filename="best.pth")
+
+                    # log best model to comet
+                    self.logger.experiment.log_model(name="best", file_or_folder=best_path, overwrite=True)
 
             # save most recent checkpoint
             self.save_model(epoch=epoch, loss=val_result["loss"])

@@ -1,3 +1,4 @@
+import json
 import os
 from itertools import product
 from pathlib import Path
@@ -24,11 +25,31 @@ from data_preparation.paths import (
     WEATHER_LIST_PATH,
     WIND_GRID_DIR_PATH,
 )
-from data_preparation.utils import find_simulation_output_file
+from data_preparation.utils import feature_names, find_simulation_output_file
+
+
+def get_num_channels_array(arr: np.ndarray) -> int:
+    """Returns the number of channels a particular feature will take"""
+    if len(arr.shape) == 2:
+        return 1
+    return arr.shape[-1]
+
+
+def generate_feature_channel_map(feature_list: list[np.ndarray], feature_channel_map_path: str):
+    """Maps the feature names to the corresponding channels in our input stack"""
+    feature_channel_map = dict()
+    channel = 0
+    for i, feature in enumerate(feature_list):
+        feature_channels = get_num_channels_array(feature)
+        feature_channel_map[feature_names[i]] = list(range(channel, channel + feature_channels))
+        channel += feature_channels
+    os.makedirs(os.path.dirname(feature_channel_map_path), exist_ok=True)
+    with open(feature_channel_map_path, "w") as f:
+        json.dump(feature_channel_map, f, indent=4)
 
 
 def load_features_per_hexel(
-    root_dir: str, hex_id: str, modelling_approach: int = 1, output_type: str = "prob"
+    root_dir: str, hex_id: str, feature_channel_map_path: str, modelling_approach: int = 1, output_type: str = "prob"
 ) -> tuple[np.ndarray, np.ndarray, dict[int, tuple[int, int]] | None]:
     """
     Load all data (features and output) per hexel
@@ -64,16 +85,19 @@ def load_features_per_hexel(
         out_grid: np.ndarray,
     ) -> tuple[np.ndarray, np.ndarray]:
         """Stack all features and compute mask."""
+        features_list = [
+            ignition_prob_grid[:, :, np.newaxis],
+            esc_fires_prob_grid[:, :, np.newaxis],
+            fuel_grid[:, :, np.newaxis],
+            elevation_grid[:, :, np.newaxis],
+            weather_grid,
+            wind_grid,
+            out_grid[:, :, np.newaxis],
+        ]
+        if not os.path.exists(feature_channel_map_path):
+            generate_feature_channel_map(features_list, feature_channel_map_path)
         stacked = np.concatenate(
-            [
-                ignition_prob_grid[:, :, np.newaxis],
-                esc_fires_prob_grid[:, :, np.newaxis],
-                fuel_grid[:, :, np.newaxis],
-                elevation_grid[:, :, np.newaxis],
-                weather_grid,
-                wind_grid,
-                out_grid[:, :, np.newaxis],
-            ],
+            features_list,
             axis=-1,
         )
         mask = np.isnan(elevation_grid)
@@ -100,7 +124,8 @@ def load_features_per_hexel(
         )
 
         # for approach 1, we use the existing raster output
-        fpath = find_simulation_output_file(root_dir, hex_id, output_type, season=None, cause=None)
+        # ASSUMPTION: we only support probability for approach 1
+        fpath = find_simulation_output_file(root_dir, hex_id, output_type="prob", season=None, cause=None)
         out_grid = load_output_grid(fpath)
 
         stacked_features, mask = stack_sample(ignition_prob_grid, esc_fires_prob_grid, weather_grid, out_grid)
@@ -147,16 +172,3 @@ def load_features_per_hexel(
         season_cause_mapping[i] = season_cause
 
     return np.stack(all_features), np.stack(all_masks), season_cause_mapping
-
-
-# TODO: delete later
-if __name__ == "__main__":
-    root_dir = "../yan_bp3"
-    hex_ids = ["05", "10", "16"]
-
-    all_features, all_masks, season_cause_mapping = load_features_per_hexel(
-        root_dir=root_dir, hex_id=hex_ids[0], modelling_approach=1, output_type="count"
-    )
-    print(all_features.shape)
-    print(all_masks.shape)
-    print(season_cause_mapping)
