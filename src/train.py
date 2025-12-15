@@ -74,6 +74,8 @@ def main() -> None:
         modelling_approach=config.modelling_approach,
     )
     test_metrics = trainer.test(test_loader)
+    if isinstance(test_metrics, tuple):
+        test_metrics = test_metrics[0]
 
     print("\n[Test metrics]")
     for k, v in test_metrics.items():
