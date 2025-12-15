@@ -68,8 +68,9 @@ def main() -> None:
     np.save(os.path.join(config.save_dir, "test_predictions.npy"), test_predictions)
 
     print("\n[Test metrics]")
-    for k, v in test_metrics.items():
-        print(f"  {k}: {v:.6f}")
+    if isinstance(test_metrics, dict):
+        for k, v in test_metrics.items():
+            print(f"  {k}: {v:.6f}")
 
     # TODO: de-normalize predictions for approach 2
     # TODO: Stitch predictions back to hexel
