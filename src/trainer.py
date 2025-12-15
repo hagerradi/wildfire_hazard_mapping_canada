@@ -2,6 +2,7 @@ import os
 import time
 from typing import Any
 
+import numpy as np
 import torch
 import torch.optim as optim
 import yaml
@@ -99,8 +100,12 @@ class Trainer:
         masks = masks.to(self.device)
 
         predictions = self.model(inputs)
-        loss = self.loss_fn(predictions, targets, masks)
-
+        if self.config.optimizer.loss_name in ["bce", "mse"]:
+            loss = self.loss_fn(predictions, targets, masks)
+            predictions = torch.sigmoid(predictions)
+        else:
+            predictions = torch.sigmoid(predictions)
+            loss = self.loss_fn(predictions, targets, masks)
         return predictions, loss, targets
 
     def train_epoch(self, loader: DataLoader) -> dict[str, float]:
@@ -146,14 +151,19 @@ class Trainer:
         return results
 
     @torch.no_grad()
-    def validate(self, loader: DataLoader) -> dict[str, float]:
+    def validate(self, loader: DataLoader, return_predictions: bool = False) -> tuple[dict[str, float], Any]:
         self.model.eval()
         running_loss = 0.0
         running_batch_count = 0
         running_metrics = {name: 0.0 for name in self.metric_functions}
 
+        preds_list = []
+
         for batch in loader:
             predictions, loss, targets = self._step(batch)
+
+            if return_predictions:
+                preds_list.append(predictions.detach().cpu().numpy())
 
             batch_size = targets.size(0) if hasattr(targets, "size") else 1
             running_loss += loss.item() * batch_size
@@ -172,11 +182,14 @@ class Trainer:
         for name, total_value in running_metrics.items():
             results[name] = total_value / max(1, running_batch_count)
 
-        return results
+        if return_predictions:
+            return results, np.concatenate(preds_list, axis=0)
+
+        return results, None
 
     @torch.no_grad()
-    def test(self, loader: DataLoader) -> dict[str, float]:
-        return self.validate(loader)
+    def test(self, loader: DataLoader, return_predictions: bool = False) -> tuple[dict[str, float], Any]:
+        return self.validate(loader, return_predictions=return_predictions)
 
     def run_training(
         self,
@@ -192,7 +205,7 @@ class Trainer:
             train_res = self.train_epoch(train_loader)
             elapsed = time.time() - start
 
-            val_result = self.validate(val_loader) if val_loader is not None else None
+            val_result, _ = self.validate(val_loader) if val_loader is not None else None
 
             # log metrics and loss
             if epoch % log_every_n_epoch == 0:
