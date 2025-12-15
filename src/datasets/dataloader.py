@@ -95,7 +95,7 @@ class GridDataset(Dataset):
             csv_name (str): Path to the csv file with annotations.
             root_dir (str): Directory with all the .npy files.
             filename_col (str): Column name in CSV containing the filenames.
-            out_norm (str): How to normalize the output burn counts. [Options: total_iters, season_cause_iters, min_max]
+            out_norm (str): How to normalize the output burn counts for modelling approach 2. [Options: total_iters, season_cause_iters, min_max]
             fuel_feats_encoding(str): How to process the fuel features [Options: ordinal, one_hot]
             normalize_fuel_feats_ordinal (bool): If we want to normalize the ordinal encoded fuel feats
             modelling_approach (str): The approach used for modelling
@@ -105,8 +105,9 @@ class GridDataset(Dataset):
         self.filename_col = filename_col
         self.transform = transform
         self.out_norm = out_norm
-
+        self.modelling_approach = modelling_approach
         self.root_dir = root_dir
+
         self.metadata_df = pd.read_csv(os.path.join(self.root_dir, csv_name))
         self.all_files = list(self.metadata_df[filename_col])
 
@@ -115,20 +116,18 @@ class GridDataset(Dataset):
         if self.out_norm == "total_iters":
             self.out_norm_array = list(
                 self.metadata_df["total_unique_iters"]
-            )  # total number of unique interations that produced fires for all seasons and causes
+            )  # For modelling approach 2: total number of unique interations that produced fires for all seasons and causes
         elif self.out_norm == "season_cause_iters":
             self.out_norm_array = list(
                 self.metadata_df["season_cause_unique_iters"]
-            )  # total number of unique interations that produced fires for a single season and cause
-        else:
-            self.out_norm_array = [1] * len(self.all_files)  # if we want to predict the counts
+            )  # For modelling approach 2: total number of unique interations that produced fires for a single season and cause
 
         self.channel_indices = None
-        with open(os.path.join(root_dir, f"feature_channel_map_{modelling_approach}.json"), "r") as f:
+        with open(os.path.join(root_dir, f"feature_channel_map_{self.modelling_approach}.json")) as f:
             channel_feature_map = json.load(f)
         self.fuel_feat_index = channel_feature_map["fuel_grid"][0]
         if feature_names_list:
-            with open(os.path.join(self.root_dir, f"feature_channel_map_{modelling_approach}.json")) as f:
+            with open(os.path.join(self.root_dir, f"feature_channel_map_{self.modelling_approach}.json")) as f:
                 channel_feature_map = json.load(f)
                 self.channel_indices = [item for key in feature_names_list for item in channel_feature_map[key]]
             self.fuel_feat_index = self.channel_indices.index(self.fuel_feat_index)
@@ -163,11 +162,13 @@ class GridDataset(Dataset):
                     MAX_FUEL_GRID - MIN_FUEL_GRID
                 )
 
-        # TODO/Assumption: this min_max normalization supports season/cause scenarios only
-        if self.out_norm == "min_max":
-            output_arr = (output_arr - BURN_COUNT_MIN) / (BURN_COUNT_MAX - BURN_COUNT_MIN)
-        else:
-            output_arr /= self.out_norm_array[idx]
+        # TODO/Assumption: this min_max normalization supports season/cause scenarios only - modelling approach 2
+        if self.modelling_approach == "2":
+            if self.out_norm == "min_max":
+                output_arr = (output_arr - BURN_COUNT_MIN) / (BURN_COUNT_MAX - BURN_COUNT_MIN)
+            elif self.out_norm in ["total_iters", "season_cause_iters"]:
+                output_arr /= self.out_norm_array[idx]
+
         return (
             torch.from_numpy(input_arr).permute(2, 0, 1),
             torch.from_numpy(np.expand_dims(output_arr, 0)),
