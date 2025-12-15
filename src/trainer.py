@@ -151,7 +151,7 @@ class Trainer:
         return results
 
     @torch.no_grad()
-    def validate(self, loader: DataLoader, return_predictions: bool = False) -> tuple[dict[str, float], Any]:
+    def validate(self, loader: DataLoader, return_predictions: bool = False) -> dict[str, float] | tuple[dict[str, float], Any]:
         self.model.eval()
         running_loss = 0.0
         running_batch_count = 0
@@ -185,10 +185,10 @@ class Trainer:
         if return_predictions:
             return results, np.concatenate(preds_list, axis=0)
 
-        return results, None
+        return results
 
     @torch.no_grad()
-    def test(self, loader: DataLoader, return_predictions: bool = False) -> tuple[dict[str, float], Any]:
+    def test(self, loader: DataLoader, return_predictions: bool = False) -> dict[str, float] | tuple[dict[str, float], Any]:
         return self.validate(loader, return_predictions=return_predictions)
 
     def run_training(
@@ -205,8 +205,9 @@ class Trainer:
             train_res = self.train_epoch(train_loader)
             elapsed = time.time() - start
 
-            val_result, _ = self.validate(val_loader) if val_loader is not None else None
-
+            val_result = self.validate(val_loader) if val_loader is not None else None
+            if isinstance(val_result, tuple):
+                val_result = val_result[0]
             # log metrics and loss
             if epoch % log_every_n_epoch == 0:
                 msg = f"Epoch {epoch}/{num_epochs} - train_loss: {train_res['loss']:.4f}"
@@ -223,7 +224,6 @@ class Trainer:
 
                 self.logger.log_metrics(metrics_to_log, epoch=epoch)
 
-            # save best checkpoint
             if val_result is not None and (best_val_loss is None or val_result["loss"] < best_val_loss):
                 best_val_loss = val_result["loss"]
                 # auto-save best if save_dir configured
@@ -234,6 +234,10 @@ class Trainer:
                     self.logger.experiment.log_model(name="best", file_or_folder=best_path, overwrite=True)
 
             # save most recent checkpoint
+            if val_result is not None:
+                self.save_model(epoch=epoch, loss=val_result["loss"])
+            else:
+                self.save_model(epoch=epoch, loss=train_res["loss"])
             self.save_model(epoch=epoch, loss=val_result["loss"])
 
     def save_model(self, epoch: int, loss: float, filename: str = "last.pth"):
