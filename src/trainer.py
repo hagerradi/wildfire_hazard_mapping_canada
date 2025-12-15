@@ -100,6 +100,7 @@ class Trainer:
         masks = masks.to(self.device)
 
         predictions = self.model(inputs)
+        # for bce and mse, we will apply sigmoid after the loss
         if self.config.optimizer.loss_name in ["bce", "mse"]:
             loss = self.loss_fn(predictions, targets, masks)
             predictions = torch.sigmoid(predictions)
@@ -234,10 +235,6 @@ class Trainer:
                     self.logger.experiment.log_model(name="best", file_or_folder=best_path, overwrite=True)
 
             # save most recent checkpoint
-            if val_result is not None:
-                self.save_model(epoch=epoch, loss=val_result["loss"])
-            else:
-                self.save_model(epoch=epoch, loss=train_res["loss"])
             self.save_model(epoch=epoch, loss=val_result["loss"])
 
     def save_model(self, epoch: int, loss: float, filename: str = "last.pth"):
