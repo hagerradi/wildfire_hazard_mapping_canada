@@ -1,14 +1,15 @@
 """
-End-to-end script for running training and evaluation
+End-to-end script for evaluation of one hexel
 """
 
 import argparse
 import os
 
+import numpy as np
 import yaml
 
 from src.config import Config
-from src.datasets.dataloader import get_test_loader, get_train_val_dataloader
+from src.datasets.dataloader import get_test_loader
 from src.trainer import Trainer
 
 
@@ -41,18 +42,7 @@ def main() -> None:
     args = parse_args()
     config = load_config(args.config)
 
-    # ---------- Data ----------
-    train_loader, val_loader = get_train_val_dataloader(
-        config=config.data,
-        modelling_approach=config.modelling_approach,
-    )
-
-    # ---------- Training ----------
     trainer = Trainer(config)
-    trainer.run_training(
-        train_loader=train_loader,
-        val_loader=val_loader,
-    )
 
     # ---------- Load best checkpoint ----------
     # Try best.pth first, fall back to last.pth if needed
@@ -73,16 +63,18 @@ def main() -> None:
         config=config.data,
         modelling_approach=config.modelling_approach,
     )
-    test_metrics = trainer.test(test_loader)
-    if isinstance(test_metrics, tuple):
-        test_metrics = test_metrics[0]
+    test_metrics, test_predictions = trainer.test(test_loader, return_predictions=True)
+    # Save predictions
+    np.save(os.path.join(config.save_dir, "test_predictions.npy"), test_predictions)
 
     print("\n[Test metrics]")
-    for k, v in test_metrics.items():
-        print(f"  {k}: {v:.6f}")
+    if isinstance(test_metrics, dict):
+        for k, v in test_metrics.items():
+            print(f"  {k}: {v:.6f}")
 
-    # Log test results to comet, at the end
-    trainer.logger.log_metrics({f"test_{k}": v for k, v in test_metrics.items()})
+    # TODO: de-normalize predictions for approach 2
+    # TODO: Stitch predictions back to hexel
+    # TODO: Merge predictions of multiple scenarios for approach 2
 
 
 if __name__ == "__main__":
