@@ -7,42 +7,35 @@ on:
     branches: [main]
 
 jobs:
-  lint:
+  build-and-test:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repo
         uses: actions/checkout@v5
 
-      - name: "Set up Python"
-        uses: actions/setup-python@v6
-        with:
-          python-version-file: "pyproject.toml"
-
-      - name: Restore uv + venv cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/uv
-            .venv
-          key: ${{ runner.os }}-uv-${{ hashFiles('uv.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-uv-
-
-      - name: Install uv
+      - name: Install uv and Python
         uses: astral-sh/setup-uv@v6
         with:
-          # Install a specific version of uv.
           version: "0.9.10"
+          python-version-file: "pyproject.toml"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
 
-      - name: Install GDAL system libraries
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gdal-bin libgdal-dev
+      - name: Cache pre-commit
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
+          restore-keys: |
+            pre-commit-${{ runner.os }}-
 
       - name: Install the project
         run: uv sync --locked --all-extras --dev
 
       # ruff linting is now done in pre-commit
       - name: Run pre-commit hooks
-        run: uv run pre-commit run --all-files
+        run: uv run pre-commit run --all-files --color=always
+
+      - name: Run unit tests
+        run: uv run python -m pytest tests
