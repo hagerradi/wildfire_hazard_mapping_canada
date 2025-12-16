@@ -48,13 +48,13 @@ def compute_spearman(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Ten
         for i in range(batch_size):
             corrs.append(spearman_corrcoef(flat_preds[i], flat_targets[i]))
     else:
-        valid = mask.bool().reshape(batch_size, -1)  # True = valid
+        valid_mask = mask.bool().reshape(batch_size, -1)  # True = valid
         for i in range(batch_size):
-            v = valid[i]
-            if v.sum() < min_valid:
+            sample_valid_mask = valid_mask[i]
+            if sample_valid_mask.sum() < min_valid:
                 corrs.append(torch.tensor(float("nan"), device=preds.device))
                 continue
-            corrs.append(spearman_corrcoef(flat_preds[i][v], flat_targets[i][v]))
+            corrs.append(spearman_corrcoef(flat_preds[i][sample_valid_mask], flat_targets[i][sample_valid_mask]))
 
     return torch.nanmean(torch.stack(corrs))
 
