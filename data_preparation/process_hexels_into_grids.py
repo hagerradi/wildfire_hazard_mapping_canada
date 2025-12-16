@@ -106,6 +106,7 @@ def get_split_hexel_window(
 def generate_data_samples(
     root_dir: str,
     modelling_approach: int,
+    output_type: str = "count",
     win_h: int = 128,
     win_w: int = 128,
     overlap_ratio: float = 0.2,
@@ -125,6 +126,7 @@ def generate_data_samples(
             hex_id=hex_id,
             feature_channel_map_path=os.path.join(out_dir, f"feature_channel_map_{modelling_approach}.json"),
             modelling_approach=modelling_approach,
+            output_type=output_type,
         )
         get_split_hexel_window(
             season_cause_stacked_feats=stacked_feats,
@@ -146,6 +148,7 @@ def main():
 
     parser.add_argument("--root_dir", type=str, help="data root directory", required=True)
     parser.add_argument("--modelling_approach", type=int, help="Either 1 or 2", default=2)
+    parser.add_argument("--output_type", type=str, help="output type as prob or count", default="count")
     parser.add_argument("--win_h", type=int, help="Height of the window", default=128)
     parser.add_argument("--win_w", type=int, help="Height of the window", default=128)
     parser.add_argument("--overlap_ratio", type=float, help="Overlap ratio between windows", default=0.2)
@@ -160,6 +163,7 @@ def main():
         win_w=args.win_w,
         overlap_ratio=args.overlap_ratio,
         mask_threshold=args.mask_threshold,
+        output_type=args.output_type,
     )
 
 
