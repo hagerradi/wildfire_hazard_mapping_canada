@@ -158,6 +158,22 @@ def get_range_burn_count(root_dir: str) -> tuple[float, float]:
     return (BURN_COUNT_MAX, BURN_COUNT_MIN)
 
 
+def get_range_burn_prob(root_dir: str) -> tuple[float, float]:
+    """Get the maximum and minimum burn probability for standardization - approach 1"""
+    all_hex_ids = find_hex_ids(root_dir)
+    BURN_PROB_MAX, BURN_PROB_MIN = -np.inf, np.inf
+    for hex_id in all_hex_ids:
+        hex_dir = os.path.join(root_dir, f"hex{hex_id}")
+        outputs_dir = os.path.join(hex_dir, OUTPUT_BURN_PROB_PATH)
+        pattern = f"hex_{hex_id}_*iter_bp.tif"
+        list_burn_count_season_cause_map_paths = list(Path(outputs_dir).glob(pattern))
+        for burn_count_season_cause_map_path in list_burn_count_season_cause_map_paths:
+            out_grid = load_raster(str(burn_count_season_cause_map_path))
+            BURN_PROB_MAX = max(BURN_PROB_MAX, out_grid.max())
+            BURN_PROB_MIN = min(BURN_PROB_MIN, out_grid.min())
+    return (BURN_PROB_MAX, BURN_PROB_MIN)
+
+
 def visualize_ignition_grid(grid: np.ndarray, cause: int, season: int):
     """
     Visualizes an ignition raster using matplotlib.
