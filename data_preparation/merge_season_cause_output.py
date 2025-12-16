@@ -12,7 +12,7 @@ from data_preparation.paths import ESC_FIRE_DIST_PATH
 from data_preparation.utils import find_hex_ids
 
 
-def aggregate_predictions(
+def aggregate_burn_count_predictions(
     root_dir: str, hex_id: str, predictions_dir: str, min_count: float, max_count: float, output_suffix: str = "merged_predicted_bc.tif"
 ) -> None:
     """
@@ -71,6 +71,8 @@ def aggregate_predictions(
             continue
 
     # save the merged counts map
+    # TODO: this needs more thought, since we are not able to get the total counts to match the
+    # target. Potentially, we can add clamping here.
     if total_counts is not None and files_merged > 0:
         final_filename = f"hex_{hex_id}_{output_suffix}"
         out_path = os.path.join(predictions_dir, final_filename)
@@ -107,7 +109,7 @@ def main():
         check_pattern = f"hex_{hex_id}_*"
         if not list(Path(args.predictions_dir).glob(check_pattern)):
             continue
-        aggregate_predictions(args.root_dir, hex_id, args.predictions_dir, min_count, max_count, args.output_suffix)
+        aggregate_burn_count_predictions(args.root_dir, hex_id, args.predictions_dir, min_count, max_count, args.output_suffix)
 
 
 if __name__ == "__main__":
