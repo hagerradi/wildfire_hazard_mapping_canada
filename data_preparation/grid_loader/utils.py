@@ -158,6 +158,12 @@ def get_range_burn_count(root_dir: str) -> tuple[float, float]:
     return (BURN_COUNT_MAX, BURN_COUNT_MIN)
 
 
+def denormalize_burn_count(data: np.ndarray, min_val: float, max_val: float) -> np.ndarray:
+    """Reverse the count normalization to recover true counts."""
+    data = data.astype("float32")
+    return data * (max_val - min_val) + min_val
+
+
 def visualize_ignition_grid(grid: np.ndarray, cause: int, season: int):
     """
     Visualizes an ignition raster using matplotlib.
