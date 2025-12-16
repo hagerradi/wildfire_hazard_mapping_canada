@@ -89,7 +89,7 @@ class Trainer:
             else:
                 raise ValueError(f"Metric '{name}' in config. is not implemented." f"Available options: {list(available_metrics.keys())}")
 
-    def _step(self, batch: Any) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def _step(self, batch: Any) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Default step. Expects batch -> (inputs, targets, masks).
         Returns (predictions, loss, targets_on_device).
@@ -100,14 +100,14 @@ class Trainer:
         masks = masks.to(self.device)
 
         predictions = self.model(inputs)
-        # for bce and mse, we will apply sigmoid after the loss
-        if self.config.optimizer.loss_name in ["bce", "mse"]:
+        # for bce, we will apply sigmoid after the loss
+        if self.config.optimizer.loss_name in ["bce"]:
             loss = self.loss_fn(predictions, targets, masks)
             predictions = torch.sigmoid(predictions)
         else:
             predictions = torch.sigmoid(predictions)
             loss = self.loss_fn(predictions, targets, masks)
-        return predictions, loss, targets
+        return predictions, loss, targets, masks
 
     def train_epoch(self, loader: DataLoader) -> dict[str, float]:
         self.model.train()
@@ -118,7 +118,7 @@ class Trainer:
         training_loop = tqdm(loader, desc="Training", leave=True)
 
         for batch in training_loop:
-            predictions, loss, targets = self._step(batch)
+            predictions, loss, targets, masks = self._step(batch)
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
@@ -135,7 +135,7 @@ class Trainer:
             # compute the metrics
             with torch.no_grad():
                 for name, metric_fn in self.metric_functions.items():
-                    value = metric_fn(predictions.detach(), targets)
+                    value = metric_fn(predictions.detach(), targets, masks)
                     running_metrics[name] += value.item() * batch_size
                     if self.global_step % self.log_every_n_step == 0:
                         self.logger.log_metrics({f"train_step_{name}": value.item()}, step=self.global_step)
@@ -161,7 +161,7 @@ class Trainer:
         preds_list = []
 
         for batch in loader:
-            predictions, loss, targets = self._step(batch)
+            predictions, loss, targets, masks = self._step(batch)
 
             if return_predictions:
                 preds_list.append(predictions.detach().cpu().numpy())
@@ -173,7 +173,7 @@ class Trainer:
             # compute the metrics
             with torch.no_grad():
                 for name, metric_fn in self.metric_functions.items():
-                    value = metric_fn(predictions.detach(), targets)
+                    value = metric_fn(predictions.detach(), targets, masks)
                     running_metrics[name] += value.item() * batch_size
 
         avg_loss = running_loss / max(1, running_batch_count)
