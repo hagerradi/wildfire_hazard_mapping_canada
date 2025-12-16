@@ -32,7 +32,7 @@ def get_split_hexel_window(
     win_h: int = 128,
     win_w: int = 128,
     overlap_ratio: float = 0.2,
-    mask_threshold: float = 0.5,
+    mask_threshold: float = 0.0,
 ):
     """
     Split the hexel using sliding windows for inp to the model
@@ -47,6 +47,16 @@ def get_split_hexel_window(
     num_season_cause, H, W, _ = season_cause_stacked_feats.shape
     stride_h = max(1, int(win_h * (1 - overlap_ratio)))  # n_rows = (H-win_h)//stride_h + 1
     stride_w = max(1, int(win_w * (1 - overlap_ratio)))
+
+    # Adding padding for the edges
+    pad_h = stride_h - (H - win_h) % stride_h if (H - win_h) % stride_h != 0 else 0
+    pad_w = stride_w - (W - win_w) % stride_w if (W - win_w) % stride_w != 0 else 0
+    season_cause_stacked_feats = np.pad(
+        season_cause_stacked_feats, ((0, 0), (0, pad_h), (0, pad_w), (0, 0)), mode="constant", constant_values=np.nan
+    )
+    season_cause_mask = np.pad(season_cause_mask, ((0, pad_h), (0, pad_w)), mode="constant", constant_values=1.0)
+    num_season_cause, H, W, _ = season_cause_stacked_feats.shape
+
     window_area = win_h * win_w
     num_total_windows, num_valid_windows = 0.0, 0.0
     valid_coords = []
