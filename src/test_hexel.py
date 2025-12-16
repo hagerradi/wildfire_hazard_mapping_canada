@@ -19,7 +19,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--config",
         type=str,
-        default="configs/default.yaml",
+        default="configs/default_v1.yaml",
         help="Path to YAML config file.",
     )
     return parser.parse_args()
@@ -72,9 +72,9 @@ def main() -> None:
         for k, v in test_metrics.items():
             print(f"  {k}: {v:.6f}")
 
-    # TODO: de-normalize predictions for approach 2
     # TODO: Stitch predictions back to hexel
     # TODO: Merge predictions of multiple scenarios for approach 2
+    # TODO: re-compute metrics at the hexel level
 
 
 if __name__ == "__main__":
