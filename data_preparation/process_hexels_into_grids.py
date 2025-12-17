@@ -32,7 +32,6 @@ def get_split_hexel_window(
     win_h: int = 128,
     win_w: int = 128,
     overlap_ratio: float = 0.2,
-    mask_threshold: float = 0.0,
 ):
     """
     Split the hexel using sliding windows for inp to the model
@@ -80,25 +79,24 @@ def get_split_hexel_window(
                 # Count True values in the mask
                 true_count = np.count_nonzero(~mask_window)
                 valid_ratio = true_count / window_area
-                # Check Threshold Condition
-                if valid_ratio >= mask_threshold:
-                    num_valid_windows += 1
-                    window_data = stacked_feats[row : row + win_h, col : col + win_w, :]
-                    filename = save_split_hexel_windows(window_data, out_dir, int(num_valid_windows), season, cause, hex_id)
-                    valid_coords.append(
-                        [
-                            str(Path(filename)),
-                            season,
-                            cause,
-                            hex_id,
-                            num_valid_windows,
-                            row,
-                            col,
-                            valid_ratio,
-                            total_unique_iters,
-                            season_cause_unique_iters,
-                        ]
-                    )
+
+                num_valid_windows += 1
+                window_data = stacked_feats[row : row + win_h, col : col + win_w, :]
+                filename = save_split_hexel_windows(window_data, out_dir, int(num_valid_windows), season, cause, hex_id)
+                valid_coords.append(
+                    [
+                        str(Path(filename)),
+                        season,
+                        cause,
+                        hex_id,
+                        num_valid_windows,
+                        row,
+                        col,
+                        valid_ratio,
+                        total_unique_iters,
+                        season_cause_unique_iters,
+                    ]
+                )
     df_coords = pd.DataFrame(valid_coords)
     df_coords.columns = [
         "filename",
@@ -117,13 +115,7 @@ def get_split_hexel_window(
 
 
 def generate_data_samples(
-    root_dir: str,
-    modelling_approach: int,
-    output_type: str = "count",
-    win_h: int = 128,
-    win_w: int = 128,
-    overlap_ratio: float = 0.2,
-    mask_threshold: float = 0.5,
+    root_dir: str, modelling_approach: int, output_type: str = "count", win_h: int = 128, win_w: int = 128, overlap_ratio: float = 0.2
 ):
     out_dir = os.path.join(root_dir, f"data_samples_approach_{modelling_approach}")
     os.makedirs(out_dir, exist_ok=True)
@@ -151,7 +143,6 @@ def generate_data_samples(
             win_h=win_h,
             win_w=win_w,
             overlap_ratio=overlap_ratio,
-            mask_threshold=mask_threshold,
         )
         print(f"======Processed Hex ID: {hex_id}==========")
 
@@ -165,7 +156,6 @@ def main():
     parser.add_argument("--win_h", type=int, help="Height of the window", default=128)
     parser.add_argument("--win_w", type=int, help="Height of the window", default=128)
     parser.add_argument("--overlap_ratio", type=float, help="Overlap ratio between windows", default=0.2)
-    parser.add_argument("--mask_threshold", type=float, help="Threshold to consider window as valid", default=0.01)
 
     args = parser.parse_args()
 
@@ -175,7 +165,6 @@ def main():
         win_h=args.win_h,
         win_w=args.win_w,
         overlap_ratio=args.overlap_ratio,
-        mask_threshold=args.mask_threshold,
         output_type=args.output_type,
     )
 
