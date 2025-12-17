@@ -43,6 +43,7 @@ class DataConfig(BaseModel):
     feature_names_list: list[str] = ["ignition_grid", "esc_fires_grid", "fuel_grid", "elevation_grid", "wind_grid"]
     fuel_feats_encoding: str  # ordinal, one_hot
     normalize_fuel_feats_ordinal: bool = True
+    mask_threshold: float = 0.01
 
 
 class Config(BaseModel):

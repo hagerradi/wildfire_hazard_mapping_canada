@@ -87,6 +87,7 @@ class GridDataset(Dataset):
         fuel_feats_encoding: str = "ordinal",
         normalize_fuel_feats_ordinal: bool | None = True,
         modelling_approach: str = "2",
+        mask_threshold: float = 0.01,
         transform: Callable | None = None,
         feature_names_list: list[str] | None = None,
     ):
@@ -99,6 +100,7 @@ class GridDataset(Dataset):
             fuel_feats_encoding(str): How to process the fuel features [Options: ordinal, one_hot]
             normalize_fuel_feats_ordinal (bool): If we want to normalize the ordinal encoded fuel feats
             modelling_approach (str): The approach used for modelling
+            mask_threshold (float): The threshold for how much valid data should be present in a data sample
             transform (callable, optional): Optional transform to be applied on a sample.
             feature_names_list (list): List of features being used for training ((options: None or feature list) All feats: ["ignition_grid", "esc_fires_grid", "fuel_grid", "elevation_grid", "weather_grid", "wind_grid"])
         """
@@ -107,8 +109,10 @@ class GridDataset(Dataset):
         self.out_norm = out_norm
         self.modelling_approach = modelling_approach
         self.root_dir = root_dir
+        self.mask_threshold = mask_threshold
 
         self.metadata_df = pd.read_csv(os.path.join(self.root_dir, csv_name))
+        self.metadata_df = self.metadata_df[self.metadata_df["valid_ratio"] >= self.mask_threshold]
         self.all_files = list(self.metadata_df[filename_col])
 
         self.fuel_feats_encoding = fuel_feats_encoding
