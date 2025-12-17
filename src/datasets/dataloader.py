@@ -199,6 +199,7 @@ def get_train_val_dataloader(
     feature_names_list = config.feature_names_list
     fuel_feats_encoding = config.fuel_feats_encoding
     normalize_fuel_feats_ordinal = config.normalize_fuel_feats_ordinal
+    mask_threshold = config.mask_threshold
 
     train_dataset = GridDataset(
         csv_name=train_csv_name,
@@ -208,6 +209,7 @@ def get_train_val_dataloader(
         fuel_feats_encoding=fuel_feats_encoding,
         normalize_fuel_feats_ordinal=normalize_fuel_feats_ordinal,
         modelling_approach=modelling_approach,
+        mask_threshold=mask_threshold,
         transform=transform,
         feature_names_list=feature_names_list,
     )
@@ -219,6 +221,7 @@ def get_train_val_dataloader(
         fuel_feats_encoding=fuel_feats_encoding,
         normalize_fuel_feats_ordinal=normalize_fuel_feats_ordinal,
         modelling_approach=modelling_approach,
+        mask_threshold=mask_threshold,
         transform=transform,
         feature_names_list=feature_names_list,
     )
@@ -247,6 +250,7 @@ def get_test_loader(
     feature_names_list = config.feature_names_list
     fuel_feats_encoding = config.fuel_feats_encoding
     normalize_fuel_feats_ordinal = config.normalize_fuel_feats_ordinal
+    mask_threshold = config.mask_threshold
 
     test_dataset = GridDataset(
         csv_name=test_csv_name,
@@ -256,6 +260,7 @@ def get_test_loader(
         fuel_feats_encoding=fuel_feats_encoding,
         normalize_fuel_feats_ordinal=normalize_fuel_feats_ordinal,
         modelling_approach=modelling_approach,
+        mask_threshold=mask_threshold,
         transform=transform,
         feature_names_list=feature_names_list,
     )
