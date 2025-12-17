@@ -4,40 +4,37 @@ import torch.nn as nn
 
 
 class BCELoss(nn.Module):
-    def __init__(self):
+    def __init__(self, eps: float = 1e-8):
         super().__init__()
-        # internally handles sigmoid
-        self.bce = nn.BCEWithLogitsLoss(reduction="none")
+        self.eps = eps
+        self.bce = nn.BCEWithLogitsLoss(reduction="none")  # internally handles sigmoid
 
     def forward(self, logits: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None):
-        bce_loss = self.bce(logits, targets)
+        loss = self.bce(logits, targets)  # same shape as logits/targets
 
-        if mask is not None:
-            bce_loss = bce_loss * mask
-            return bce_loss.sum() / mask.sum()
+        if mask is None:
+            return loss.mean()
 
-        return bce_loss.mean()
+        mask = mask.to(dtype=loss.dtype)  # ensure float mask (1=valid, 0=invalid)
+        loss = loss * mask
+        denom = mask.sum().clamp_min(self.eps)
+        return loss.sum() / denom
 
 
 class MSELoss(nn.Module):
-    def __init__(self):
+    def __init__(self, eps: float = 1e-8):
         super().__init__()
+        self.eps = eps
         self.mse = nn.MSELoss(reduction="none")
 
     def forward(self, logits: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None):
-        mse_loss = self.mse(logits, targets)
+        loss = self.mse(logits, targets)
 
-        if mask is not None:
-            mse_loss = mse_loss * mask
-            return mse_loss.sum() / mask.sum()
+        if mask is None:
+            return loss.mean()
 
-        return mse_loss.mean()
+        mask = mask.to(dtype=loss.dtype)  # ensure float mask (1=valid, 0=invalid)
+        loss = loss * mask
+        denom = mask.sum().clamp_min(self.eps)
 
-
-# TODO: remove later
-if __name__ == "__main__":
-    preds = torch.randn(2, 1, 256, 256)
-    y = torch.ones(2, 1, 256, 256)
-    loss_fn = BCELoss()
-    output = loss_fn(preds, y)
-    print(f"Loss: {output.item()}")
+        return loss.sum() / denom

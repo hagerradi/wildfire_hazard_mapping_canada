@@ -8,7 +8,7 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 
 from config import DataConfig
-from data_preparation.grid_loader.utils import fuel_ranking
+from data_preparation.grid_loader.utils import fuel_ranking, get_range_burn_prob
 
 # Global Burn Count Min Max
 BURN_COUNT_MAX = 1336.0
@@ -115,6 +115,9 @@ class GridDataset(Dataset):
         self.metadata_df = self.metadata_df[self.metadata_df["valid_ratio"] >= self.mask_threshold]
         self.all_files = list(self.metadata_df[filename_col])
 
+        if self.modelling_approach == "1" and self.out_norm == "min_max":
+            self.BURN_PROB_MAX, self.BURN_PROB_MIN = get_range_burn_prob(os.path.dirname(self.root_dir))
+
         self.fuel_feats_encoding = fuel_feats_encoding
         self.normalize_fuel_feats_ordinal = normalize_fuel_feats_ordinal
         if self.out_norm == "total_iters":
@@ -152,7 +155,8 @@ class GridDataset(Dataset):
         output_arr[np.isnan(output_arr)] = 0.0
 
         assert np.all(np.isnan(input_arr) == np.isnan(input_arr[..., :1])), "NaN mask differs across channels!"
-        mask = np.isnan(input_arr[:, :, 0])  # return a mask for the loss function
+        mask = ~np.isnan(input_arr[:, :, 0])  # mask is True where not NaN, False where NaN
+
         # Processing one hot encoding
         if self.fuel_feats_encoding == "one_hot":  # (H,W,C+20)
             input_arr = one_hot_encode(arr=input_arr, channel_idx=self.fuel_feat_index, num_classes=int(MAX_FUEL_GRID + 1))
@@ -167,12 +171,14 @@ class GridDataset(Dataset):
                     MAX_FUEL_GRID - MIN_FUEL_GRID
                 )
 
-        # TODO/Assumption: this min_max normalization supports season/cause scenarios only - modelling approach 2
         if self.modelling_approach == "2":
             if self.out_norm == "min_max":
                 output_arr = (output_arr - BURN_COUNT_MIN) / (BURN_COUNT_MAX - BURN_COUNT_MIN)
             elif self.out_norm in ["total_iters", "season_cause_iters"]:
                 output_arr /= self.out_norm_array[idx]
+        elif self.modelling_approach == "1" and self.out_norm == "min_max":
+            output_arr = (output_arr - self.BURN_PROB_MIN) / (self.BURN_PROB_MAX - self.BURN_PROB_MIN)
+            output_arr = np.clip(output_arr, 0.0, 1.0)
 
         return (
             torch.from_numpy(input_arr).permute(2, 0, 1),
