@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 
 from data_preparation.generate_season_cause_output import FireCountRasterizer
-from data_preparation.grid_loader.utils import load_fire_shapefiles
+from data_preparation.grid_loader.utils import NODATA, load_fire_shapefiles
 from data_preparation.hexel_loader import load_features_per_hexel
 from data_preparation.utils import find_hex_ids
 
@@ -51,26 +51,29 @@ def get_split_hexel_window(
     # Adding padding for the edges
     pad_h = stride_h - (H - win_h) % stride_h if (H - win_h) % stride_h != 0 else 0
     pad_w = stride_w - (W - win_w) % stride_w if (W - win_w) % stride_w != 0 else 0
-    season_cause_stacked_feats = np.pad(
-        season_cause_stacked_feats, ((0, 0), (0, pad_h), (0, pad_w), (0, 0)), mode="constant", constant_values=np.nan
+    season_cause_stacked_feats_padded = np.pad(
+        season_cause_stacked_feats, ((0, 0), (0, pad_h), (0, pad_w), (0, 0)), mode="constant", constant_values=NODATA
     )
-    season_cause_mask = np.pad(season_cause_mask, ((0, pad_h), (0, pad_w)), mode="constant", constant_values=1.0)
-    num_season_cause, H, W, _ = season_cause_stacked_feats.shape
+    season_cause_mask_padded = np.pad(
+        season_cause_mask, ((0, 0), (0, pad_h), (0, pad_w)), mode="constant", constant_values=1.0
+    )  # Mask should be 1 where nan
+    # season_cause_stacked_feats_padded[:,:,:,-1][season_cause_mask_padded] = 0.0 #For outputs, mask means 0 probability
+    _, H_pad, W_pad, _ = season_cause_stacked_feats_padded.shape
 
     window_area = win_h * win_w
     num_total_windows, num_valid_windows = 0.0, 0.0
     valid_coords = []
     for i in range(num_season_cause):
-        stacked_feats = season_cause_stacked_feats[i]
-        mask = season_cause_mask[i]
+        stacked_feats = season_cause_stacked_feats_padded[i]
+        mask = season_cause_mask_padded[i]
         if season_cause_mapping is None:
             season, cause = "all", "all"
             season_cause_unique_iters = None
         else:
             season, cause = season_cause_mapping[i]
             season_cause_unique_iters = rasterizer.get_num_unique_iters(season=season, cause=cause)
-        for row in range(0, H - win_h + 1, stride_h):
-            for col in range(0, W - win_w + 1, stride_w):
+        for row in range(0, H_pad - win_h + 1, stride_h):
+            for col in range(0, W_pad - win_w + 1, stride_w):
                 num_total_windows += 1
                 # Extract the mask patch
                 mask_window = mask[row : row + win_h, col : col + win_w]
@@ -159,7 +162,7 @@ def main():
     parser.add_argument("--win_h", type=int, help="Height of the window", default=128)
     parser.add_argument("--win_w", type=int, help="Height of the window", default=128)
     parser.add_argument("--overlap_ratio", type=float, help="Overlap ratio between windows", default=0.2)
-    parser.add_argument("--mask_threshold", type=float, help="Threshold to consider window as valid", default=0.5)
+    parser.add_argument("--mask_threshold", type=float, help="Threshold to consider window as valid", default=0.01)
 
     args = parser.parse_args()
 

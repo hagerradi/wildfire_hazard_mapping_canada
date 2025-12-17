@@ -49,7 +49,7 @@ def generate_feature_channel_map(feature_list: list[np.ndarray], feature_channel
 
 
 def load_features_per_hexel(
-    root_dir: str, hex_id: str, feature_channel_map_path: str, modelling_approach: int = 1, output_type: str = "prob"
+    root_dir: str, hex_id: str, feature_channel_map_path: str, modelling_approach: int = 1, output_type: str = "count"
 ) -> tuple[np.ndarray, np.ndarray, dict[int, tuple[int, int]] | None]:
     """
     Load all data (features and output) per hexel
