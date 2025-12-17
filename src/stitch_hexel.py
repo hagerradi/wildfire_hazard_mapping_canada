@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 
-def stitch_windows(windows, coords, original_shape, mode="average"):
+def stitch_windows(windows, coords, masks, original_shape, mode="average"):
     """
     Reconstructs an image from overlapping windows using either averaging or maximization.
 
@@ -24,7 +24,7 @@ def stitch_windows(windows, coords, original_shape, mode="average"):
         accumulator = np.zeros(original_shape, dtype=dtype)
         counter = np.zeros(original_shape, dtype=dtype)
 
-        for window, (r, c) in zip(windows, coords):
+        for window, mask, (r, c) in zip(windows, masks, coords):
             h_win, w_win = window.shape[:2]
 
             # Safe slicing
@@ -34,11 +34,10 @@ def stitch_windows(windows, coords, original_shape, mode="average"):
             w_paste = c_end - c
 
             # Accumulate Sum and Count
-            accumulator[r:r_end, c:c_end, :] += window[:h_paste, :w_paste, :]
-            counter[r:r_end, c:c_end, :] += 1.0
+            accumulator[r:r_end, c:c_end] += window[:h_paste, :w_paste]
+            counter[r:r_end, c:c_end] += mask[:h_paste, :w_paste]
 
         # Normalize
-        accumulator[accumulator == np.nan] = 0.0
         valid_mask = counter > 0
         reconstructed = np.zeros_like(accumulator)
         reconstructed[valid_mask] = accumulator[valid_mask] / counter[valid_mask]
@@ -60,10 +59,10 @@ def stitch_windows(windows, coords, original_shape, mode="average"):
             w_paste = c_end - c
 
             # Update the area with the element-wise maximum
-            current_area = accumulator[r:r_end, c:c_end, :]
-            new_data = window[:h_paste, :w_paste, :]
+            current_area = accumulator[r:r_end, c:c_end]
+            new_data = window[:h_paste, :w_paste]
 
-            accumulator[r:r_end, c:c_end, :] = np.maximum(current_area, new_data)
+            accumulator[r:r_end, c:c_end] = np.maximum(current_area, new_data)
 
         # Replace remaining -inf with 0 (areas where no window was placed)
         accumulator[np.isinf(accumulator)] = 0.0
@@ -105,30 +104,33 @@ if __name__ == "__main__":
     df = pd.read_csv(
         "../yan_bp3/data_samples_approach_2/test_indices.csv"
     )  # pd.read_csv("../yan_bp3/data_samples_approach_1/test_indices.csv")
-    # df = df[(df["season"]==1) &(df["cause"]==1)]
+    df = df[(df["season"] == 1) & (df["cause"] == 1)]
     base_dir = "../yan_bp3/data_samples_approach_2"
     original_hexel = load_raster(
         "../yan_bp3/hex41/outputs/hex_41_season_1_cause_1_bc.tif"
     ).data  # hex_41_season_1_cause_1_bc.tif hex_41_20000_iter_bp.tif
     H, W = original_hexel.shape[:2]
-    original_hexel = original_hexel[:, :, np.newaxis]
+    # original_hexel = original_hexel[:, :, np.newaxis]
     original_shape = original_hexel.shape
     all_data_points = []
     all_locations = []
+    all_masks = []
     for data in np.array(df):
         path = data[0]
         array = np.load(os.path.join(base_dir, path))[:, :, -1]
+        mask = ~np.isnan(array)
         row, col = data[5], data[6]
         all_locations.append((row, col))
-        all_data_points.append(array[:, :, np.newaxis])
+        all_data_points.append(array)
+        all_masks.append(mask)
 
-    reconstructed_hexel = stitch_windows(all_data_points, all_locations, original_shape, mode="average")
+    reconstructed_hexel = stitch_windows(all_data_points, all_locations, all_masks, original_shape, mode="max")
     h_win, w_win = 128, 128
     win_diff = []
     for r, c in all_locations:
         r_end = min(r + h_win, original_shape[0])
         c_end = min(c + w_win, original_shape[1])
-        win_diff.append(abs(np.sum(original_hexel[r:r_end, c:c_end, :] - reconstructed_hexel[r:r_end, c:c_end, :])))
+        win_diff.append(abs(np.sum(original_hexel[r:r_end, c:c_end] - reconstructed_hexel[r:r_end, c:c_end])))
     print("The difference between the 2 hexels is", np.sum(original_hexel.reshape(H, W) - reconstructed_hexel.reshape(H, W)))
     # print(win_diff)
     print(np.sum(win_diff))
