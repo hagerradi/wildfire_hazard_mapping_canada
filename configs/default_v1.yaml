@@ -30,7 +30,7 @@ data:
 
   output_normalization: "min_max"
 
-  feature_names_list: ["ignition_grid", "fuel_grid", "elevation_grid"]
+  feature_names_list: ["ignition_grid", "fuel_grid", "elevation_grid"] # ["ignition_grid", "esc_fires_grid", "fuel_grid", "elevation_grid", "weather_grid", "wind_grid"]
   fuel_feats_encoding: "ordinal" # ordinal, one_hot
   normalize_fuel_feats_ordinal: true
 
@@ -38,7 +38,7 @@ logger:
   project_name: "nrcan-wildfireriskmapping"
   workspace: "mila-amlrt"
   experiment_name: "unet_run_001_approach_1"
-  tags: ["baseline", "first-exp", "modelling_approach=1", "sigmoid+mse_loss", "3inputfeatures", "standardized_probs", "masked_metrics"]
+  tags: ["baseline", "first-exp", "modelling_approach=1", "sigmoid+mse", "3inputfeatures", "standardized_probs", "masked_metrics"]
   # log loss and metrics on comet every n steps
   log_every_n_step: 5
 
