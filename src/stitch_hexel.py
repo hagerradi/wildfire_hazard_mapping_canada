@@ -11,7 +11,7 @@ def stitch_windows(
     Args:
         windows (list of np.array): List of window arrays (H_win, W_win, C).
         coords (list of tuples): List of (row, col) top-left coordinates for each window.
-        masks (list of np.ndarray): List of masks for the windows
+        masks (list of np.ndarray): List of masks for the windows. True if valid value
         original_shape (tuple): Shape of the target hexel (H, W, C).
         mode (str): 'average' to mean overlapping pixels, 'max' to take the maximum.
 
