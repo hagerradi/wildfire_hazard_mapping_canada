@@ -146,6 +146,7 @@ class GridDataset(Dataset):
         data = np.load(file_path).astype(np.float32)
         input_arr, output_arr = data[:, :, :-1], data[:, :, -1]
         input_arr = input_arr[:, :, self.channel_indices] if self.channel_indices else input_arr
+        output_arr[np.isnan(output_arr)] = 0.0
 
         assert np.all(np.isnan(input_arr) == np.isnan(input_arr[..., :1])), "NaN mask differs across channels!"
         mask = np.isnan(input_arr[:, :, 0])  # return a mask for the loss function
