@@ -92,7 +92,7 @@ class Trainer:
     def _step(self, batch: Any) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Default step. Expects batch -> (inputs, targets, masks).
-        Returns (predictions, loss, targets_on_device).
+        Returns (predictions, loss, targets_on_device, masks_on_device).
         """
         inputs, targets, masks = batch
         inputs = inputs.to(self.device)
