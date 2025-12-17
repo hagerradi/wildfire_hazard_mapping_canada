@@ -87,7 +87,7 @@ class GridDataset(Dataset):
         fuel_feats_encoding: str = "ordinal",
         normalize_fuel_feats_ordinal: bool | None = True,
         modelling_approach: str = "2",
-        mask_threshold: float = 0.01,
+        valid_mask_threshold: float = 0.01,
         transform: Callable | None = None,
         feature_names_list: list[str] | None = None,
     ):
@@ -109,10 +109,10 @@ class GridDataset(Dataset):
         self.out_norm = out_norm
         self.modelling_approach = modelling_approach
         self.root_dir = root_dir
-        self.mask_threshold = mask_threshold
+        self.valid_mask_threshold = valid_mask_threshold
 
         self.metadata_df = pd.read_csv(os.path.join(self.root_dir, csv_name))
-        self.metadata_df = self.metadata_df[self.metadata_df["valid_ratio"] >= self.mask_threshold]
+        self.metadata_df = self.metadata_df[self.metadata_df["valid_ratio"] > self.valid_mask_threshold]
         self.all_files = list(self.metadata_df[filename_col])
 
         if self.modelling_approach == "1" and self.out_norm == "min_max":
@@ -205,7 +205,7 @@ def get_train_val_dataloader(
     feature_names_list = config.feature_names_list
     fuel_feats_encoding = config.fuel_feats_encoding
     normalize_fuel_feats_ordinal = config.normalize_fuel_feats_ordinal
-    mask_threshold = config.mask_threshold
+    valid_mask_threshold = config.valid_mask_threshold
 
     train_dataset = GridDataset(
         csv_name=train_csv_name,
@@ -215,7 +215,7 @@ def get_train_val_dataloader(
         fuel_feats_encoding=fuel_feats_encoding,
         normalize_fuel_feats_ordinal=normalize_fuel_feats_ordinal,
         modelling_approach=modelling_approach,
-        mask_threshold=mask_threshold,
+        valid_mask_threshold=valid_mask_threshold,
         transform=transform,
         feature_names_list=feature_names_list,
     )
@@ -227,7 +227,7 @@ def get_train_val_dataloader(
         fuel_feats_encoding=fuel_feats_encoding,
         normalize_fuel_feats_ordinal=normalize_fuel_feats_ordinal,
         modelling_approach=modelling_approach,
-        mask_threshold=mask_threshold,
+        valid_mask_threshold=valid_mask_threshold,
         transform=transform,
         feature_names_list=feature_names_list,
     )
@@ -256,7 +256,7 @@ def get_test_loader(
     feature_names_list = config.feature_names_list
     fuel_feats_encoding = config.fuel_feats_encoding
     normalize_fuel_feats_ordinal = config.normalize_fuel_feats_ordinal
-    mask_threshold = config.mask_threshold
+    valid_mask_threshold = config.valid_mask_threshold
 
     test_dataset = GridDataset(
         csv_name=test_csv_name,
@@ -266,7 +266,7 @@ def get_test_loader(
         fuel_feats_encoding=fuel_feats_encoding,
         normalize_fuel_feats_ordinal=normalize_fuel_feats_ordinal,
         modelling_approach=modelling_approach,
-        mask_threshold=mask_threshold,
+        valid_mask_threshold=valid_mask_threshold,
         transform=transform,
         feature_names_list=feature_names_list,
     )
