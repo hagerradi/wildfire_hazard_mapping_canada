@@ -10,7 +10,7 @@ This saves the rasters in the original data folders under `outputs`
 
 Step 2: Process hexel data into multiple square windows, which will be our data samples:
 ```bash
-python -m data_preparation.process_hexels_into_grids --root_dir="../yan_bp3" --modelling_approach=2 --output_type="count" --win_h=128 --win_w=128 --overlap_ratio=0.2 --mask_threshold=0.5
+python -m data_preparation.process_hexels_into_grids --root_dir="../yan_bp3" --modelling_approach=2 --output_type="count" --win_h=128 --win_w=128 --overlap_ratio=0.2
 ```
 
 Step 3: Create training, validation and test splits.
