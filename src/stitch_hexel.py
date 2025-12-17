@@ -25,6 +25,7 @@ def stitch_windows(windows, coords, masks, original_shape, mode="average"):
         counter = np.zeros(original_shape, dtype=dtype)
 
         for window, mask, (r, c) in zip(windows, masks, coords):
+            window[~mask] = 0.0
             h_win, w_win = window.shape[:2]
 
             # Safe slicing
@@ -49,9 +50,9 @@ def stitch_windows(windows, coords, masks, original_shape, mode="average"):
         # Initialize with negative infinity so any real data (even negative) will override it
         accumulator = np.full(original_shape, -np.inf, dtype=dtype)
 
-        for window, (r, c) in zip(windows, coords):
+        for window, mask, (r, c) in zip(windows, masks, coords):
             h_win, w_win = window.shape[:2]
-
+            window[~mask] = -np.inf
             # Safe slicing
             r_end = min(r + h_win, original_shape[0])
             c_end = min(c + w_win, original_shape[1])
