@@ -111,7 +111,9 @@ class GridDataset(Dataset):
         self.metadata_df = pd.read_csv(os.path.join(self.root_dir, csv_name))
         self.all_files = list(self.metadata_df[filename_col])
 
-        self.BURN_PROB_MAX, self.BURN_PROB_MIN = get_range_burn_prob(os.path.dirname(self.root_dir))
+        if self.modelling_approach == "1" and self.out_norm == "min_max":
+            self.BURN_PROB_MAX, self.BURN_PROB_MIN = get_range_burn_prob(os.path.dirname(self.root_dir))
+
         self.fuel_feats_encoding = fuel_feats_encoding
         self.normalize_fuel_feats_ordinal = normalize_fuel_feats_ordinal
         if self.out_norm == "total_iters":
