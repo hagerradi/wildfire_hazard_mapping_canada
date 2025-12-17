@@ -1,16 +1,17 @@
-import os
-
 import numpy as np
 import pandas as pd
 
 
-def stitch_windows(windows, coords, masks, original_shape, mode="average"):
+def stitch_windows(
+    windows: list[np.ndarray], coords: list[tuple], masks: list[np.ndarray], original_shape: tuple, mode: str = "average"
+) -> np.ndarray:
     """
     Reconstructs an image from overlapping windows using either averaging or maximization.
 
     Args:
         windows (list of np.array): List of window arrays (H_win, W_win, C).
         coords (list of tuples): List of (row, col) top-left coordinates for each window.
+        masks (list of np.ndarray): List of masks for the windows
         original_shape (tuple): Shape of the target hexel (H, W, C).
         mode (str): 'average' to mean overlapping pixels, 'max' to take the maximum.
 
