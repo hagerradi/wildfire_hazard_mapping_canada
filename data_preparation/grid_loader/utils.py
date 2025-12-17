@@ -173,6 +173,12 @@ def get_range_burn_prob(root_dir: str) -> tuple[float, float]:
             burn_prob_min_value = min(burn_prob_min_value, out_grid.min())
     return (burn_prob_max_value, burn_prob_min_value)
 
+  
+def denormalize_burn_count(data: np.ndarray, min_val: float, max_val: float) -> np.ndarray:
+    """Reverse the count normalization to recover true counts."""
+    data = data.astype("float32")
+    return data * (max_val - min_val) + min_val
+
 
 def visualize_ignition_grid(grid: np.ndarray, cause: int, season: int):
     """
