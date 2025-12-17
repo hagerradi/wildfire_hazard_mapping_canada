@@ -1,20 +1,20 @@
 # Where to save checkpoints
-save_dir: "experiments/unet_run_001"
+save_dir: "experiments/unet_run_001_approach_2"
 
 # approaches 1 or 2
 modelling_approach: "2"
 
 model:
-  input_channels: 36 # if using one hot encoding, we add more 14 more features
+  input_channels: 3 # if using one hot encoding, we add more 14 more features
   num_classes: 1
 
 optimizer:
   name: "AdamW" # "SGD", "Adam", "AdamW"
   lr: 1.0e-3
-  loss_name: "bce" # mse, bce, etc
+  loss_name: "mse" # mse, bce, etc
 
 training:
-  max_epochs: 10
+  max_epochs: 20
   # Logging frequency in epochs
   log_every_n_epoch: 1
 
@@ -25,20 +25,20 @@ data:
   val_split: "val_indices.csv"
   test_split: "test_indices.csv"
 
-  batch_size: 128
-  num_workers: 0
+  batch_size: 64
+  num_workers: 2
 
-  output_normalization: "min_max" # options: min_max for approach 2, prob for approach 1
+  output_normalization: "min_max"
 
-  feature_names_list: ["ignition_grid", "esc_fires_grid", "fuel_grid", "elevation_grid", "weather_grid", "wind_grid"]
+  feature_names_list: ["ignition_grid", "fuel_grid", "elevation_grid"] # ["ignition_grid", "esc_fires_grid", "fuel_grid", "elevation_grid", "weather_grid", "wind_grid"]
   fuel_feats_encoding: "ordinal" # ordinal, one_hot
   normalize_fuel_feats_ordinal: true
 
 logger:
   project_name: "nrcan-wildfireriskmapping"
   workspace: "mila-amlrt"
-  experiment_name: "unet-baseline-v1"
-  tags: ["baseline", "first-exp", "modelling_approach=2"]
+  experiment_name: "unet_run_001_approach_2"
+  tags: ["baseline", "first-exp", "modelling_approach=2", "sigmoid+mse_loss", "3inputfeatures", "standardized_probs", "masked_metrics"]
   # log loss and metrics on comet every n steps
   log_every_n_step: 5
 

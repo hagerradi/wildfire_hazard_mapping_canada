@@ -1,49 +1,84 @@
 # Definitions of metrics for model evaluation
-
 import torch
 import torch.nn.functional as F
 from torchmetrics.functional.image import structural_similarity_index_measure
 from torchmetrics.functional.regression import spearman_corrcoef
 
 
-def compute_mse(preds: torch.Tensor, targets: torch.Tensor):
-    """Computes Mean Squared Error (MSE)."""
-    return F.mse_loss(preds, targets)
+def compute_mse(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None, eps: float = 1e-8):
+    """Computes Mean Squared Error (MSE), optionally using a mask."""
+    if mask is None:
+        return F.mse_loss(preds, targets, reduction="mean")
+
+    mask = mask.to(dtype=preds.dtype)
+    loss = F.mse_loss(preds, targets, reduction="none")
+
+    # apply mask + normalize by valid count
+    loss = loss * mask
+    denom = mask.sum().clamp_min(eps)
+    return loss.sum() / denom
 
 
-def compute_mae(preds: torch.Tensor, targets: torch.Tensor):
-    """Computes Mean Absolute Error (MAE)."""
-    return F.l1_loss(preds, targets)
+def compute_mae(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None, eps: float = 1e-8):
+    """Computes Mean Absolute Error (MAE), optionally using a mask."""
+    if mask is None:
+        return F.l1_loss(preds, targets, reduction="mean")
+
+    mask = mask.to(dtype=preds.dtype)
+    loss = F.l1_loss(preds, targets, reduction="none")
+
+    # apply mask + normalize by valid count
+    loss = loss * mask
+    denom = mask.sum().clamp_min(eps)
+    return loss.sum() / denom
 
 
-def compute_spearman(preds: torch.Tensor, targets: torch.Tensor):
+def compute_spearman(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None):
     """
-    Computes Spearman correlation per sample, then averages.
+    Computes Spearman correlation per sample, then averages. Optionally uses a mask.
     """
-    # Generate flattened preds and targets
     batch_size = preds.size(0)
-    flat_preds = preds.view(batch_size, -1)
-    flat_targets = targets.view(batch_size, -1)
+    flat_preds = preds.reshape(batch_size, -1)
+    flat_targets = targets.reshape(batch_size, -1)
 
-    # We compute spearman between each pair of preds-targets, then average
-    corrs = [spearman_corrcoef(flat_preds[i], flat_targets[i]) for i in range(batch_size)]
-    return torch.stack(corrs).mean()
+    min_valid = 2
+
+    corrs = []
+    if mask is None:
+        for i in range(batch_size):
+            corrs.append(spearman_corrcoef(flat_preds[i], flat_targets[i]))
+    else:
+        valid_mask = mask.bool().reshape(batch_size, -1)  # True = valid
+        for i in range(batch_size):
+            sample_valid_mask = valid_mask[i]
+            if sample_valid_mask.sum() < min_valid:
+                corrs.append(torch.tensor(float("nan"), device=preds.device))
+                continue
+            corrs.append(spearman_corrcoef(flat_preds[i][sample_valid_mask], flat_targets[i][sample_valid_mask]))
+
+    return torch.nanmean(torch.stack(corrs))
 
 
-def compute_ssim(preds: torch.Tensor, targets: torch.Tensor):
+def compute_ssim(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor | None = None):
     """
-    Computes Structural Similarity Index Measure (SSIM).
+    Computes SSIM over valid pixels only.
+    Assumes preds/targets ∈ [0, 1].
     """
-    # we assume here our preds range will be between 0-1
-    return structural_similarity_index_measure(preds, targets, data_range=1.0)
+    if mask is None:
+        return structural_similarity_index_measure(preds, targets, data_range=1.0)
 
+    # Ensure mask is boolean and broadcastable
+    mask_bool = mask.bool()
+    # If mask is missing channel dim, unsqueeze to match preds/targets
+    while mask_bool.dim() < preds.dim():
+        mask_bool = mask_bool.unsqueeze(1)
 
-# TODO: remove later
-if __name__ == "__main__":
-    target = torch.rand(8, 1, 64, 64)
-    pred = target * 0.75
+    # If all masked, return nan
+    if mask_bool.sum() == 0:
+        return torch.tensor(float("nan"), device=preds.device)
 
-    print(f"MSE: {compute_mse(pred, target):.4f}")
-    print(f"MAE: {compute_mae(pred, target):.4f}")
-    print(f"Spearman: {compute_spearman(pred, target):.4f}")
-    print(f"SSIM: {compute_ssim(pred, target):.4f}")
+    # Set masked (invalid) pixels to 0 (or another constant)
+    preds_masked = preds.clone().masked_fill(~mask_bool, 0.0)
+    targets_masked = targets.clone().masked_fill(~mask_bool, 0.0)
+
+    return structural_similarity_index_measure(preds_masked, targets_masked, data_range=1.0)

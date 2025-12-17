@@ -158,6 +158,22 @@ def get_range_burn_count(root_dir: str) -> tuple[float, float]:
     return (BURN_COUNT_MAX, BURN_COUNT_MIN)
 
 
+def get_range_burn_prob(root_dir: str) -> tuple[float, float]:
+    """Get the maximum and minimum burn probability for standardization - approach 1"""
+    all_hex_ids = find_hex_ids(root_dir)
+    burn_prob_max_value, burn_prob_min_value = -np.inf, np.inf
+    for hex_id in all_hex_ids:
+        hex_dir = os.path.join(root_dir, f"hex{hex_id}")
+        outputs_dir = os.path.join(hex_dir, OUTPUT_BURN_PROB_PATH)
+        pattern = f"hex_{hex_id}_*iter_bp.tif"
+        list_burn_count_season_cause_map_paths = list(Path(outputs_dir).glob(pattern))
+        for burn_count_season_cause_map_path in list_burn_count_season_cause_map_paths:
+            out_grid = load_raster(str(burn_count_season_cause_map_path))
+            burn_prob_max_value = max(burn_prob_max_value, out_grid.max())
+            burn_prob_min_value = min(burn_prob_min_value, out_grid.min())
+    return (burn_prob_max_value, burn_prob_min_value)
+
+
 def denormalize_burn_count(data: np.ndarray, min_val: float, max_val: float) -> np.ndarray:
     """Reverse the count normalization to recover true counts."""
     data = data.astype("float32")
