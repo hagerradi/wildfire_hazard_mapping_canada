@@ -87,6 +87,7 @@ class GridDataset(Dataset):
         fuel_feats_encoding: str = "ordinal",
         normalize_fuel_feats_ordinal: bool | None = True,
         modelling_approach: str = "2",
+        valid_mask_threshold: float = 0.01,
         transform: Callable | None = None,
         feature_names_list: list[str] | None = None,
     ):
@@ -99,6 +100,7 @@ class GridDataset(Dataset):
             fuel_feats_encoding(str): How to process the fuel features [Options: ordinal, one_hot]
             normalize_fuel_feats_ordinal (bool): If we want to normalize the ordinal encoded fuel feats
             modelling_approach (str): The approach used for modelling
+            mask_threshold (float): The threshold for how much valid data should be present in a data sample
             transform (callable, optional): Optional transform to be applied on a sample.
             feature_names_list (list): List of features being used for training ((options: None or feature list) All feats: ["ignition_grid", "esc_fires_grid", "fuel_grid", "elevation_grid", "weather_grid", "wind_grid"])
         """
@@ -107,8 +109,10 @@ class GridDataset(Dataset):
         self.out_norm = out_norm
         self.modelling_approach = modelling_approach
         self.root_dir = root_dir
+        self.valid_mask_threshold = valid_mask_threshold
 
         self.metadata_df = pd.read_csv(os.path.join(self.root_dir, csv_name))
+        self.metadata_df = self.metadata_df[self.metadata_df["valid_ratio"] > self.valid_mask_threshold]
         self.all_files = list(self.metadata_df[filename_col])
 
         if self.modelling_approach == "1" and self.out_norm == "min_max":
@@ -148,6 +152,7 @@ class GridDataset(Dataset):
         data = np.load(file_path).astype(np.float32)
         input_arr, output_arr = data[:, :, :-1], data[:, :, -1]
         input_arr = input_arr[:, :, self.channel_indices] if self.channel_indices else input_arr
+        output_arr[np.isnan(output_arr)] = 0.0
 
         assert np.all(np.isnan(input_arr) == np.isnan(input_arr[..., :1])), "NaN mask differs across channels!"
         mask = ~np.isnan(input_arr[:, :, 0])  # mask is True where not NaN, False where NaN
@@ -200,6 +205,7 @@ def get_train_val_dataloader(
     feature_names_list = config.feature_names_list
     fuel_feats_encoding = config.fuel_feats_encoding
     normalize_fuel_feats_ordinal = config.normalize_fuel_feats_ordinal
+    valid_mask_threshold = config.valid_mask_threshold
 
     train_dataset = GridDataset(
         csv_name=train_csv_name,
@@ -209,6 +215,7 @@ def get_train_val_dataloader(
         fuel_feats_encoding=fuel_feats_encoding,
         normalize_fuel_feats_ordinal=normalize_fuel_feats_ordinal,
         modelling_approach=modelling_approach,
+        valid_mask_threshold=valid_mask_threshold,
         transform=transform,
         feature_names_list=feature_names_list,
     )
@@ -220,6 +227,7 @@ def get_train_val_dataloader(
         fuel_feats_encoding=fuel_feats_encoding,
         normalize_fuel_feats_ordinal=normalize_fuel_feats_ordinal,
         modelling_approach=modelling_approach,
+        valid_mask_threshold=valid_mask_threshold,
         transform=transform,
         feature_names_list=feature_names_list,
     )
@@ -248,6 +256,7 @@ def get_test_loader(
     feature_names_list = config.feature_names_list
     fuel_feats_encoding = config.fuel_feats_encoding
     normalize_fuel_feats_ordinal = config.normalize_fuel_feats_ordinal
+    valid_mask_threshold = config.valid_mask_threshold
 
     test_dataset = GridDataset(
         csv_name=test_csv_name,
@@ -257,6 +266,7 @@ def get_test_loader(
         fuel_feats_encoding=fuel_feats_encoding,
         normalize_fuel_feats_ordinal=normalize_fuel_feats_ordinal,
         modelling_approach=modelling_approach,
+        valid_mask_threshold=valid_mask_threshold,
         transform=transform,
         feature_names_list=feature_names_list,
     )
