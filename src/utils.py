@@ -9,7 +9,22 @@ def visualize_model_predictions(
     n_samples: int = 4,
 ) -> None:
     """
-    visualize model predictions vs. targets for some random samples
+    Visualize model predictions versus targets for a selection of random samples.
+
+    Parameters
+    ----------
+    test_loader : DataLoader
+        DataLoader providing test batches as (inputs, targets, masks).
+    test_predictions : numpy.ndarray
+        Array containing model predictions corresponding to all samples in
+        ``test_loader``, with shape ``(N, ...)`` or ``(N, 1, ...)``.
+    n_samples : int, optional
+        Number of random samples to visualize. Defaults to 4.
+
+    Returns
+    -------
+    None
+        This function creates matplotlib figures and displays them.
     """
     all_targets = []
     all_masks = []
