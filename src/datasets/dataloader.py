@@ -183,7 +183,7 @@ class GridDataset(Dataset):
         return (
             torch.from_numpy(input_arr).permute(2, 0, 1),
             torch.from_numpy(np.expand_dims(output_arr, 0)),
-            torch.from_numpy(np.expand_dims(mask.astype(np.uint8), 0)),
+            torch.from_numpy(np.expand_dims(mask, 0)),  # keep as boolean for efficiency
         )  # (C, H, W), (1, H, W), (1, H, W)
 
 

@@ -101,7 +101,7 @@ class Trainer:
 
         predictions = self.model(inputs)
         # for bce, we will apply sigmoid after the loss
-        if self.config.optimizer.loss_name in ["bce"]:
+        if self.config.optimizer.loss_name in ["bce", "bceloss"]:
             loss = self.loss_fn(predictions, targets, masks)
             predictions = torch.sigmoid(predictions)
         else:
