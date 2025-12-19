@@ -8,16 +8,20 @@ from src.trainer import Trainer
 
 class DummyLogger:
     def __init__(self, *args, **kwargs):
+        # Do not require any API key or external setup
         pass
 
     def log_params(self, params):
+        # Mock method: do nothing
         pass
 
     def log_metrics(self, metrics, step=None, epoch=None):
+        # Mock method: do nothing
         pass
 
     class Experiment:
         def log_model(self, name, file_or_folder, overwrite):
+            # Mock method: do nothing
             pass
 
     experiment = Experiment()
