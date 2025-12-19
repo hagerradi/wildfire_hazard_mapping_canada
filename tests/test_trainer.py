@@ -1,3 +1,5 @@
+from unittest.mock import MagicMock
+
 import pytest
 import torch
 from torch.utils.data import DataLoader, TensorDataset
@@ -6,34 +8,42 @@ from src.config import Config
 from src.trainer import Trainer
 
 
-class DummyLogger:
-    def __init__(self, *args, **kwargs):
-        # Do not require any API key or external setup
-        pass
-
-    def log_params(self, params):
-        # Mock method: do nothing
-        pass
-
-    def log_metrics(self, metrics, step=None, epoch=None):
-        # Mock method: do nothing
-        pass
-
-    class Experiment:
-        def log_model(self, name, file_or_folder, overwrite):
-            # Mock method: do nothing
-            pass
-
-    experiment = Experiment()
-
-
 class DummyLoss(torch.nn.Module):
     def forward(self, predictions, targets, masks):
+        # Constant loss just to exercise the training loop
         return torch.tensor(1.0, requires_grad=True)
 
 
 def dummy_metric(predictions, targets, masks):
+    # Constant metric just to exercise metric logging
     return torch.tensor(0.5)
+
+
+@pytest.fixture(autouse=True)
+def mock_comet_logger(monkeypatch):
+    """
+    Automatically mock the CometLogger used inside Trainer so that
+    no COMET_API_KEY is needed and no external calls are made.
+    """
+    import src.trainer as trainer_module
+
+    # Class that Trainer will call as CometLogger(...)
+    mock_logger_cls = MagicMock(name="CometLogger")
+
+    # Instance returned by that call
+    mock_logger_instance = MagicMock(name="logger_instance")
+    mock_logger_cls.return_value = mock_logger_instance
+
+    # Patch the CometLogger symbol inside src.trainer
+    monkeypatch.setattr(trainer_module, "CometLogger", mock_logger_cls, raising=True)
+
+    # If you want to assert on it later, you can return it
+    return mock_logger_instance
+
+
+def test_trainer_uses_logger(dummy_config, mock_comet_logger):
+    Trainer(dummy_config)
+    mock_comet_logger.log_params.assert_called()
 
 
 @pytest.fixture
@@ -57,12 +67,19 @@ def dummy_config(tmp_path):
             "name": "Adam",
             "lr": 0.001,
         },
-        "data": {"root_dir": "", "train_split": "", "val_split": "", "test_split": "", "fuel_feats_encoding": ""},
+        "data": {
+            "root_dir": "",
+            "train_split": "",
+            "val_split": "",
+            "test_split": "",
+            "fuel_feats_encoding": "",
+        },
         "metrics": ["mse"],
         "training": {
             "max_epochs": 1,
             "log_every_n_epoch": 1,
         },
+        # keep/remove depending on how your Config is defined
         "model_dump": lambda: {},
     }
     return Config(**config_dict)
@@ -79,9 +96,11 @@ def dummy_data():
     return loader
 
 
-def patch_trainer(trainer):
-    # Patch logger, loss, metrics for isolated testing
-    trainer.logger = DummyLogger()
+def patch_trainer(trainer: Trainer) -> Trainer:
+    """
+    Patch loss and metric functions for isolated testing.
+    Logger is already mocked globally by mock_comet_logger.
+    """
     trainer.loss_fn = DummyLoss()
     trainer.metric_functions = {"dummy": dummy_metric}
     return trainer
@@ -133,7 +152,10 @@ def test_save_and_load_model(tmp_path, dummy_config, dummy_data):
     patch_trainer(trainer)
     trainer.train_epoch(dummy_data)
     save_path = trainer.save_model(epoch=1, loss=0.5)
+
+    # Model should be saved into config.save_dir (tmp_path)
     assert tmp_path.joinpath("last.pth").exists()
+
     checkpoint = trainer.load_model(path=save_path)
     assert "model_state" in checkpoint
     assert "optimizer_state" in checkpoint
