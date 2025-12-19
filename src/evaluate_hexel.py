@@ -11,7 +11,7 @@ import yaml
 from src.config import Config
 from src.datasets.dataloader import get_test_loader
 from src.trainer import Trainer
-from utils import visualize_model_predictions
+from src.utils import visualize_model_predictions
 
 
 def parse_args() -> argparse.Namespace:
