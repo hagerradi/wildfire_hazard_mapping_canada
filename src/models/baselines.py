@@ -73,6 +73,14 @@ class UNet(nn.Module):
             nn.LeakyReLU(inplace=True),
         )
 
+    def get_nbr_parameters(self) -> tuple[int, int]:
+        """
+        Returns a tuple: (total_parameters, trainable_parameters) of the UNet.
+        """
+        total_params = sum(p.numel() for p in self.parameters())
+        trainable_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        return total_params, trainable_params
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         skip_connections = []
 
@@ -105,6 +113,12 @@ class UNet(nn.Module):
 if __name__ == "__main__":
     model = UNet(input_channels=36, num_classes=1)
     print(model)
+
+    total, trainable = model.get_nbr_parameters()
+
+    print(f"Number of total parameters:     {total:,}")
+    print(f"Number of trainable parameters: {trainable:,}")
+
     x = torch.randn(2, 36, 256, 256)  # Batch of 2, 2 channel3, 256x256
     output = model(x)
     print(f"Input shape: {x.shape}")
