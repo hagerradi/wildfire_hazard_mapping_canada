@@ -71,11 +71,12 @@ def main() -> None:
         modelling_approach=config.modelling_approach,
     )
     test_metrics, test_predictions = trainer.test(test_loader, return_predictions=True)
+
+    if args.visualize_predictions and isinstance(test_predictions, np.ndarray):
+        visualize_model_predictions(test_loader=test_loader, test_predictions=test_predictions)
+
     # Save predictions
     np.save(os.path.join(config.save_dir, "test_predictions.npy"), test_predictions)
-
-    if args.visualize_predictions:
-        visualize_model_predictions(test_loader, test_predictions)
 
     print("\n[Test metrics]")
     if isinstance(test_metrics, dict):
