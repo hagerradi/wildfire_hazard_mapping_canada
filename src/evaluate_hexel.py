@@ -11,6 +11,7 @@ import yaml
 from src.config import Config
 from src.datasets.dataloader import get_test_loader
 from src.trainer import Trainer
+from src.utils import visualize_model_predictions
 
 
 def parse_args() -> argparse.Namespace:
@@ -21,6 +22,12 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default="configs/default_v1.yaml",
         help="Path to YAML config file.",
+    )
+    parser.add_argument(
+        "--visualize_predictions",
+        type=bool,
+        default=True,
+        help="Boolean flag to visualize some random predictions vs. targets",
     )
     return parser.parse_args()
 
@@ -64,6 +71,10 @@ def main() -> None:
         modelling_approach=config.modelling_approach,
     )
     test_metrics, test_predictions = trainer.test(test_loader, return_predictions=True)
+
+    if args.visualize_predictions and isinstance(test_predictions, np.ndarray):
+        visualize_model_predictions(test_loader=test_loader, test_predictions=test_predictions)
+
     # Save predictions
     np.save(os.path.join(config.save_dir, "test_predictions.npy"), test_predictions)
 
