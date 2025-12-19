@@ -51,6 +51,12 @@ class Trainer:
         """
         self.model = UNet(input_channels=self.config.model.input_channels, num_classes=self.config.model.num_classes)
         self.model.to(self.device)
+
+        # Get model nbr of params and log them into Logger
+        total_params, trainable_params = self.model.get_nbr_parameters()
+        print(f"Model Params: Total={total_params:,} | Trainable={trainable_params:,}")
+        self.logger.log_metrics({"model_total_params": total_params, "model_trainable_params": trainable_params}, step=0)
+
         # setup loss
         loss_name = str(self.config.optimizer.loss_name).lower()
 
