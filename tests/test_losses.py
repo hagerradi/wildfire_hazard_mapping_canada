@@ -10,7 +10,7 @@ def dummy_data():
     targets = torch.rand(4, 1, 32, 32)
     preds = targets * 0.9
     masks = torch.rand(4, 1, 32, 32) > 0.5
-    return preds, targets, masks.float()
+    return preds, targets, masks
 
 
 def test_bce_loss_no_mask(dummy_data):
