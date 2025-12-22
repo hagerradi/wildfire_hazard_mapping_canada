@@ -11,38 +11,6 @@ import torch
 from src.datasets.dataloader import GridDataset
 
 
-class DummyConfig:
-    def __init__(
-        self,
-        root_dir,
-        train_split,
-        val_split,
-        test_split,
-        filename_col="filename",
-        batch_size=2,
-        num_workers=0,
-        output_normalization="min_max",
-        transform=None,
-        feature_names_list=None,
-        fuel_feats_encoding="ordinal",
-        normalize_fuel_feats_ordinal=True,
-        valid_mask_threshold=0.0,
-    ):
-        self.root_dir = root_dir
-        self.train_split = train_split
-        self.val_split = val_split
-        self.test_split = test_split
-        self.filename_col = filename_col
-        self.batch_size = batch_size
-        self.num_workers = num_workers
-        self.output_normalization = output_normalization
-        self.transform = transform
-        self.feature_names_list = feature_names_list
-        self.fuel_feats_encoding = fuel_feats_encoding
-        self.normalize_fuel_feats_ordinal = normalize_fuel_feats_ordinal
-        self.valid_mask_threshold = valid_mask_threshold
-
-
 @pytest.fixture
 def temp_data_dir():
     tmpdir = tempfile.mkdtemp()

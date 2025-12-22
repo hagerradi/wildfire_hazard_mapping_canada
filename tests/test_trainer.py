@@ -145,6 +145,7 @@ def test_validate_return_predictions(dummy_config, dummy_data):
     results, preds = trainer.validate(dummy_data, return_predictions=True)
     assert "loss" in results
     assert preds.shape[0] == 4  # batch size * num batches
+    assert torch.all((preds >= 0) & (preds <= 1)), "Predictions should be in [0, 1] range"
 
 
 def test_save_and_load_model(tmp_path, dummy_config, dummy_data):
