@@ -31,17 +31,17 @@ class Trainer:
         self.save_dir = self.config.save_dir
         os.makedirs(self.save_dir, exist_ok=True)
 
-        # setup of the logger
-        self.logger = CometLogger(
-            project_name=self.config.logger.project_name,
-            workspace=self.config.logger.workspace,
-            experiment_name=self.config.logger.experiment_name,
-            experiment_tags=self.config.logger.tags,
-        )
-        self.log_every_n_step = self.config.logger.log_every_n_step
-
-        # log all the params.
-        self.logger.log_params(self.config.model_dump())
+        # Only initialize logger if not in test-only mode
+        if self.config.logger.enabled:
+            self.logger = CometLogger(
+                project_name=self.config.logger.project_name,
+                workspace=self.config.logger.workspace,
+                experiment_name=self.config.logger.experiment_name,
+                experiment_tags=self.config.logger.tags,
+            )
+            self.log_every_n_step = self.config.logger.log_every_n_step
+            # log all the params.
+            self.logger.log_params(self.config.model_dump())
 
         self.setup()
 

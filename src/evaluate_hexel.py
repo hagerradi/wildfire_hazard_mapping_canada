@@ -20,7 +20,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--config",
         type=str,
-        default="configs/default_v1.yaml",
+        default="configs/default_v2.yaml",
         help="Path to YAML config file.",
     )
     parser.add_argument(
@@ -48,6 +48,8 @@ def load_config(path: str) -> Config:
 def main() -> None:
     args = parse_args()
     config = load_config(args.config)
+
+    config.logger.enabled = False
 
     trainer = Trainer(config)
 

@@ -36,6 +36,7 @@ data:
   valid_mask_threshold:  0.00
 
 logger:
+  enabled: true
   project_name: "nrcan-wildfireriskmapping"
   workspace: "mila-amlrt"
   experiment_name: "unet_run_001_approach_1"
