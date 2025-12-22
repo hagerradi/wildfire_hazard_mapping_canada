@@ -5,6 +5,8 @@ Baselines: Classic U-Net encoder-decoder with optional skip connections.
 import torch
 import torch.nn as nn
 
+from src.models.utils import get_nbr_model_parameters
+
 
 class UNet(nn.Module):
     def __init__(
@@ -73,14 +75,6 @@ class UNet(nn.Module):
             nn.LeakyReLU(inplace=True),
         )
 
-    def get_nbr_parameters(self) -> tuple[int, int]:
-        """
-        Returns a tuple: (total_parameters, trainable_parameters) of the UNet.
-        """
-        total_params = sum(p.numel() for p in self.parameters())
-        trainable_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
-        return total_params, trainable_params
-
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         skip_connections = []
 
@@ -114,7 +108,7 @@ if __name__ == "__main__":
     model = UNet(input_channels=36, num_classes=1)
     print(model)
 
-    total, trainable = model.get_nbr_parameters()
+    total, trainable = get_nbr_model_parameters(model)
 
     print(f"Number of total parameters:     {total:,}")
     print(f"Number of trainable parameters: {trainable:,}")
