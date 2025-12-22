@@ -14,6 +14,8 @@ from src.logger import CometLogger
 from src.losses import BCELoss, MSELoss
 from src.metrics import compute_mae, compute_mse, compute_spearman, compute_ssim
 from src.models.baselines import UNet
+from src.models.deeplab import SMPDeepLabV3Plus
+from src.models.smp_unetplusplus import SMPUNetPlusPlus
 
 
 class Trainer:
@@ -49,7 +51,9 @@ class Trainer:
         """
         define model, loss function and optimizer.
         """
-        self.model = UNet(input_channels=self.config.model.input_channels, num_classes=self.config.model.num_classes)
+        # self.model = UNet(input_channels=self.config.model.input_channels, num_classes=self.config.model.num_classes)
+        # self.model = SMPUNetPlusPlus(input_channels=self.config.model.input_channels, num_classes=self.config.model.num_classes)
+        self.model = SMPDeepLabV3Plus(input_channels=self.config.model.input_channels, num_classes=self.config.model.num_classes)
         self.model.to(self.device)
         # setup loss
         loss_name = str(self.config.optimizer.loss_name).lower()
