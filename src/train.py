@@ -82,7 +82,8 @@ def main() -> None:
         print(f"  {k}: {v:.6f}")
 
     # Log test results to comet, at the end
-    trainer.logger.log_metrics({f"test_{k}": v for k, v in test_metrics.items()})
+    if trainer.logger:
+        trainer.logger.log_metrics({f"test_{k}": v for k, v in test_metrics.items()})
 
 
 if __name__ == "__main__":

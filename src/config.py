@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 
 class LoggerConfig(BaseModel):
+    enabled: bool = True
     project_name: str
     workspace: str
     experiment_name: str

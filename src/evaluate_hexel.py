@@ -49,6 +49,8 @@ def main() -> None:
     args = parse_args()
     config = load_config(args.config)
 
+    config.logger.enabled = False
+
     trainer = Trainer(config)
 
     # ---------- Load best checkpoint ----------
