@@ -32,10 +32,11 @@ data:
 
   feature_names_list: ["ignition_grid", "fuel_grid", "elevation_grid"] # ["ignition_grid", "esc_fires_grid", "fuel_grid", "elevation_grid", "weather_grid", "wind_grid"]
   fuel_feats_encoding: "ordinal" # ordinal, one_hot
-  normalize_fuel_feats_ordinal: true
+  normalize_fuel_feats_ordinal: True
   valid_mask_threshold:  0.00
 
 logger:
+  enabled: True
   project_name: "nrcan-wildfireriskmapping"
   workspace: "mila-amlrt"
   experiment_name: "unet_run_001_approach_2"

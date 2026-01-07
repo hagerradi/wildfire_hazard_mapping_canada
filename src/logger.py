@@ -30,7 +30,7 @@ class CometLogger:
             auto_histogram_weight_logging=False,
             auto_histogram_gradient_logging=False,
             auto_histogram_activation_logging=False,
-            auto_output_logging="False",
+            auto_output_logging="simple",
             auto_log_co2=False,
             log_env_details=True,
             log_env_gpu=True,
