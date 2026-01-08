@@ -11,7 +11,7 @@ import rasterio
 import yaml
 
 from data_preparation.grid_loader import load_elevation_grid
-from data_preparation.grid_loader.utils import denormalize_burn_count, get_range_burn_prob
+from data_preparation.grid_loader.utils import denormalize_burn_count, get_range_burn_count, get_range_burn_prob
 from data_preparation.paths import ELEVATION_GRID_PATH
 from src.config import Config
 from src.datasets.dataloader import get_test_loader
@@ -46,6 +46,8 @@ def load_config(path: str) -> Config:
 
 def save_predicted_hexels(predicted_hexel, hexel_profile, hex_id, base_dir):
     out_path = os.path.join(base_dir, "predicted_hexels", f"hexel_{hex_id}_predicted.tif")
+    os.makedirs(os.path.join(base_dir, "predicted_hexels"), exist_ok=True)
+    print("Shape of ^redicted array", predicted_hexel.shape)
     with rasterio.open(out_path, "w", **hexel_profile) as dst:
         dst.write(predicted_hexel, 1)
 
@@ -61,6 +63,7 @@ def accumulate_windows(
     win_w: int = 128,
 ) -> np.ndarray:
     all_data_points, all_locations, all_masks = [], [], []
+    print(start_idx, len(np.array(df)), len(predictions))
     for i, data in enumerate(np.array(df)):
         path = data[0]
         array = np.load(os.path.join(base_dir, path))[:, :, 0]
@@ -84,12 +87,13 @@ def get_predicted_hexel(
     win_w: int = 128,
 ) -> None:
     test_df = pd.read_csv(os.path.join(base_dir, "test_indices.csv"))
+    test_df = test_df[test_df["valid_ratio"] != 0.0]  # type: ignore
     hex_id = str(test_df["hex_id"].iloc[0])
     start_idx = 0
     if os.path.exists(os.path.join(os.path.join(root_dir, "hex" + str(hex_id)), ELEVATION_GRID_PATH)):
         with rasterio.open(os.path.join(os.path.join(root_dir, "hex" + str(hex_id)), ELEVATION_GRID_PATH)) as src:
             gt_elevation_grid = src.read(1, masked=True)
-            gt_elevation_grid_profile = src.profile
+            gt_elevation_grid_profile = src.profile.copy()
 
     if modelling_approach == "1":
         reconstructed_hexel = accumulate_windows(
@@ -118,9 +122,11 @@ def get_predicted_hexel(
                 win_h=win_h,
                 win_w=win_w,
             )
+            print(f"{season}_{cause} reconstruction {np.unique(reconstructed_season_cause_hexel)}")
             reconstructed_season_cause_hexel_denorm = denormalize_burn_count(
                 data=reconstructed_season_cause_hexel, min_val=min_burn_val, max_val=max_burn_val
             )
+            print(f"{season}_{cause} reconstruction {np.unique(reconstructed_season_cause_hexel_denorm)}")
             season_cause_hexels.append(reconstructed_season_cause_hexel_denorm)
             start_idx += len(filtered_season_cause_df)
         # merge the counts
@@ -129,6 +135,7 @@ def get_predicted_hexel(
         gt_elevation_grid_profile.update(dtype="int32", compress="lzw", nodata=-9999)  # type: ignore
 
     # Save the hexels
+    print(np.unique(reconstructed_hexel_denorm))
     save_predicted_hexels(reconstructed_hexel_denorm, gt_elevation_grid_profile, hex_id, base_dir)
 
 
@@ -170,8 +177,13 @@ def main() -> None:
 
     data_dir = config.data.root_dir
     root_dir = "../yan_bp3"
-    modelling_approach = "1"
-    max_burn_val, min_burn_val = get_range_burn_prob(root_dir="../yan_bp3")
+    modelling_approach = "2"
+    if modelling_approach == "1":
+        max_burn_val, min_burn_val = get_range_burn_prob(root_dir="../yan_bp3")
+    else:
+        max_burn_val, min_burn_val = get_range_burn_count(root_dir="../yan_bp3")
+
+    print("Min max val", max_burn_val, min_burn_val)
     if isinstance(test_predictions, str):
         # Handle the error or raise an exception
         raise TypeError(f"Expected ndarray, but got string: {test_predictions}")
