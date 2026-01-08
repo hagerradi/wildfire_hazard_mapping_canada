@@ -10,7 +10,6 @@ import pandas as pd
 import rasterio
 import yaml
 
-from data_preparation.grid_loader import load_elevation_grid
 from data_preparation.grid_loader.utils import denormalize_burn_count, get_range_burn_count, get_range_burn_prob
 from data_preparation.paths import ELEVATION_GRID_PATH
 from src.config import Config
