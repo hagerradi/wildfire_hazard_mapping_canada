@@ -107,6 +107,7 @@ def get_predicted_hexel(
             win_w=win_w,
         )
         reconstructed_hexel_denorm = denormalize_burn_count(data=reconstructed_hexel, min_val=min_burn_val, max_val=max_burn_val)
+        gt_elevation_grid_profile.update(dtype="float32", compress="lzw", nodata=-9999)  # type: ignore
     else:
         unique_season_cause = list(set(zip(test_df["season"], test_df["cause"])))
         season_cause_hexels = []
@@ -177,7 +178,7 @@ def main() -> None:
 
     data_dir = config.data.root_dir
     root_dir = "../yan_bp3"
-    modelling_approach = "2"
+    modelling_approach = "1"
     if modelling_approach == "1":
         max_burn_val, min_burn_val = get_range_burn_prob(root_dir="../yan_bp3")
     else:
