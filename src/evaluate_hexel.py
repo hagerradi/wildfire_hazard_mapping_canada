@@ -52,7 +52,7 @@ def save_predicted_hexels(predicted_hexel, hexel_profile, hex_id, base_dir):
         dst.write(predicted_hexel, 1)
 
 
-def accumulate_windows(
+def get_stitched_windows(
     base_dir: str,
     df: pd.DataFrame,
     predictions: np.ndarray,
@@ -96,7 +96,7 @@ def get_predicted_hexel(
             gt_elevation_grid_profile = src.profile.copy()
 
     if modelling_approach == "1":
-        reconstructed_hexel = accumulate_windows(
+        reconstructed_hexel = get_stitched_windows(
             base_dir=base_dir,
             df=test_df,
             predictions=predictions,
@@ -113,7 +113,7 @@ def get_predicted_hexel(
         season_cause_hexels = []
         for season, cause in unique_season_cause:
             filtered_season_cause_df = test_df[(test_df["season"] == season) & (test_df["cause"] == cause)]
-            reconstructed_season_cause_hexel = accumulate_windows(
+            reconstructed_season_cause_hexel = get_stitched_windows(
                 base_dir=base_dir,
                 df=filtered_season_cause_df,
                 predictions=predictions,
