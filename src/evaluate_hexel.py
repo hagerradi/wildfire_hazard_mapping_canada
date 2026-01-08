@@ -186,18 +186,18 @@ def main() -> None:
             print(f"  {k}: {v:.6f}")
 
     data_dir = config.data.root_dir
-    root_dir = "../yan_bp3"
-    modelling_approach = "1"
+    base_dir = config.base_dir
+    modelling_approach = config.modelling_approach
     if modelling_approach == "1":
-        max_burn_val, min_burn_val = get_range_burn_prob(root_dir="../yan_bp3")
+        max_burn_val, min_burn_val = get_range_burn_prob(root_dir=base_dir)
     else:
-        max_burn_val, min_burn_val = get_range_burn_count(root_dir="../yan_bp3")
+        max_burn_val, min_burn_val = get_range_burn_count(root_dir=base_dir)
 
     if isinstance(test_predictions, str):
         # Handle the error or raise an exception
         raise TypeError(f"Expected ndarray, but got string: {test_predictions}")
     reconstructed_hexel_denorm, gt_elevation_grid_profile, hex_id = get_predicted_hexel(
-        data_dir, root_dir, test_predictions, min_burn_val, max_burn_val, modelling_approach, stitch_mode="mean", win_h=128, win_w=128
+        data_dir, base_dir, test_predictions, min_burn_val, max_burn_val, modelling_approach, stitch_mode="mean", win_h=128, win_w=128
     )
     save_predicted_hexels(reconstructed_hexel_denorm, gt_elevation_grid_profile, hex_id, config.save_dir)
 
