@@ -1,5 +1,6 @@
 # Where to save checkpoints
 save_dir: "experiments/unet_run_001_approach_2"
+base_dir: "../yan_bp3"
 
 # approaches 1 or 2
 modelling_approach: "2"
