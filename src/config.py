@@ -31,6 +31,7 @@ class TrainingConfig(BaseModel):
 
 class DataConfig(BaseModel):
     root_dir: str
+    raw_data_dir: str
     train_split: str
     val_split: str
     test_split: str

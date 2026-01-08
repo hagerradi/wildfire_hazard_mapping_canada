@@ -1,9 +1,6 @@
 # Where to save checkpoints
 save_dir: "experiments/unet_run_001_approach_1"
 
-#Base dir for all the hexel data
-base_dir: "../yan_bp3"
-
 # approaches 1 or 2
 modelling_approach: "1"
 
@@ -23,6 +20,7 @@ training:
 
 data:
   root_dir: "../yan_bp3/data_samples_approach_1"
+  raw_data_dir: "../yan_bp3"
 
   train_split: "train_indices.csv"
   val_split: "val_indices.csv"
