@@ -44,9 +44,9 @@ def load_config(path: str) -> Config:
     return Config(**raw)
 
 
-def save_predicted_hexels(predicted_hexel, hexel_profile, hex_id, base_dir):
-    out_path = os.path.join(base_dir, "predicted_hexels", f"hexel_{hex_id}_predicted.tif")
-    os.makedirs(os.path.join(base_dir, "predicted_hexels"), exist_ok=True)
+def save_predicted_hexels(predicted_hexel, hexel_profile, hex_id, save_dir):
+    out_path = os.path.join(save_dir, "predicted_hexels", f"hexel_{hex_id}_predicted.tif")
+    os.makedirs(os.path.join(save_dir, "predicted_hexels"), exist_ok=True)
     print("Shape of ^redicted array", predicted_hexel.shape)
     with rasterio.open(out_path, "w", **hexel_profile) as dst:
         dst.write(predicted_hexel, 1)
@@ -85,7 +85,7 @@ def get_predicted_hexel(
     stitch_mode: str = "mean",
     win_h: int = 128,
     win_w: int = 128,
-) -> None:
+) -> tuple[np.ndarray, rasterio.profile, str]:
     test_df = pd.read_csv(os.path.join(base_dir, "test_indices.csv"))
     test_df = test_df[test_df["valid_ratio"] != 0.0]  # type: ignore
     hex_id = str(test_df["hex_id"].iloc[0])
@@ -137,7 +137,7 @@ def get_predicted_hexel(
 
     # Save the hexels
     print(np.unique(reconstructed_hexel_denorm))
-    save_predicted_hexels(reconstructed_hexel_denorm, gt_elevation_grid_profile, hex_id, base_dir)
+    return reconstructed_hexel_denorm, gt_elevation_grid_profile, hex_id
 
 
 def main() -> None:
@@ -188,9 +188,10 @@ def main() -> None:
     if isinstance(test_predictions, str):
         # Handle the error or raise an exception
         raise TypeError(f"Expected ndarray, but got string: {test_predictions}")
-    get_predicted_hexel(
+    reconstructed_hexel_denorm, gt_elevation_grid_profile, hex_id = get_predicted_hexel(
         data_dir, root_dir, test_predictions, min_burn_val, max_burn_val, modelling_approach, stitch_mode="mean", win_h=128, win_w=128
     )
+    save_predicted_hexels(reconstructed_hexel_denorm, gt_elevation_grid_profile, hex_id, config.save_dir)
     # TODO: Stitch predictions back to hexel
     # TODO: Merge predictions of multiple scenarios for approach 2
     # TODO: re-compute metrics at the hexel level
