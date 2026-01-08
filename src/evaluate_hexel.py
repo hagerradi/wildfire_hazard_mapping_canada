@@ -44,7 +44,15 @@ def load_config(path: str) -> Config:
     return Config(**raw)
 
 
-def save_predicted_hexels(predicted_hexel, hexel_profile, hex_id, save_dir):
+def save_predicted_hexels(predicted_hexel: np.ndarray, hexel_profile: rasterio.profile, hex_id: str, save_dir: str):
+    """
+    Save the predicted (reconstructed) hexel
+    Args:
+        predicted_hexel (np.ndarray) : 2d array of shape (height, width)
+        hexel_profile (rasterio.profile): Profile for the hexel, required by rasterio for saving geospatial data
+        hex_id (str): The id of the hex to be saved
+        save_dir (str): directory to save the hexel
+    """
     out_path = os.path.join(save_dir, "predicted_hexels", f"hexel_{hex_id}_predicted.tif")
     os.makedirs(os.path.join(save_dir, "predicted_hexels"), exist_ok=True)
     print("Shape of ^redicted array", predicted_hexel.shape)
@@ -62,8 +70,10 @@ def get_stitched_windows(
     win_h: int = 128,
     win_w: int = 128,
 ) -> np.ndarray:
+    """
+    Accumulate and stitch all the windows together to build the hexel
+    """
     all_data_points, all_locations, all_masks = [], [], []
-    print(start_idx, len(np.array(df)), len(predictions))
     for i, data in enumerate(np.array(df)):
         path = data[0]
         array = np.load(os.path.join(base_dir, path))[:, :, 0]
@@ -72,7 +82,7 @@ def get_stitched_windows(
         all_locations.append((data[5], data[6]))
         all_masks.append(mask.reshape((win_h, win_w)))
     reconstructed_hexel = stitch_windows(all_data_points, all_locations, all_masks, gt_shape, mode=stitch_mode)
-    return reconstructed_hexel
+    return reconstructed_hexel  # gt_shape
 
 
 def get_predicted_hexel(
@@ -86,6 +96,9 @@ def get_predicted_hexel(
     win_h: int = 128,
     win_w: int = 128,
 ) -> tuple[np.ndarray, rasterio.profile, str]:
+    """
+    Returns the reconstructed hexel
+    """
     test_df = pd.read_csv(os.path.join(base_dir, "test_indices.csv"))
     test_df = test_df[test_df["valid_ratio"] != 0.0]  # type: ignore
     hex_id = str(test_df["hex_id"].iloc[0])
@@ -123,11 +136,9 @@ def get_predicted_hexel(
                 win_h=win_h,
                 win_w=win_w,
             )
-            print(f"{season}_{cause} reconstruction {np.unique(reconstructed_season_cause_hexel)}")
             reconstructed_season_cause_hexel_denorm = denormalize_burn_count(
                 data=reconstructed_season_cause_hexel, min_val=min_burn_val, max_val=max_burn_val
             )
-            print(f"{season}_{cause} reconstruction {np.unique(reconstructed_season_cause_hexel_denorm)}")
             season_cause_hexels.append(reconstructed_season_cause_hexel_denorm)
             start_idx += len(filtered_season_cause_df)
         # merge the counts
@@ -135,8 +146,6 @@ def get_predicted_hexel(
         reconstructed_hexel_denorm = np.rint(reconstructed_hexel_denorm).astype("int32")
         gt_elevation_grid_profile.update(dtype="int32", compress="lzw", nodata=-9999)  # type: ignore
 
-    # Save the hexels
-    print(np.unique(reconstructed_hexel_denorm))
     return reconstructed_hexel_denorm, gt_elevation_grid_profile, hex_id
 
 
@@ -184,7 +193,6 @@ def main() -> None:
     else:
         max_burn_val, min_burn_val = get_range_burn_count(root_dir="../yan_bp3")
 
-    print("Min max val", max_burn_val, min_burn_val)
     if isinstance(test_predictions, str):
         # Handle the error or raise an exception
         raise TypeError(f"Expected ndarray, but got string: {test_predictions}")
@@ -192,9 +200,6 @@ def main() -> None:
         data_dir, root_dir, test_predictions, min_burn_val, max_burn_val, modelling_approach, stitch_mode="mean", win_h=128, win_w=128
     )
     save_predicted_hexels(reconstructed_hexel_denorm, gt_elevation_grid_profile, hex_id, config.save_dir)
-    # TODO: Stitch predictions back to hexel
-    # TODO: Merge predictions of multiple scenarios for approach 2
-    # TODO: re-compute metrics at the hexel level
 
 
 if __name__ == "__main__":
