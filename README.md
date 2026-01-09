@@ -44,4 +44,4 @@ For all the data preparation steps, refer to [the following section](data_prepar
 ```python src/train.py --config=configs/default.yaml```
 
 ### Inference
-TODO
+```python -m src.evaluate_hexel --config=configs/default.yaml```
