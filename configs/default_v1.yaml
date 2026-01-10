@@ -5,6 +5,7 @@ save_dir: "experiments/unet_run_001_approach_1"
 modelling_approach: "1"
 
 model:
+  name: "UNet" # UNet, PretrainedUNet, PretrainedUNetPlusPlus, PretrainedDeepLabV3Plus
   input_channels: 3 # if using one hot encoding, we add more 14 more features
   num_classes: 1
 
