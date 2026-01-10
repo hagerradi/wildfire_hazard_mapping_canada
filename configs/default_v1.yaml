@@ -8,6 +8,9 @@ model:
   name: "UNet" # UNet, PretrainedUNet, PretrainedUNetPlusPlus, PretrainedDeepLabV3Plus
   input_channels: 3 # if using one hot encoding, we add more 14 more features
   num_classes: 1
+  # encoder_name: "resnet34"
+  # encoder_weights: "imagenet"
+  # decoder_interpolation: "bilinear"
 
 optimizer:
   name: "AdamW" # "SGD", "Adam", "AdamW"
