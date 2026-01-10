@@ -49,16 +49,15 @@ class UNet(nn.Module):
         # decoder block: upsampling
         for h_feature in reversed(hidden_features):
             # 4 downsampling blocks: 1024x512, 512x256, 256x128, 128x64
-            if self.use_activation_after_upsampling:
-                self.decoder.append(
-                    nn.Sequential(
-                        nn.ConvTranspose2d(h_feature * 2, h_feature, kernel_size=2, stride=2),
-                        nn.BatchNorm2d(h_feature),
-                        nn.LeakyReLU(inplace=True),
-                    )
+            self.decoder.append(
+                nn.Sequential(
+                    nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True),
+                    nn.Conv2d(h_feature * 2, h_feature, kernel_size=3, padding=1, bias=False),
+                    nn.BatchNorm2d(h_feature),
+                    nn.LeakyReLU(inplace=True),
                 )
-            else:
-                self.decoder.append(nn.ConvTranspose2d(h_feature * 2, h_feature, kernel_size=2, stride=2))
+            )
+
             decoder_in_channels = h_feature * 2 if use_skip_connections else h_feature
             self.decoder.append(self._double_conv_block(decoder_in_channels, h_feature))
 

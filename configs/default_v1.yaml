@@ -14,12 +14,12 @@ optimizer:
   loss_name: "mse" # mse, bce, etc
 
 training:
-  max_epochs: 20
+  max_epochs: 10
   # Logging frequency in epochs
   log_every_n_epoch: 1
 
 data:
-  root_dir: "../yan_bp3/data_samples_approach_1"
+  root_dir: "data/yan_bp3/data_samples_approach_1"
 
   train_split: "train_indices.csv"
   val_split: "val_indices.csv"
@@ -39,7 +39,7 @@ logger:
   enabled: True
   project_name: "nrcan-wildfireriskmapping"
   workspace: "mila-amlrt"
-  experiment_name: "unet_run_001_approach_1"
+  experiment_name: "unet_approach_1_smoothed_decoder"
   tags: ["baseline", "first-exp", "modelling_approach=1", "sigmoid+mse", "3inputfeatures", "standardized_probs", "masked_metrics"]
   # log loss and metrics on comet every n steps
   log_every_n_step: 5

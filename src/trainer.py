@@ -57,7 +57,8 @@ class Trainer:
         # Get model nbr of params and log them into Logger
         total_params, trainable_params = get_nbr_model_parameters(self.model)
         print(f"Model Params: Total={total_params:,} | Trainable={trainable_params:,}")
-        self.logger.log_params({"model_total_params": total_params, "model_trainable_params": trainable_params})
+        if self.logger:
+            self.logger.log_params({"model_total_params": total_params, "model_trainable_params": trainable_params})
 
         # setup loss
         loss_name = str(self.config.optimizer.loss_name).lower()
