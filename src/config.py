@@ -13,8 +13,12 @@ class LoggerConfig(BaseModel):
 
 
 class ModelConfig(BaseModel):
+    name: str = "UNet"  # options: UNet, PretrainedUNet, PretrainedUNetPlusPlus, PretrainedDeepLabV3Plus
     input_channels: int
     num_classes: int
+    encoder_name: str | None = "resnet34"
+    encoder_weights: str | None = "imagenet"
+    decoder_interpolation: str | None = "bilinear"
 
 
 class OptimizerConfig(BaseModel):
