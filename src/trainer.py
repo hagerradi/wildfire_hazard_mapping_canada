@@ -14,8 +14,9 @@ from src.logger import CometLogger
 from src.losses import BCELoss, MSELoss
 from src.metrics import compute_mae, compute_mse, compute_spearman, compute_ssim
 from src.models.baselines import UNet
-from src.models.deeplab import SMPDeepLabV3Plus
-from src.models.smp_unetplusplus import SMPUNetPlusPlus
+from src.models.pretrained_deeplabv3plus import PretrainedDeepLabV3Plus
+from src.models.pretrained_unet import PretrainedUNet
+from src.models.pretrained_unetplusplus import PretrainedUNetPlusPlus
 
 
 class Trainer:
@@ -51,9 +52,38 @@ class Trainer:
         """
         define model, loss function and optimizer.
         """
-        # self.model = UNet(input_channels=self.config.model.input_channels, num_classes=self.config.model.num_classes)
-        # self.model = SMPUNetPlusPlus(input_channels=self.config.model.input_channels, num_classes=self.config.model.num_classes)
-        self.model = SMPDeepLabV3Plus(input_channels=self.config.model.input_channels, num_classes=self.config.model.num_classes)
+        if self.config.model.name == "UNet":
+            self.model = UNet(input_channels=self.config.model.input_channels, num_classes=self.config.model.num_classes)
+
+        elif self.config.model.name == "PretrainedUNet":
+            self.model = PretrainedUNet(
+                input_channels=self.config.model.input_channels,
+                num_classes=self.config.model.num_classes,
+                encoder_name=self.config.model.encoder_name,
+                encoder_weights=self.config.model.encoder_weights,
+                decoder_interpolation=self.config.model.decoder_interpolation,
+            )
+
+        elif self.config.model.name == "PretrainedUNetPlusPlus":
+            self.model = PretrainedUNetPlusPlus(
+                input_channels=self.config.model.input_channels,
+                num_classes=self.config.model.num_classes,
+                encoder_name=self.config.model.encoder_name,
+                encoder_weights=self.config.model.encoder_weights,
+                decoder_interpolation=self.config.model.decoder_interpolation,
+            )
+
+        elif self.config.model.name == "PretrainedDeepLabV3Plus":
+            self.model = PretrainedDeepLabV3Plus(
+                input_channels=self.config.model.input_channels,
+                num_classes=self.config.model.num_classes,
+                encoder_name=self.config.model.encoder_name,
+                encoder_weights=self.config.model.encoder_weights,
+            )
+
+        else:
+            raise ValueError(f"Unknown model name in config: {self.config.model.name}")
+
         self.model.to(self.device)
         # setup loss
         loss_name = str(self.config.optimizer.loss_name).lower()
