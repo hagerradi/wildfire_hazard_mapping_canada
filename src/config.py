@@ -17,9 +17,10 @@ class ModelConfig(BaseModel):
     name: str = "UNet"  # options: UNet, PretrainedUNet, PretrainedUNetPlusPlus, PretrainedDeepLabV3Plus
     input_channels: int
     num_classes: int
-    encoder_name: str | None = "resnet34"
-    encoder_weights: str | None = "imagenet"
-    decoder_interpolation: str | None = "bilinear"
+
+    encoder_name: str | None = "resnet34"  # for pretrained models
+    encoder_weights: str | None = "imagenet"  # for pretrained models
+    decoder_interpolation: str | None = "bilinear"  # for pretrained unet models
 
 
 class OptimizerConfig(BaseModel):
