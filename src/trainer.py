@@ -17,6 +17,7 @@ from src.models.baselines import UNet
 from src.models.pretrained_deeplabv3plus import PretrainedDeepLabV3Plus
 from src.models.pretrained_unet import PretrainedUNet
 from src.models.pretrained_unetplusplus import PretrainedUNetPlusPlus
+from src.models.utils import get_nbr_model_parameters
 
 
 class Trainer:
@@ -34,17 +35,18 @@ class Trainer:
         self.save_dir = self.config.save_dir
         os.makedirs(self.save_dir, exist_ok=True)
 
-        # setup of the logger
-        self.logger = CometLogger(
-            project_name=self.config.logger.project_name,
-            workspace=self.config.logger.workspace,
-            experiment_name=self.config.logger.experiment_name,
-            experiment_tags=self.config.logger.tags,
-        )
-        self.log_every_n_step = self.config.logger.log_every_n_step
-
-        # log all the params.
-        self.logger.log_params(self.config.model_dump())
+        self.logger = None
+        # Only initialize logger if not in test-only mode
+        if self.config.logger.enabled:
+            self.logger = CometLogger(
+                project_name=self.config.logger.project_name,
+                workspace=self.config.logger.workspace,
+                experiment_name=self.config.logger.experiment_name,
+                experiment_tags=self.config.logger.tags,
+            )
+            self.log_every_n_step = self.config.logger.log_every_n_step
+            # log all the params.
+            self.logger.log_params(self.config.model_dump())
 
         self.setup()
 
@@ -85,6 +87,12 @@ class Trainer:
             raise ValueError(f"Unknown model name in config: {self.config.model.name}")
 
         self.model.to(self.device)
+
+        # Get model nbr of params and log them into Logger
+        total_params, trainable_params = get_nbr_model_parameters(self.model)
+        print(f"Model Params: Total={total_params:,} | Trainable={trainable_params:,}")
+        self.logger.log_params({"model_total_params": total_params, "model_trainable_params": trainable_params})
+
         # setup loss
         loss_name = str(self.config.optimizer.loss_name).lower()
 
@@ -161,7 +169,7 @@ class Trainer:
             running_loss += loss.item() * batch_size
             running_batch_count += batch_size
 
-            if self.global_step % self.log_every_n_step == 0:
+            if self.logger and self.global_step % self.log_every_n_step == 0:
                 self.logger.log_metrics({"train_step_loss": loss.item()}, step=self.global_step)
 
             training_loop.set_description(f"Loss: {running_loss / running_batch_count:.4f}")
@@ -171,7 +179,7 @@ class Trainer:
                 for name, metric_fn in self.metric_functions.items():
                     value = metric_fn(predictions.detach(), targets, masks)
                     running_metrics[name] += value.item() * batch_size
-                    if self.global_step % self.log_every_n_step == 0:
+                    if self.logger and self.global_step % self.log_every_n_step == 0:
                         self.logger.log_metrics({f"train_step_{name}": value.item()}, step=self.global_step)
 
             self.global_step += 1
@@ -257,7 +265,8 @@ class Trainer:
                 if val_result:
                     metrics_to_log.update({f"val_{k}": v for k, v in val_result.items()})
 
-                self.logger.log_metrics(metrics_to_log, epoch=epoch)
+                if self.logger:
+                    self.logger.log_metrics(metrics_to_log, epoch=epoch)
 
             if val_result is not None and (best_val_loss is None or val_result["loss"] < best_val_loss):
                 best_val_loss = val_result["loss"]
@@ -266,7 +275,8 @@ class Trainer:
                     best_path = self.save_model(epoch=epoch, loss=val_result["loss"], filename="best.pth")
 
                     # log best model to comet
-                    self.logger.experiment.log_model(name="best", file_or_folder=best_path, overwrite=True)
+                    if self.logger:
+                        self.logger.experiment.log_model(name="best", file_or_folder=best_path, overwrite=True)
 
             # save most recent checkpoint
             self.save_model(epoch=epoch, loss=val_result["loss"])
