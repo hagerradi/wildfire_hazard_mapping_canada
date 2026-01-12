@@ -41,7 +41,7 @@ For all the data preparation steps, refer to [the following section](data_prepar
 
 ### Training
 
-```python src/train.py --config=configs/default.yaml```
+```python src/train.py --config=configs/default_v2.yaml```
 
 ### Inference
-```python -m src.evaluate_hexel --config=configs/default.yaml```
+```python -m src.evaluate_hexel --config=configs/default_v2.yaml```
