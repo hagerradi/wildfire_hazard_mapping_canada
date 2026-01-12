@@ -8,8 +8,10 @@ import os
 import numpy as np
 import yaml
 
+from data_preparation.grid_loader.utils import get_range_burn_count, get_range_burn_prob
 from src.config import Config
 from src.datasets.dataloader import get_test_loader
+from src.datasets.postprocessing.utils import get_predicted_hexel, save_predicted_hexels
 from src.trainer import Trainer
 from src.utils import visualize_model_predictions
 
@@ -85,9 +87,29 @@ def main() -> None:
         for k, v in test_metrics.items():
             print(f"  {k}: {v:.6f}")
 
-    # TODO: Stitch predictions back to hexel
-    # TODO: Merge predictions of multiple scenarios for approach 2
-    # TODO: re-compute metrics at the hexel level
+    data_dir = config.data.root_dir
+    raw_data_dir = config.data.raw_data_dir
+    modelling_approach = config.modelling_approach
+    if modelling_approach == "1":
+        max_target_val, min_target_val = get_range_burn_prob(root_dir=raw_data_dir)
+    else:
+        max_target_val, min_target_val = get_range_burn_count(root_dir=raw_data_dir)
+
+    if isinstance(test_predictions, str):
+        # Handle the error or raise an exception
+        raise TypeError(f"Expected ndarray, but got string: {test_predictions}")
+    reconstructed_hexel_denorm, gt_elevation_grid_profile, hex_id = get_predicted_hexel(
+        data_dir,
+        raw_data_dir,
+        test_predictions,
+        max_target_val,
+        min_target_val,
+        modelling_approach,
+        stitch_mode="mean",
+        win_h=128,
+        win_w=128,
+    )
+    save_predicted_hexels(reconstructed_hexel_denorm, gt_elevation_grid_profile, hex_id, config.save_dir)
 
 
 if __name__ == "__main__":

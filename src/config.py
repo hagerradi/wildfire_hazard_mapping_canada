@@ -31,6 +31,7 @@ class TrainingConfig(BaseModel):
 
 class DataConfig(BaseModel):
     root_dir: str
+    raw_data_dir: str
     train_split: str
     val_split: str
     test_split: str
@@ -49,6 +50,7 @@ class DataConfig(BaseModel):
 
 class Config(BaseModel):
     save_dir: str = "experiments/default"
+    base_dir: str = "../yan_bp3"
     modelling_approach: str = "2"
     model: ModelConfig
     optimizer: OptimizerConfig

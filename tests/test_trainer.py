@@ -70,6 +70,7 @@ def dummy_config(tmp_path):
         },
         "data": {
             "root_dir": "",
+            "raw_data_dir": "",
             "train_split": "",
             "val_split": "",
             "test_split": "",
