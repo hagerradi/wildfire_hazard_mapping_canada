@@ -88,7 +88,7 @@ def get_split_hexel_window(
                         str(Path(filename)),
                         season,
                         cause,
-                        hex_id,
+                        str(hex_id),
                         num_valid_windows,
                         row,
                         col,

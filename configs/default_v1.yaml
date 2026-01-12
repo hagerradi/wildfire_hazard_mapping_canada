@@ -19,7 +19,8 @@ training:
   log_every_n_epoch: 1
 
 data:
-  root_dir: "data/yan_bp3/data_samples_approach_1"
+  root_dir: "../yan_bp3/data_samples_approach_1"
+  raw_data_dir: "../yan_bp3"
 
   train_split: "train_indices.csv"
   val_split: "val_indices.csv"
