@@ -15,7 +15,7 @@ class UNet(nn.Module):
         num_classes: int = 1,
         hidden_features: list = None,
         use_skip_connections: bool = True,
-        use_transpose_conv: bool = True,
+        use_transpose_conv: bool = False,
         use_activation_after_upsampling: bool = False,
     ):
         """
