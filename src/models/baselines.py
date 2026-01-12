@@ -15,6 +15,7 @@ class UNet(nn.Module):
         num_classes: int = 1,
         hidden_features: list = None,
         use_skip_connections: bool = True,
+        use_transpose_conv: bool = True,
         use_activation_after_upsampling: bool = False,
     ):
         """
@@ -23,6 +24,7 @@ class UNet(nn.Module):
             num_classes: Number of output channels
             hidden_features: List of feature maps at each level [64, 128, 256, 512]. Model adjusts accordingly
             use_skip_connections: Whether to use skip connections in the decoder
+            use_transpose_conv: use TransposeConv2D in the decoder instead of Upsample with Conv2D
         """
         super().__init__()
 
@@ -30,6 +32,7 @@ class UNet(nn.Module):
             hidden_features = [64, 128, 256, 512]
 
         self.use_skip_connections = use_skip_connections
+        self.use_transpose_conv = use_transpose_conv
         self.use_activation_after_upsampling = use_activation_after_upsampling
 
         self.encoder = nn.ModuleList()
@@ -49,14 +52,26 @@ class UNet(nn.Module):
         # decoder block: upsampling
         for h_feature in reversed(hidden_features):
             # 4 downsampling blocks: 1024x512, 512x256, 256x128, 128x64
-            self.decoder.append(
-                nn.Sequential(
+            if self.use_transpose_conv:
+                # standard method: ConvTranspose2d
+                upsample_layer = nn.Sequential(nn.ConvTranspose2d(h_feature * 2, h_feature, kernel_size=2, stride=2))
+            else:
+                # upsample + Conv2d
+                upsample_layer = nn.Sequential(
                     nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True),
                     nn.Conv2d(h_feature * 2, h_feature, kernel_size=3, padding=1, bias=False),
-                    nn.BatchNorm2d(h_feature),
-                    nn.LeakyReLU(inplace=True),
                 )
-            )
+
+            if self.use_activation_after_upsampling:
+                self.decoder.append(
+                    nn.Sequential(
+                        upsample_layer,
+                        nn.BatchNorm2d(h_feature),
+                        nn.LeakyReLU(inplace=True),
+                    )
+                )
+            else:
+                self.decoder.append(upsample_layer)
 
             decoder_in_channels = h_feature * 2 if use_skip_connections else h_feature
             self.decoder.append(self._double_conv_block(decoder_in_channels, h_feature))
