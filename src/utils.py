@@ -66,3 +66,6 @@ def visualize_model_predictions(
 
     plt.tight_layout()
     plt.show()
+
+def seed_everything(seed: int = 42):
+    pass
