@@ -159,13 +159,13 @@ class GridDataset(Dataset):
         mask = ~np.isnan(input_arr[:, :, 0])  # mask is True where not NaN, False where NaN
 
         # Processing one hot encoding
-        if "fuel_grid" in self.feature_names_list and self.fuel_feats_encoding == "one_hot":  # (H,W,C+20)
+        if self.feature_names_list and "fuel_grid" in self.feature_names_list and self.fuel_feats_encoding == "one_hot":  # (H,W,C+20)
             input_arr = one_hot_encode(arr=input_arr, channel_idx=self.fuel_feat_index, num_classes=int(MAX_FUEL_GRID + 1))
 
         input_arr = fill_nan_channel_mean_numpy(input_arr)  # remove NaNs from the inp data (replace by mean)
 
         # Processing ordinal encoding norm (if not norm do nothing)
-        if "fuel_grid" in self.feature_names_list and self.fuel_feats_encoding == "ordinal":
+        if self.feature_names_list and "fuel_grid" in self.feature_names_list and self.fuel_feats_encoding == "ordinal":
             input_arr[:, :, self.fuel_feat_index][~mask] = 0.0  # Nan is no fuel
             if self.normalize_fuel_feats_ordinal:
                 input_arr[:, :, self.fuel_feat_index] = (input_arr[:, :, self.fuel_feat_index] - MIN_FUEL_GRID) / (
