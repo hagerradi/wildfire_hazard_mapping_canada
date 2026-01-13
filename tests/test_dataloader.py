@@ -78,7 +78,7 @@ def test_len_and_getitem(temp_data_dir):
         modelling_approach="2",
         valid_mask_threshold=0.0,
         transform=None,
-        feature_names_list=None,
+        feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],
     )
     assert len(ds) == 3
     x, y, mask = ds[0]
@@ -101,7 +101,7 @@ def test_one_hot_encoding(temp_data_dir):
         modelling_approach="2",
         valid_mask_threshold=0.0,
         transform=None,
-        feature_names_list=None,
+        feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],
     )
     x, y, mask = ds[0]
     # Should have more channels due to one-hot
@@ -140,7 +140,7 @@ def test_mask_threshold(temp_data_dir):
         modelling_approach="2",
         valid_mask_threshold=1.0,
         transform=None,
-        feature_names_list=None,
+        feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],
     )
     assert len(ds) == 0
 
@@ -157,7 +157,7 @@ def test_output_normalization_iters(temp_data_dir):
         modelling_approach="2",
         valid_mask_threshold=0.0,
         transform=None,
-        feature_names_list=None,
+        feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],
     )
     _, y, _ = ds[0]
     # Output should be normalized by total_unique_iters (10)

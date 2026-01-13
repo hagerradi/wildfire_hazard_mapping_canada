@@ -112,6 +112,11 @@ class GridDataset(Dataset):
         self.valid_mask_threshold = valid_mask_threshold
         self.feature_names_list = feature_names_list
 
+        if not self.feature_names_list:
+            raise ValueError(
+                "Feature names list should never be empty or None. Valid list: [ignition_grid, esc_fires_grid, fuel_grid, elevation_grid, weather_grid, wind_grid]"
+            )
+
         self.metadata_df = pd.read_csv(os.path.join(self.root_dir, csv_name))
         self.metadata_df = self.metadata_df[self.metadata_df["valid_ratio"] > self.valid_mask_threshold]
         self.all_files = list(self.metadata_df[filename_col])
