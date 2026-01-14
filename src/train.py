@@ -10,6 +10,7 @@ import yaml
 from src.config import Config
 from src.datasets.dataloader import get_test_loader, get_train_val_dataloader
 from src.trainer import Trainer
+from src.utils import seed_everything
 
 
 def parse_args() -> argparse.Namespace:
@@ -40,6 +41,10 @@ def load_config(path: str) -> Config:
 def main() -> None:
     args = parse_args()
     config = load_config(args.config)
+
+    # ---------- Set Seed ----------
+    seed = getattr(config, "seed", 42)
+    seed_everything(seed)
 
     # ---------- Data ----------
     train_loader, val_loader = get_train_val_dataloader(

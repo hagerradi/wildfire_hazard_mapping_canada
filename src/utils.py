@@ -1,7 +1,9 @@
 import numpy as np
 from matplotlib import pyplot as plt
 from torch.utils.data import DataLoader
-
+import random
+import os
+import torch
 
 def visualize_model_predictions(
     test_loader: DataLoader,
@@ -67,5 +69,43 @@ def visualize_model_predictions(
     plt.tight_layout()
     plt.show()
 
-def seed_everything(seed: int = 42):
-    pass
+def seed_everything(seed: int = 42, deterministic: bool = True):
+    """
+    Seed all RNG sources for determinism.
+    
+    Parameters
+    ----------
+    seed: int
+        Seed value
+    determinstic: bool
+        Ensures strict determinism but might slow down training
+
+    Returns
+    -------
+    None
+    """
+    # Python
+    random.seed(seed)
+
+    # NumPy
+    np.random.seed(seed)
+
+    # Torch
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)    # for multi GPU in case
+
+    # Python hash seed
+    os.environ["PYTHONHASHSEED"] = str(seed)
+
+    if deterministic:
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+
+        # For PyTorch >= 1.8
+        try:
+            torch.use_deterministic_algorithms(True)
+        except Exception:
+            pass
+
+    print(f"[Info] Seed set to: {seed}")
