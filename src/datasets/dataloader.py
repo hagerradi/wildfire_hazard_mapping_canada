@@ -193,11 +193,7 @@ class GridDataset(Dataset):
         )  # (C, H, W), (1, H, W), (1, H, W)
 
 
-def get_train_val_dataloader(
-    config: DataConfig,
-    modelling_approach: str = "1",
-    seed: int = 42
-):
+def get_train_val_dataloader(config: DataConfig, modelling_approach: str = "1", seed: int = 42):
     """
     Creates and returns a DataLoader with deterministic shuffling
     """
@@ -238,37 +234,28 @@ def get_train_val_dataloader(
         valid_mask_threshold=valid_mask_threshold,
         transform=transform,
     )
-    
+
     # Create a deterministic generator
     g = torch.Generator()
     g.manual_seed(seed)
 
     train_loader = DataLoader(
-        train_dataset, 
-        batch_size=batch_size, 
-        shuffle=True, 
-        num_workers=num_workers, 
-        worker_init_fn=seed_worker, # Fixes worker randomness
-        generator=g                 # Fixes shuffle order
+        train_dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=num_workers,
+        worker_init_fn=seed_worker,  # Fixes worker randomness
+        generator=g,  # Fixes shuffle order
     )
 
     val_loader = DataLoader(
-        val_dataset, 
-        batch_size=batch_size, 
-        shuffle=False, 
-        num_workers=num_workers, 
-        worker_init_fn=seed_worker,
-        generator=g
+        val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, worker_init_fn=seed_worker, generator=g
     )
 
     return train_loader, val_loader
 
 
-def get_test_loader(
-    config: DataConfig,
-    modelling_approach: str = "1",
-    seed: int = 42
-):
+def get_test_loader(config: DataConfig, modelling_approach: str = "1", seed: int = 42):
     """
     Creates and returns the test loader
     """
@@ -296,13 +283,12 @@ def get_test_loader(
         valid_mask_threshold=valid_mask_threshold,
         transform=transform,
     )
+
+    g = torch.Generator()
+    g.manual_seed(seed)
+
     test_loader = DataLoader(
-        test_dataset, 
-        batch_size=batch_size, 
-        shuffle=False,
-        num_workers=num_workers,
-        worker_init_fn=seed_worker,
-        generator=g
-        )
+        test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, worker_init_fn=seed_worker, generator=g
+    )
 
     return test_loader

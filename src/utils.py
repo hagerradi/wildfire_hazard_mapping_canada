@@ -1,9 +1,11 @@
+import os
+import random
+
 import numpy as np
+import torch
 from matplotlib import pyplot as plt
 from torch.utils.data import DataLoader
-import random
-import os
-import torch
+
 
 def visualize_model_predictions(
     test_loader: DataLoader,
@@ -69,10 +71,11 @@ def visualize_model_predictions(
     plt.tight_layout()
     plt.show()
 
+
 def seed_everything(seed: int = 42, deterministic: bool = True):
     """
     Seed all RNG sources for determinism.
-    
+
     Parameters
     ----------
     seed: int
@@ -87,7 +90,7 @@ def seed_everything(seed: int = 42, deterministic: bool = True):
     # os
     os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
     os.environ["PYTHONHASHSEED"] = str(seed)
-    
+
     # Python
     random.seed(seed)
 
@@ -97,8 +100,7 @@ def seed_everything(seed: int = 42, deterministic: bool = True):
     # Torch
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)    # for multi GPU in case
-
+    torch.cuda.manual_seed_all(seed)  # for multi GPU in case
 
     if deterministic:
         torch.backends.cudnn.deterministic = True
