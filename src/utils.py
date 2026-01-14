@@ -29,7 +29,7 @@ def visualize_model_predictions(
     seed: int, optional
         Random seed to get same patch IDs across different inference runs.
     save_path: str, optional
-        Save path for the visualization figure.
+        Save path for the visualization figure (not saved if None).
     channel_map: dict, optional
         Dict mapping channel IDs to input feature names for plotting.
     feature_names_list: list, optional
@@ -146,9 +146,11 @@ def visualize_model_predictions(
 
     plt.tight_layout(rect=(0.05, 0, 1, 1))
 
-    # save the viz fig for easier usage
+    # save the viz fig for easier usage if set to True
     if save_path:
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
         plt.savefig(save_path, dpi=300, bbox_inches="tight")
         print(f"Visualization saved to: {save_path}")
-    plt.show()
+        plt.close()
+    else:
+        plt.show()

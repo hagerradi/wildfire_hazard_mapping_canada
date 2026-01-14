@@ -29,9 +29,13 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--visualize_predictions",
-        type=bool,
-        default=True,
+        action="store_true",
         help="Boolean flag to visualize some random predictions vs. targets",
+    )
+    parser.add_argument(
+        "--save_visualizations",
+        action="store_true",
+        help="Boolean flag to save the visualization figure.",
     )
     return parser.parse_args()
 
@@ -88,8 +92,10 @@ def main() -> None:
             with open(json_files[0], "r") as f:
                 channel_map = json.load(f)
 
-        # save path for visualization figure (inside exp and model folder)
-        viz_save_path = os.path.join(config.save_dir, "inference_samples_examples.png")
+        # save path for visualization figure (if True)
+        viz_save_path = None
+        if args.save_visualizations:
+            viz_save_path = os.path.join(config.save_dir, "inference_samples_examples.png")
 
         visualize_model_predictions(
             test_loader=test_loader,
