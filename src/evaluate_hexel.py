@@ -96,6 +96,7 @@ def main() -> None:
             test_predictions=test_predictions,
             save_path=viz_save_path,
             channel_map=channel_map,
+            feature_names_list=config.data.feature_names_list,
         )
 
     # Save predictions

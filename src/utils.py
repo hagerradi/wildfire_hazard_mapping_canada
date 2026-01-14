@@ -12,6 +12,7 @@ def visualize_model_predictions(
     seed: int = 42,
     save_path: str = None,
     channel_map: dict = None,
+    feature_names_list: list = None,
 ) -> None:
     """
     Visualize model predictions versus targets for a selection of random samples.
@@ -31,6 +32,8 @@ def visualize_model_predictions(
         Save path for the visualization figure.
     channel_map: dict, optional
         Dict mapping channel IDs to input feature names for plotting.
+    feature_names_list: list, optional
+        The list of used input features from the config. file.
 
     Returns
     -------
@@ -56,26 +59,39 @@ def visualize_model_predictions(
     selected_indices = []
     idx_to_label = {}
 
-    # use channel names map if we provide it for columns names
-    if channel_map:
-        for feat_name in sorted(channel_map.keys()):
-            if feat_name == "out_grid":
+    # use channel names map and config features list if we provide it
+    if channel_map and feature_names_list:
+        current_tensor_idx = 0
+        for feat_name in feature_names_list:
+            if feat_name not in channel_map:
                 continue
-            indices = channel_map[feat_name]
+
+            # see how many channels this feature originally had in the map
+            orig_indices = channel_map[feat_name]
+            num_channels_for_feat = len(orig_indices)
+
+            # make new relative indices for the current data
+            relative_indices = list(range(current_tensor_idx, current_tensor_idx + num_channels_for_feat))
             # for multichannel input feats, only show first and last as examples
-            if len(indices) > 2:
-                subset = [indices[0], indices[-1]]
-                for i, c_idx in enumerate(subset):
-                    selected_indices.append(c_idx)
+            if num_channels_for_feat > 2:
+                subset = [relative_indices[0], relative_indices[-1]]
+                for i, rel_idx in enumerate(subset):
+                    selected_indices.append(rel_idx)
                     suffix = "first" if i == 0 else "last"
-                    idx_to_label[c_idx] = f"{feat_name}\n({suffix})"
+                    idx_to_label[rel_idx] = f"{feat_name}\n({suffix})"
             else:
-                for c_idx in indices:
-                    selected_indices.append(c_idx)
-                    idx_to_label[c_idx] = feat_name
+                for rel_idx in relative_indices:
+                    selected_indices.append(rel_idx)
+                    idx_to_label[rel_idx] = feat_name
+
+            current_tensor_idx += num_channels_for_feat
     else:
-        selected_indices = list(range(min(all_inputs.shape[1], 8)))
+        # if no map, we just print channel indices for the fig
+        selected_indices = list(range(all_inputs.shape[1]))
         idx_to_label = {i: f"Ch {i}" for i in selected_indices}
+
+    # check we aren't out of bounds after new mapping
+    selected_indices = [idx for idx in selected_indices if idx < all_inputs.shape[1]]
 
     n_cols = len(selected_indices) + 2
     rng = np.random.RandomState(seed)  # fix seed to get same patch ids between inferences
