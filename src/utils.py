@@ -1,3 +1,5 @@
+import os
+
 import numpy as np
 from matplotlib import pyplot as plt
 from torch.utils.data import DataLoader
@@ -7,6 +9,9 @@ def visualize_model_predictions(
     test_loader: DataLoader,
     test_predictions: np.ndarray,
     n_samples: int = 4,
+    seed: int = 42,
+    save_path: str = None,
+    channel_map: dict = None,
 ) -> None:
     """
     Visualize model predictions versus targets for a selection of random samples.
@@ -20,49 +25,114 @@ def visualize_model_predictions(
         ``test_loader``, with shape ``(N, ...)`` or ``(N, 1, ...)``.
     n_samples : int, optional
         Number of random samples to visualize. Defaults to 4.
+    seed: int, optional
+        Random seed to get same patch IDs across different inference runs.
+    save_path: str, optional
+        Save path for the visualization figure.
+    channel_map: dict, optional
+        Dict mapping channel IDs to input feature names for plotting.
 
     Returns
     -------
     None
-        This function creates matplotlib figures and displays them.
+        This function creates matplotlib figures and displays/saves them.
     """
-    all_targets = []
-    all_masks = []
-    for batch in test_loader:
-        _, targets, masks = batch  # (inputs, targets, mask)
-        all_targets.append(targets.detach().numpy())
-        all_masks.append(masks.detach().numpy())
+    all_inputs, all_targets, all_masks = [], [], []
 
+    for batch in test_loader:
+        inputs, targets, masks = batch
+        all_inputs.append(inputs.detach().cpu().numpy())
+        all_targets.append(targets.detach().cpu().numpy())
+        all_masks.append(masks.detach().cpu().numpy())
+
+    all_inputs = np.concatenate(all_inputs, axis=0)
     all_targets = np.concatenate(all_targets, axis=0)
     all_masks = np.concatenate(all_masks, axis=0)
 
     preds = test_predictions.squeeze(1) if test_predictions.ndim == 4 else test_predictions
-    if all_targets.ndim == 4:
-        all_targets = all_targets.squeeze(1)
-    if all_masks.ndim == 4:
-        all_masks = all_masks.squeeze(1)
+    targets = all_targets.squeeze(1) if all_targets.ndim == 4 else all_targets
+    masks = all_masks.squeeze(1) if all_masks.ndim == 4 else all_masks
 
-    num_samples = preds.shape[0]
-    indices = np.random.choice(num_samples, n_samples, replace=False)
+    selected_indices = []
+    idx_to_label = {}
 
-    masked_preds = preds * all_masks
-    fig, axes = plt.subplots(n_samples, 2, figsize=(15, 18))
-    for i, idx in enumerate(indices):
-        # Get min/max for consistent color scale
-        vmin = min(masked_preds[idx].min(), all_targets[idx].min())
-        vmax = max(masked_preds[idx].max(), all_targets[idx].max())
+    # use channel names map if we provide it for columns names
+    if channel_map:
+        for feat_name in sorted(channel_map.keys()):
+            if feat_name == "out_grid":
+                continue
+            indices = channel_map[feat_name]
+            # for multichannel input feats, only show first and last as examples
+            if len(indices) > 2:
+                subset = [indices[0], indices[-1]]
+                for i, c_idx in enumerate(subset):
+                    selected_indices.append(c_idx)
+                    suffix = "first" if i == 0 else "last"
+                    idx_to_label[c_idx] = f"{feat_name}\n({suffix})"
+            else:
+                for c_idx in indices:
+                    selected_indices.append(c_idx)
+                    idx_to_label[c_idx] = feat_name
+    else:
+        selected_indices = list(range(min(all_inputs.shape[1], 8)))
+        idx_to_label = {i: f"Ch {i}" for i in selected_indices}
 
-        # Plot target
-        im0 = axes[i, 0].imshow(all_targets[idx], cmap="viridis", vmin=vmin, vmax=vmax)
-        axes[i, 0].set_title(f"Target {idx}\nmin={all_targets[idx].min():.3f}, max={all_targets[idx].max():.3f}")
-        axes[i, 0].axis("off")
-        plt.colorbar(im0, ax=axes[i, 0], fraction=0.046, pad=0.04)
+    n_cols = len(selected_indices) + 2
+    rng = np.random.RandomState(seed)  # fix seed to get same patch ids between inferences
+    indices = rng.choice(preds.shape[0], n_samples, replace=False)
 
-        # Plot masked prediction
-        im1 = axes[i, 1].imshow(masked_preds[idx], cmap="viridis", vmin=vmin, vmax=vmax)
-        axes[i, 1].set_title(f"Prediction {idx} (masked)\nmin={masked_preds[idx].min():.3f}, max={masked_preds[idx].max():.3f}")
-        axes[i, 1].axis("off")
-        plt.colorbar(im1, ax=axes[i, 1], fraction=0.046, pad=0.04)
+    _, axes = plt.subplots(n_samples, n_cols, figsize=(4.2 * n_cols, 4 * n_samples), dpi=300)
+    if n_samples == 1:
+        axes = axes.reshape(1, -1)
 
-    plt.tight_layout()
+    for i, sample_idx in enumerate(indices):
+        axes[i, 0].annotate(
+            f"Patch ID: {sample_idx}",
+            xy=(-0.5, 0.5),
+            xycoords="axes fraction",
+            ha="right",
+            va="center",
+            fontsize=14,
+            fontweight="bold",
+            rotation=90,
+        )
+
+        # show the input channels
+        for col_idx, channel_idx in enumerate(selected_indices):
+            ax = axes[i, col_idx]
+            data = all_inputs[sample_idx, channel_idx]
+
+            im = ax.imshow(data, cmap="viridis", vmin=data.min(), vmax=data.max())
+            ax.set_title(idx_to_label[channel_idx], fontsize=10, fontweight="bold")
+            ax.axis("off")
+            plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+
+        masked_pred = preds[sample_idx] * masks[sample_idx]
+        target_data = targets[sample_idx]
+
+        # Get min/max for consistent color scale for targets and preds
+        v_min = min(masked_pred.min(), target_data.min())
+        v_max = max(masked_pred.max(), target_data.max())
+
+        # show targets
+        ax_t = axes[i, n_cols - 2]
+        im_t = ax_t.imshow(target_data, cmap="viridis", vmin=v_min, vmax=v_max)
+        ax_t.set_title("Target", fontsize=10, fontweight="bold")
+        ax_t.axis("off")
+        plt.colorbar(im_t, ax=ax_t, fraction=0.046, pad=0.04)
+
+        # show preds
+        ax_p = axes[i, n_cols - 1]
+        im_p = ax_p.imshow(masked_pred, cmap="viridis", vmin=v_min, vmax=v_max)
+        ax_p.set_title("Prediction", fontsize=10, fontweight="bold")
+        ax_p.axis("off")
+        plt.colorbar(im_p, ax=ax_p, fraction=0.046, pad=0.04)
+
+    plt.tight_layout(rect=(0.05, 0, 1, 1))
+
+    # save the viz fig for easier usage
+    if save_path:
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        plt.savefig(save_path, dpi=300, bbox_inches="tight")
+        print(f"Visualization saved to: {save_path}")
     plt.show()
