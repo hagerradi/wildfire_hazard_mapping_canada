@@ -84,6 +84,10 @@ def seed_everything(seed: int = 42, deterministic: bool = True):
     -------
     None
     """
+    # os
+    os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
+    os.environ["PYTHONHASHSEED"] = str(seed)
+    
     # Python
     random.seed(seed)
 
@@ -95,8 +99,6 @@ def seed_everything(seed: int = 42, deterministic: bool = True):
     torch.cuda.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)    # for multi GPU in case
 
-    # Python hash seed
-    os.environ["PYTHONHASHSEED"] = str(seed)
 
     if deterministic:
         torch.backends.cudnn.deterministic = True
@@ -109,3 +111,13 @@ def seed_everything(seed: int = 42, deterministic: bool = True):
             pass
 
     print(f"[Info] Seed set to: {seed}")
+
+
+def seed_worker(worker_id: int):
+    """
+    Helper function to set the seed for each worker based on the global seed.
+    This ensures numpy and random in subprocesses are deterministic.
+    """
+    worker_seed = torch.initial_seed() % 2**32
+    np.random.seed(worker_seed)
+    random.seed(worker_seed)

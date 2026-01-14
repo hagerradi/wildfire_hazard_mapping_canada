@@ -51,6 +51,7 @@ class DataConfig(BaseModel):
 class Config(BaseModel):
     save_dir: str = "experiments/default"
     base_dir: str = "../yan_bp3"
+    seed: int = 42
     modelling_approach: str = "2"
     model: ModelConfig
     optimizer: OptimizerConfig

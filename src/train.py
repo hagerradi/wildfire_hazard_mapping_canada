@@ -50,6 +50,7 @@ def main() -> None:
     train_loader, val_loader = get_train_val_dataloader(
         config=config.data,
         modelling_approach=config.modelling_approach,
+        seed=seed
     )
 
     # ---------- Training ----------
