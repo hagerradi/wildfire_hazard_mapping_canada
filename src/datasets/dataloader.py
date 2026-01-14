@@ -82,6 +82,7 @@ class GridDataset(Dataset):
         self,
         csv_name: str,
         root_dir: str,
+        feature_names_list: list[str],
         filename_col: str = "filename",
         out_norm: str = "min_max",
         fuel_feats_encoding: str = "ordinal",
@@ -89,7 +90,6 @@ class GridDataset(Dataset):
         modelling_approach: str = "2",
         valid_mask_threshold: float = 0.01,
         transform: Callable | None = None,
-        feature_names_list: list[str] | None = None,
     ):
         """
         Args:
@@ -110,6 +110,12 @@ class GridDataset(Dataset):
         self.modelling_approach = modelling_approach
         self.root_dir = root_dir
         self.valid_mask_threshold = valid_mask_threshold
+        self.feature_names_list = feature_names_list
+
+        if not self.feature_names_list:
+            raise ValueError(
+                "Feature names list should never be empty or None. Valid list: [ignition_grid, esc_fires_grid, fuel_grid, elevation_grid, weather_grid, wind_grid]"
+            )
 
         self.metadata_df = pd.read_csv(os.path.join(self.root_dir, csv_name))
         self.metadata_df = self.metadata_df[self.metadata_df["valid_ratio"] > self.valid_mask_threshold]
@@ -130,14 +136,12 @@ class GridDataset(Dataset):
             )  # For modelling approach 2: total number of unique interations that produced fires for a single season and cause
 
         self.channel_indices = None
-        with open(os.path.join(root_dir, f"feature_channel_map_{self.modelling_approach}.json")) as f:
+
+        with open(os.path.join(self.root_dir, f"feature_channel_map_{self.modelling_approach}.json")) as f:
             channel_feature_map = json.load(f)
-        self.fuel_feat_index = channel_feature_map["fuel_grid"][0]
-        if feature_names_list:
-            with open(os.path.join(self.root_dir, f"feature_channel_map_{self.modelling_approach}.json")) as f:
-                channel_feature_map = json.load(f)
-                self.channel_indices = [item for key in feature_names_list for item in channel_feature_map[key]]
-            self.fuel_feat_index = self.channel_indices.index(self.fuel_feat_index)
+            self.channel_indices = [item for key in self.feature_names_list for item in channel_feature_map[key]]
+            if "fuel_grid" in self.feature_names_list:
+                self.fuel_feat_index = channel_feature_map["fuel_grid"][0]
 
     def __len__(self):
         return len(self.metadata_df)
@@ -151,6 +155,7 @@ class GridDataset(Dataset):
 
         data = np.load(file_path).astype(np.float32)
         input_arr, output_arr = data[:, :, :-1], data[:, :, -1]
+
         input_arr = input_arr[:, :, self.channel_indices] if self.channel_indices else input_arr
         output_arr[np.isnan(output_arr)] = 0.0
 
@@ -158,14 +163,14 @@ class GridDataset(Dataset):
         mask = ~np.isnan(input_arr[:, :, 0])  # mask is True where not NaN, False where NaN
 
         # Processing one hot encoding
-        if self.fuel_feats_encoding == "one_hot":  # (H,W,C+20)
+        if "fuel_grid" in self.feature_names_list and self.fuel_feats_encoding == "one_hot":  # (H,W,C+20)
             input_arr = one_hot_encode(arr=input_arr, channel_idx=self.fuel_feat_index, num_classes=int(MAX_FUEL_GRID + 1))
 
         input_arr = fill_nan_channel_mean_numpy(input_arr)  # remove NaNs from the inp data (replace by mean)
 
         # Processing ordinal encoding norm (if not norm do nothing)
-        if self.fuel_feats_encoding == "ordinal":
-            input_arr[:, :, self.fuel_feat_index][mask] = 0.0  # Nan is no fuel
+        if "fuel_grid" in self.feature_names_list and self.fuel_feats_encoding == "ordinal":
+            input_arr[:, :, self.fuel_feat_index][~mask] = 0.0  # Nan is no fuel
             if self.normalize_fuel_feats_ordinal:
                 input_arr[:, :, self.fuel_feat_index] = (input_arr[:, :, self.fuel_feat_index] - MIN_FUEL_GRID) / (
                     MAX_FUEL_GRID - MIN_FUEL_GRID
@@ -189,7 +194,7 @@ class GridDataset(Dataset):
 
 def get_train_val_dataloader(
     config: DataConfig,
-    modelling_approach: str = "2",
+    modelling_approach: str = "1",
 ):
     """
     Creates and returns a DataLoader
@@ -210,6 +215,7 @@ def get_train_val_dataloader(
     train_dataset = GridDataset(
         csv_name=train_csv_name,
         root_dir=root_dir,
+        feature_names_list=feature_names_list,
         filename_col=filename_col,
         out_norm=out_norm,
         fuel_feats_encoding=fuel_feats_encoding,
@@ -217,11 +223,11 @@ def get_train_val_dataloader(
         modelling_approach=modelling_approach,
         valid_mask_threshold=valid_mask_threshold,
         transform=transform,
-        feature_names_list=feature_names_list,
     )
     val_dataset = GridDataset(
         csv_name=val_csv_name,
         root_dir=root_dir,
+        feature_names_list=feature_names_list,
         filename_col=filename_col,
         out_norm=out_norm,
         fuel_feats_encoding=fuel_feats_encoding,
@@ -229,7 +235,6 @@ def get_train_val_dataloader(
         modelling_approach=modelling_approach,
         valid_mask_threshold=valid_mask_threshold,
         transform=transform,
-        feature_names_list=feature_names_list,
     )
 
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
@@ -241,7 +246,7 @@ def get_train_val_dataloader(
 
 def get_test_loader(
     config: DataConfig,
-    modelling_approach: str = "2",
+    modelling_approach: str = "1",
 ):
     """
     Creates and returns the test loader
@@ -261,6 +266,7 @@ def get_test_loader(
     test_dataset = GridDataset(
         csv_name=test_csv_name,
         root_dir=root_dir,
+        feature_names_list=feature_names_list,
         filename_col=filename_col,
         out_norm=out_norm,
         fuel_feats_encoding=fuel_feats_encoding,
@@ -268,7 +274,6 @@ def get_test_loader(
         modelling_approach=modelling_approach,
         valid_mask_threshold=valid_mask_threshold,
         transform=transform,
-        feature_names_list=feature_names_list,
     )
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
 
