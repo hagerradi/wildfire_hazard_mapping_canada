@@ -11,7 +11,7 @@ from tqdm import tqdm
 
 from src.config import Config
 from src.logger import CometLogger
-from src.losses import BCELoss, MSELoss
+from src.losses import BCELoss, MAELoss, MSELoss
 from src.metrics import compute_mae, compute_mse, compute_spearman, compute_ssim
 from src.models.baselines import UNet
 from src.models.utils import get_nbr_model_parameters
@@ -67,6 +67,8 @@ class Trainer:
             self.loss_fn = BCELoss()
         elif loss_name in ["mse", "mseloss"]:
             self.loss_fn = MSELoss()
+        elif loss_name in ["mae", "maeloss"]:
+            self.loss_fn = MAELoss()
         else:
             raise ValueError(f"Unknown loss type in config.loss: {self.config.loss}")
 
