@@ -12,7 +12,7 @@ from tqdm import tqdm
 from src.config import Config
 from src.logger import CometLogger
 from src.losses import BCELoss, MSELoss
-from src.metrics import compute_mae, compute_mse, compute_spearman, compute_ssim
+from src.metrics import compute_bias, compute_mae, compute_mse, compute_spearman, compute_ssim
 from src.models.baselines import UNet
 from src.models.utils import get_nbr_model_parameters
 
@@ -88,6 +88,7 @@ class Trainer:
             "mae": compute_mae,
             "spearman": compute_spearman,
             "ssim": compute_ssim,
+            "bias": compute_bias,
         }
 
         self.metric_functions = {}
@@ -242,8 +243,8 @@ class Trainer:
                     best_path = self.save_model(epoch=epoch, loss=val_result["loss"], filename="best.pth")
 
                     # log best model to comet
-                    if self.logger:
-                        self.logger.experiment.log_model(name="best", file_or_folder=best_path, overwrite=True)
+                    # if self.logger:
+                    # self.logger.experiment.log_model(name="best", file_or_folder=best_path, overwrite=True)
 
             # save most recent checkpoint
             self.save_model(epoch=epoch, loss=val_result["loss"])
