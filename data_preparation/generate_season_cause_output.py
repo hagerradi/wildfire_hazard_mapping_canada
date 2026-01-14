@@ -190,7 +190,7 @@ def main():
     hex_ids = find_hex_ids(args.root_dir)
 
     for hex_id in hex_ids:
-        if hex_id == "52":
+        if (hex_id == "52") or (hex_id == "04") or (hex_id == "25") or (hex_id == "47") or (hex_id == "48"):
             continue
         generate_season_cause_burn_count_rasters(args.root_dir, hex_id)
 
