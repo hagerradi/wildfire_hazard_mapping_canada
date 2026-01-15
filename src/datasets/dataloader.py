@@ -30,7 +30,7 @@ class GridDataset(Dataset):
         root_dir: str,
         feature_names_list: list[str],
         filename_col: str = "filename",
-        out_norm: str = "log",
+        out_norm: str = "min_max",
         fuel_feats_encoding: str = "ordinal",
         normalize_fuel_feats_ordinal: bool | None = True,
         modelling_approach: str = "2",
