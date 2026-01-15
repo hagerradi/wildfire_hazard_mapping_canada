@@ -73,6 +73,10 @@ def one_hot_encode(arr: np.ndarray, channel_idx: int, num_classes: int) -> np.nd
     return np.concatenate([left_part, encoded_part.astype(np.float32), right_part], axis=-1)  # (H,W,C+14)
 
 
+def log_norm(out_arr: np.ndarray, const: int = 1000) -> np.ndarray:
+    return np.log1p(const * out_arr) / np.log1p(const)
+
+
 class GridDataset(Dataset):
     """
     Dataset class for loading the data
@@ -84,7 +88,7 @@ class GridDataset(Dataset):
         root_dir: str,
         feature_names_list: list[str],
         filename_col: str = "filename",
-        out_norm: str = "min_max",
+        out_norm: str = "log",
         fuel_feats_encoding: str = "ordinal",
         normalize_fuel_feats_ordinal: bool | None = True,
         modelling_approach: str = "2",
@@ -192,9 +196,12 @@ class GridDataset(Dataset):
                 output_arr = (output_arr - BURN_COUNT_MIN) / (BURN_COUNT_MAX - BURN_COUNT_MIN)
             elif self.out_norm in ["total_iters", "season_cause_iters"]:
                 output_arr /= self.out_norm_array[idx]
-        elif self.modelling_approach == "1" and self.out_norm == "min_max":
-            output_arr = (output_arr - self.BURN_PROB_MIN) / (self.BURN_PROB_MAX - self.BURN_PROB_MIN)
-            output_arr = np.clip(output_arr, 0.0, 1.0)
+        elif self.modelling_approach == "1":
+            if self.out_norm == "min_max":
+                output_arr = (output_arr - self.BURN_PROB_MIN) / (self.BURN_PROB_MAX - self.BURN_PROB_MIN)
+                output_arr = np.clip(output_arr, 0.0, 1.0)
+            elif self.out_norm == "log":
+                output_arr = log_norm(output_arr)
 
         return (
             torch.from_numpy(input_arr).permute(2, 0, 1),
