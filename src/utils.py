@@ -176,9 +176,9 @@ def seed_everything(seed: int = 42, deterministic: bool = True):
     -------
     None
     """
-    
-    # (CPU) Python, OS, NumPy, Torch 
-    random.seed(seed)    
+
+    # (CPU) Python, OS, NumPy, Torch
+    random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
     os.environ["PYTHONHASHSEED"] = str(seed)
@@ -191,7 +191,7 @@ def seed_everything(seed: int = 42, deterministic: bool = True):
         if deterministic:
             torch.backends.cudnn.deterministic = True
             torch.backends.cudnn.benchmark = False
-    
+
     # For PyTorch >= 1.8
     # Outside 'if cuda' because PyTorch has deterministic CPU algorithms too.
     if deterministic:
@@ -201,7 +201,6 @@ def seed_everything(seed: int = 42, deterministic: bool = True):
             pass
 
     print(f"[Info] Seed set to: {seed}")
-   
 
 
 def seed_worker(worker_id: int):
