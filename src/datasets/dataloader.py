@@ -139,8 +139,6 @@ class GridDataset(Dataset):
                 self.metadata_df["season_cause_unique_iters"]
             )  # For modelling approach 2: total number of unique interations that produced fires for a single season and cause
 
-        self.channel_indices = None
-
         with open(os.path.join(self.root_dir, f"feature_channel_map_{self.modelling_approach}.json")) as f:
             channel_feature_map = json.load(f)
             self.channel_indices = [item for key in self.feature_names_list for item in channel_feature_map[key]]
