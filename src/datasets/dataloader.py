@@ -156,7 +156,6 @@ class GridDataset(Dataset):
         data = np.load(file_path).astype(np.float32)
         input_arr, output_arr = data[:, :, :-1], data[:, :, -1]
 
-        input_arr = input_arr[:, :, self.channel_indices] if self.channel_indices else input_arr
         output_arr[np.isnan(output_arr)] = 0.0
 
         assert np.all(np.isnan(input_arr) == np.isnan(input_arr[..., :1])), "NaN mask differs across channels!"
@@ -164,7 +163,17 @@ class GridDataset(Dataset):
 
         # Processing one hot encoding
         if "fuel_grid" in self.feature_names_list and self.fuel_feats_encoding == "one_hot":  # (H,W,C+20)
-            input_arr = one_hot_encode(arr=input_arr, channel_idx=self.fuel_feat_index, num_classes=int(MAX_FUEL_GRID + 1))
+            num_classes = int(MAX_FUEL_GRID + 1)
+            input_arr = one_hot_encode(arr=input_arr, channel_idx=self.fuel_feat_index, num_classes=num_classes)
+            # Update channel_indices to account for new one-hot channels
+            old_fuel_idx = self.fuel_feat_index
+            self.channel_indices = [i for i in self.channel_indices if i != old_fuel_idx]
+            # Insert new indices for the one-hot channels at the position of the old fuel index
+            self.channel_indices = (
+                self.channel_indices[:old_fuel_idx]
+                + list(range(old_fuel_idx, old_fuel_idx + num_classes))
+                + [i + num_classes - 1 for i in self.channel_indices[old_fuel_idx:]]
+            )
 
         input_arr = fill_nan_channel_mean_numpy(input_arr)  # remove NaNs from the inp data (replace by mean)
 
@@ -175,6 +184,8 @@ class GridDataset(Dataset):
                 input_arr[:, :, self.fuel_feat_index] = (input_arr[:, :, self.fuel_feat_index] - MIN_FUEL_GRID) / (
                     MAX_FUEL_GRID - MIN_FUEL_GRID
                 )
+
+        input_arr = input_arr[:, :, self.channel_indices] if self.channel_indices else input_arr
 
         if self.modelling_approach == "2":
             if self.out_norm == "min_max":

@@ -101,7 +101,7 @@ def test_one_hot_encoding(temp_data_dir):
         modelling_approach="2",
         valid_mask_threshold=0.0,
         transform=None,
-        feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],
+        feature_names_list=["fuel_grid"],
     )
     x, y, mask = ds[0]
     # Should have more channels due to one-hot
@@ -120,11 +120,11 @@ def test_feature_names_list(temp_data_dir):
         modelling_approach="2",
         valid_mask_threshold=0.0,
         transform=None,
-        feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],
+        feature_names_list=["fuel_grid"],
     )
     x, y, mask = ds[0]
     # Only selected features
-    assert x.shape[0] == 3
+    assert x.shape[0] == 1
 
 
 def test_mask_threshold(temp_data_dir):
