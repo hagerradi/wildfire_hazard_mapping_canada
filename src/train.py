@@ -44,7 +44,8 @@ def main() -> None:
 
     # ---------- Set Seed ----------
     seed = getattr(config, "seed", 42)
-    seed_everything(seed)
+    deterministic = getattr(config, "deterministic", True)
+    seed_everything(seed=seed, deterministic=deterministic)
 
     # ---------- Data ----------
     train_loader, val_loader = get_train_val_dataloader(config=config.data, modelling_approach=config.modelling_approach, seed=seed)

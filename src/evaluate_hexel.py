@@ -13,7 +13,7 @@ from src.config import Config
 from src.datasets.dataloader import get_test_loader
 from src.datasets.postprocessing.utils import get_predicted_hexel, save_predicted_hexels
 from src.trainer import Trainer
-from src.utils import visualize_model_predictions
+from src.utils import visualize_model_predictions, seed_everything
 
 
 def parse_args() -> argparse.Namespace:
@@ -50,6 +50,11 @@ def load_config(path: str) -> Config:
 def main() -> None:
     args = parse_args()
     config = load_config(args.config)
+    
+    # ---------- Set Seed ----------
+    seed = getattr(config, "seed", 42)
+    deterministic = getattr(config, "deterministic", True)
+    seed_everything(seed=seed, deterministic=deterministic)
 
     config.logger.enabled = False
 
@@ -73,6 +78,7 @@ def main() -> None:
     test_loader = get_test_loader(
         config=config.data,
         modelling_approach=config.modelling_approach,
+        seed=seed
     )
     test_metrics, test_predictions = trainer.test(test_loader, return_predictions=True)
 

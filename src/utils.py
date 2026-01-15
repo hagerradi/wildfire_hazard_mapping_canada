@@ -87,32 +87,32 @@ def seed_everything(seed: int = 42, deterministic: bool = True):
     -------
     None
     """
-    # os
-    os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
+    
+    # (CPU) Python, OS, NumPy, Torch 
+    random.seed(seed)    
+    np.random.seed(seed)
+    torch.manual_seed(seed)
     os.environ["PYTHONHASHSEED"] = str(seed)
 
-    # Python
-    random.seed(seed)
-
-    # NumPy
-    np.random.seed(seed)
-
-    # Torch
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)  # for multi GPU in case
-
+    # (GPU, if available)
+    if torch.cuda.is_available():
+        os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)  # for multi GPU in case
+        if deterministic:
+            torch.backends.cudnn.deterministic = True
+            torch.backends.cudnn.benchmark = False
+    
+    # For PyTorch >= 1.8
+    # Outside 'if cuda' because PyTorch has deterministic CPU algorithms too.
     if deterministic:
-        torch.backends.cudnn.deterministic = True
-        torch.backends.cudnn.benchmark = False
-
-        # For PyTorch >= 1.8
         try:
             torch.use_deterministic_algorithms(True)
         except Exception:
             pass
 
     print(f"[Info] Seed set to: {seed}")
+   
 
 
 def seed_worker(worker_id: int):
