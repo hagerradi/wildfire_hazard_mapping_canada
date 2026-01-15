@@ -84,14 +84,14 @@ def compute_ssim(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor 
     return structural_similarity_index_measure(preds_masked, targets_masked, data_range=1.0)
 
 
-def compute_bias(pred: torch.Tensor, target: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+def compute_bias(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
     """
-    pred, target, mask: same shape
-    returns scalar bias (mean(pred-target) over valid pixels)
+    preds, targets, mask: same shape
+    returns scalar bias (mean(preds-target) over valid pixels)
     """
-    pred = pred.float()
-    target = target.float()
+    preds = preds.float()
+    targets = targets.float()
     m = (mask > 0).float()
 
     denom = m.sum().clamp_min(1.0)  # avoid divide-by-zero
-    return ((pred - target) * m).sum() / denom
+    return ((preds - targets) * m).sum() / denom
