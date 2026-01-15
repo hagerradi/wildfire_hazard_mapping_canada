@@ -9,6 +9,7 @@ from torch.utils.data import DataLoader, Dataset
 
 from config import DataConfig
 from data_preparation.grid_loader.utils import fuel_ranking, get_range_burn_prob
+from utils import seed_worker
 
 # Global Burn Count Min Max
 BURN_COUNT_MAX = 1336.0
@@ -203,12 +204,9 @@ class GridDataset(Dataset):
         )  # (C, H, W), (1, H, W), (1, H, W)
 
 
-def get_train_val_dataloader(
-    config: DataConfig,
-    modelling_approach: str = "1",
-):
+def get_train_val_dataloader(config: DataConfig, modelling_approach: str = "1", seed: int = 42):
     """
-    Creates and returns a DataLoader
+    Creates and returns a DataLoader with deterministic shuffling
     """
     root_dir = config.root_dir
     train_csv_name = config.train_split
@@ -248,17 +246,27 @@ def get_train_val_dataloader(
         transform=transform,
     )
 
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
+    # Create a deterministic generator
+    g = torch.Generator()
+    g.manual_seed(seed)
 
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=num_workers,
+        worker_init_fn=seed_worker,  # Fixes worker randomness
+        generator=g,  # Fixes shuffle order
+    )
+
+    val_loader = DataLoader(
+        val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, worker_init_fn=seed_worker, generator=g
+    )
 
     return train_loader, val_loader
 
 
-def get_test_loader(
-    config: DataConfig,
-    modelling_approach: str = "1",
-):
+def get_test_loader(config: DataConfig, modelling_approach: str = "1", seed: int = 42):
     """
     Creates and returns the test loader
     """
@@ -286,6 +294,12 @@ def get_test_loader(
         valid_mask_threshold=valid_mask_threshold,
         transform=transform,
     )
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+
+    g = torch.Generator()
+    g.manual_seed(seed)
+
+    test_loader = DataLoader(
+        test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, worker_init_fn=seed_worker, generator=g
+    )
 
     return test_loader

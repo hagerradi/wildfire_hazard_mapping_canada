@@ -1,6 +1,8 @@
 import os
+import random
 
 import numpy as np
+import torch
 from matplotlib import pyplot as plt
 from torch.utils.data import DataLoader
 
@@ -154,3 +156,58 @@ def visualize_model_predictions(
         plt.close()
     else:
         plt.show()
+
+    plt.tight_layout()
+    plt.show()
+
+
+def seed_everything(seed: int = 42, deterministic: bool = True):
+    """
+    Seed all RNG sources for determinism.
+
+    Parameters
+    ----------
+    seed: int
+        Seed value
+    determinstic: bool
+        Ensures strict determinism but might slow down training
+
+    Returns
+    -------
+    None
+    """
+
+    # (CPU) Python, OS, NumPy, Torch
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    os.environ["PYTHONHASHSEED"] = str(seed)
+
+    # (GPU, if available)
+    if torch.cuda.is_available():
+        os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)  # for multi GPU in case
+        if deterministic:
+            torch.backends.cudnn.deterministic = True
+            torch.backends.cudnn.benchmark = False
+
+    # For PyTorch >= 1.8
+    # Outside 'if cuda' because PyTorch has deterministic CPU algorithms too.
+    if deterministic:
+        try:
+            torch.use_deterministic_algorithms(True)
+        except Exception:
+            pass
+
+    print(f"[Info] Seed set to: {seed}")
+
+
+def seed_worker(worker_id: int):
+    """
+    Helper function to set the seed for each worker based on the global seed.
+    This ensures numpy and random in subprocesses are deterministic.
+    """
+    worker_seed = torch.initial_seed() % 2**32
+    np.random.seed(worker_seed)
+    random.seed(worker_seed)
