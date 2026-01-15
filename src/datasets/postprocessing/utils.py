@@ -58,6 +58,7 @@ def get_predicted_hexel(
     min_target_val: float,
     max_target_val: float,
     modelling_approach: str = "2",
+    out_norm: str = "min_max",
     stitch_mode: str = "mean",
     win_h: int = 128,
     win_w: int = 128,
@@ -85,7 +86,9 @@ def get_predicted_hexel(
             win_h=win_h,
             win_w=win_w,
         )
-        reconstructed_hexel_denorm = denormalize_burn_count(data=reconstructed_hexel, min_val=min_target_val, max_val=max_target_val)
+        reconstructed_hexel_denorm = denormalize_burn_count(
+            data=reconstructed_hexel, min_val=min_target_val, max_val=max_target_val, out_norm=out_norm
+        )
         gt_elevation_grid_profile.update(dtype="float32", compress="lzw", nodata=-9999)  # type: ignore
     else:
         unique_season_cause = list(set(zip(test_df["season"], test_df["cause"])))
@@ -103,7 +106,7 @@ def get_predicted_hexel(
                 win_w=win_w,
             )
             reconstructed_season_cause_hexel_denorm = denormalize_burn_count(
-                data=reconstructed_season_cause_hexel, min_val=min_target_val, max_val=max_target_val
+                data=reconstructed_season_cause_hexel, min_val=min_target_val, max_val=max_target_val, out_norm=out_norm
             )
             season_cause_hexels.append(reconstructed_season_cause_hexel_denorm)
             start_idx += len(filtered_season_cause_df)
