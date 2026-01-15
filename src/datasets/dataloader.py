@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader, Dataset
 
 from config import DataConfig
 from data_preparation.grid_loader.utils import fuel_ranking, get_range_burn_prob
-from src.datasets.utils import fill_nan_channel_mean_numpy, log_norm, one_hot_encode
+from src.datasets.utils import fill_nan_channel_mean_numpy, one_hot_encode, output_burn_prob_norm
 
 # Global Burn Count Min Max
 BURN_COUNT_MAX = 1336.0
@@ -137,11 +137,9 @@ class GridDataset(Dataset):
             elif self.out_norm in ["total_iters", "season_cause_iters"]:
                 output_arr /= self.out_norm_array[idx]
         elif self.modelling_approach == "1":
-            if self.out_norm == "min_max":
-                output_arr = (output_arr - self.BURN_PROB_MIN) / (self.BURN_PROB_MAX - self.BURN_PROB_MIN)
-                output_arr = np.clip(output_arr, 0.0, 1.0)
-            elif self.out_norm == "log":
-                output_arr = log_norm(output_arr)
+            output_arr = output_burn_prob_norm(
+                output_arr=output_arr, burn_prob_max=self.BURN_PROB_MAX, burn_prob_min=self.BURN_PROB_MIN, out_norm=self.out_norm
+            )
 
         return (
             torch.from_numpy(input_arr).permute(2, 0, 1),
