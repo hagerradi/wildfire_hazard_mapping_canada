@@ -1,4 +1,5 @@
 import argparse
+import glob
 import os
 from itertools import product
 from pathlib import Path
@@ -161,8 +162,14 @@ def generate_season_cause_burn_count_rasters(root_dir: str, hex_id: str) -> None
     except Exception as e:
         print(f"Skipping {hex_id}: {e}")
         return
-
-    df = pd.read_csv(os.path.join(hex_dir, ESC_FIRE_DIST_PATH + str(int(hex_id)) + ".csv"))
+    pattern = os.path.join(hex_dir, ESC_FIRE_DIST_PATH + str(int(hex_id)) + "*.csv")
+    file_paths = glob.glob(pattern)
+    if len(file_paths) > 0:
+        file_path = file_paths[0]
+    else:
+        print(f"The file {pattern} doesnt exist")
+        return
+    df = pd.read_csv(file_path)
     seasons = df["season"].unique().tolist()
     causes = df["cause"].unique().tolist()
 
@@ -170,12 +177,15 @@ def generate_season_cause_burn_count_rasters(root_dir: str, hex_id: str) -> None
     for season, cause in product(seasons, causes):
         print(f"Generating: season {season} - cause {cause} ...")
 
+        fname_bp = f"hex_{hex_id}_season_{season}_cause_{cause}_bp.tif".replace(" ", "")
+        fname_bc = f"hex_{hex_id}_season_{season}_cause_{cause}_bc.tif".replace(" ", "")
+        if os.path.exists(os.path.join(outputs_dir, fname_bc)) and os.path.exists(os.path.join(outputs_dir, fname_bp)):
+            print(f"File already exists - {season} - {cause} - {hex_id}")
+            continue
+
         count_grid, num_iters = rasterizer.compute_counts(season=season, cause=cause)
 
         prob_grid = count_grid.astype("float32") / num_iters if num_iters > 0 else np.zeros_like(count_grid, dtype="float32")
-
-        fname_bp = f"hex_{hex_id}_season_{season}_cause_{cause}_bp.tif".replace(" ", "")
-        fname_bc = f"hex_{hex_id}_season_{season}_cause_{cause}_bc.tif".replace(" ", "")
 
         save_raster(count_grid, profile_bc, os.path.join(outputs_dir, fname_bc))
         save_raster(prob_grid, profile_bp, os.path.join(outputs_dir, fname_bp))
