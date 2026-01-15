@@ -5,7 +5,7 @@ import pandas as pd
 import rasterio
 from rasterio.profiles import Profile
 
-from data_preparation.grid_loader.utils import denormalize_burn_count
+from data_preparation.grid_loader.utils import denormalize_burn_count, denormalize_burn_prob
 from data_preparation.paths import ELEVATION_GRID_PATH
 from src.datasets.postprocessing.stitch_hexel import stitch_windows
 
@@ -86,7 +86,7 @@ def get_predicted_hexel(
             win_h=win_h,
             win_w=win_w,
         )
-        reconstructed_hexel_denorm = denormalize_burn_count(
+        reconstructed_hexel_denorm = denormalize_burn_prob(
             data=reconstructed_hexel, min_val=min_target_val, max_val=max_target_val, out_norm=out_norm
         )
         gt_elevation_grid_profile.update(dtype="float32", compress="lzw", nodata=-9999)  # type: ignore
@@ -106,7 +106,7 @@ def get_predicted_hexel(
                 win_w=win_w,
             )
             reconstructed_season_cause_hexel_denorm = denormalize_burn_count(
-                data=reconstructed_season_cause_hexel, min_val=min_target_val, max_val=max_target_val, out_norm=out_norm
+                data=reconstructed_season_cause_hexel, min_val=min_target_val, max_val=max_target_val
             )
             season_cause_hexels.append(reconstructed_season_cause_hexel_denorm)
             start_idx += len(filtered_season_cause_df)
