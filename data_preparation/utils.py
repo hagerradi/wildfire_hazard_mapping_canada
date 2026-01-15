@@ -72,6 +72,21 @@ def find_hex_ids(root_dir: str) -> list:
     return hex_ids
 
 
+def get_processed_hex_ids(folder_path: str) -> list:
+    """
+    Finds all hex_ids from the metadata df files
+    """
+    folder = Path(folder_path)
+    hex_ids = []
+    for file_path in folder.glob("meta_hex_*.csv"):
+        filename_no_ext = file_path.stem
+        extracted_id = filename_no_ext.removeprefix("meta_hex_")
+
+        hex_ids.append(extracted_id)
+
+    return hex_ids
+
+
 def plot_split_window_hexel(windows, channel_index=0, max_cols=5, figsize=(15, 15)):
     """
     Plots a list/array of 3D windows in a subplot grid.

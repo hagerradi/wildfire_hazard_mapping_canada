@@ -4,20 +4,7 @@ from pathlib import Path
 
 import pandas as pd
 
-
-def get_hex_ids(folder_path: str) -> list:
-    """
-    Finds all hex_ids from the metadata df files
-    """
-    folder = Path(folder_path)
-    hex_ids = []
-    for file_path in folder.glob("meta_hex_*.csv"):
-        filename_no_ext = file_path.stem
-        extracted_id = filename_no_ext.removeprefix("meta_hex_")
-
-        hex_ids.append(extracted_id)
-
-    return hex_ids
+from data_preparation.utils import get_processed_hex_ids
 
 
 def get_selected_hexel_metadata(data_dir: str, hex_ids: list) -> pd.DataFrame:
@@ -32,7 +19,7 @@ def get_selected_hexel_metadata(data_dir: str, hex_ids: list) -> pd.DataFrame:
 def get_data_splits(data_dir: str, val_hex_id: list, test_hex_id: list):
     """Split the data into train, val and test sets using the metadata csvs created"""
     # Get the train ids
-    all_hex_ids = get_hex_ids(data_dir)
+    all_hex_ids = get_processed_hex_ids(data_dir)
     train_hex_ids = list(set(all_hex_ids) - set(val_hex_id) - set(test_hex_id))
 
     train_df = get_selected_hexel_metadata(data_dir, hex_ids=train_hex_ids)
