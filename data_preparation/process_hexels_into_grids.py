@@ -8,7 +8,7 @@ import pandas as pd
 from data_preparation.generate_season_cause_output import FireCountRasterizer
 from data_preparation.grid_loader.utils import NODATA, load_fire_shapefiles
 from data_preparation.hexel_loader import load_features_per_hexel
-from data_preparation.utils import find_hex_ids
+from data_preparation.utils import find_hex_ids, get_processed_hex_ids
 
 
 def save_split_hexel_windows(
@@ -121,8 +121,20 @@ def generate_data_samples(
     os.makedirs(out_dir, exist_ok=True)
     os.makedirs(os.path.join(out_dir, "numpy_files"), exist_ok=True)
     hex_ids = find_hex_ids(root_dir)
+    completed_hex_ids = get_processed_hex_ids(out_dir)
     for hex_id in hex_ids:
-        if hex_id == "52":
+        if hex_id in completed_hex_ids:
+            print(f"==========Skipping because completed hex{hex_id}=============")
+            continue
+        if (
+            (hex_id == "52")
+            or (hex_id == "44")
+            or (hex_id == "53")
+            or (hex_id == "04")
+            or (hex_id == "25")
+            or (hex_id == "47")
+            or (hex_id == "48")
+        ):
             print("======Skipping hex=======", hex_id)
             continue
         print(f"======Working on Hex ID: {hex_id}==========")
@@ -133,6 +145,9 @@ def generate_data_samples(
             modelling_approach=modelling_approach,
             output_type=output_type,
         )
+        if (stacked_feats is None) or (mask is None) or (season_cause_mapping is None):
+            print(f"================Failed for hex {hex_id}===================")
+            continue
         get_split_hexel_window(
             season_cause_stacked_feats=stacked_feats,
             season_cause_mask=mask,
