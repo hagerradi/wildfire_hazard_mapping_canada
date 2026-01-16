@@ -40,6 +40,40 @@ def fill_nan_channel_mean_numpy(arr: np.ndarray) -> np.ndarray:
     return arr
 
 
+def compute_input_channels(feature_names_list: list[str], fuel_feats_encoding: str, root_dir: str, modelling_approach: str) -> int:
+    """
+    Calculates the total number of input channels based on selected features
+    and encoding strategy.
+    """
+    # 1. Load the feature map
+    map_path = os.path.join(root_dir, f"feature_channel_map_{modelling_approach}.json")
+
+    if not os.path.exists(map_path):
+        raise FileNotFoundError(f"Feature map not found at: {map_path}")
+
+    with open(map_path) as f:
+        channel_feature_map = json.load(f)
+
+    # 2. Calculate base channels from the feature map
+    # This sums up the channels for every feature in your list
+    total_channels = 0
+    for name in feature_names_list:
+        if name in channel_feature_map:
+            total_channels += len(channel_feature_map[name])
+        else:
+            raise ValueError(f"Feature '{name}' not found in feature_channel_map.")
+
+    # 3. Adjust for One-Hot Encoding of Fuel
+    # If using one-hot, we remove the original 'fuel_grid' channel (1)
+    # and add the one-hot vectors (MAX_FUEL_GRID + 1)
+    if "fuel_grid" in feature_names_list and fuel_feats_encoding == "one_hot":
+        num_fuel_classes = int(MAX_FUEL_GRID + 1)
+        # Net change: -1 (remove ordinal) + num_classes (add one-hot)
+        total_channels = total_channels - 1 + num_fuel_classes
+
+    return total_channels
+
+
 def one_hot_encode(arr: np.ndarray, channel_idx: int, num_classes: int) -> np.ndarray:
     """
     Replaces the nth channel with its one-hot encoded version.
