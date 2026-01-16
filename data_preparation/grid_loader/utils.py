@@ -189,7 +189,7 @@ def denormalize_burn_prob(
         data = data * (max_val - min_val) + min_val
     elif out_norm == "log":
         data = np.expm1(data * np.log1p(multiplier)) / multiplier
-    return data
+    return data.astype("float32")
 
 
 def visualize_ignition_grid(grid: np.ndarray, cause: int, season: int):
