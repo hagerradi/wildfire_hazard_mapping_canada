@@ -4,6 +4,9 @@ save_dir: "experiments/unet_run_001_approach_1"
 # approaches 1 or 2
 modelling_approach: "1"
 
+seed: 42
+deterministic: True
+
 model:
   input_channels: 3 # if using one hot encoding, we add more 14 more features
   num_classes: 1
@@ -11,7 +14,7 @@ model:
 optimizer:
   name: "AdamW" # "SGD", "Adam", "AdamW"
   lr: 1.0e-3
-  loss_name: "mse" # mse, bce, etc
+  loss_name: "mae" # mse, bce, mae, etc
 
 training:
   max_epochs: 20
