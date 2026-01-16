@@ -68,6 +68,7 @@ class GridDataset(Dataset):
         self.metadata_df = self.metadata_df[self.metadata_df["valid_ratio"] > self.valid_mask_threshold]
         self.all_files = list(self.metadata_df[filename_col])
 
+        self.BURN_PROB_MAX, self.BURN_PROB_MIN = 1.0, 0.0
         if self.modelling_approach == "1" and self.out_norm == "min_max":
             self.BURN_PROB_MAX, self.BURN_PROB_MIN = get_range_burn_prob(os.path.dirname(self.root_dir))
 

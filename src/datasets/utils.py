@@ -71,5 +71,5 @@ def output_burn_prob_norm(output_arr: np.ndarray, burn_prob_max: float, burn_pro
         output_arr = (output_arr - burn_prob_min) / (burn_prob_max - burn_prob_min)
         output_arr = np.clip(output_arr, 0.0, 1.0)
     elif out_norm == "log":
-        output_arr = log_norm(output_arr)
+        output_arr = log_norm(output_arr).astype(np.float32)
     return output_arr
