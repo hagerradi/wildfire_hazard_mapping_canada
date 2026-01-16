@@ -126,7 +126,7 @@ def generate_data_samples(
         if hex_id in completed_hex_ids:
             print(f"==========Skipping because completed hex{hex_id}=============")
             continue
-        if (hex_id == "52") or (hex_id == "53") or (hex_id == "04") or (hex_id == "25") or (hex_id == "47") or (hex_id == "48"):
+        if hex_id in ["52", "53", "04", "25", "47", "48"]:
             print("======Skipping hex=======", hex_id)
             continue
         print(f"======Working on Hex ID: {hex_id}==========")
