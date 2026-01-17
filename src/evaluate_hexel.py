@@ -128,13 +128,12 @@ def main() -> None:
         # Handle the error or raise an exception
         raise TypeError(f"Expected ndarray, but got string: {test_predictions}")
     reconstructed_hexel_denorm, gt_elevation_grid_profile, hex_id = get_predicted_hexel(
-        data_dir,
-        raw_data_dir,
-        test_predictions,
-        max_target_val,
-        min_target_val,
-        modelling_approach,
-        out_norm,
+        base_dir=data_dir,
+        raw_data_dir=raw_data_dir,
+        predictions=test_predictions,
+        min_target_val=min_target_val,
+        max_target_val=max_target_val,
+        modelling_approach=modelling_approach,
         stitch_mode="mean",
         win_h=128,
         win_w=128,
