@@ -83,7 +83,7 @@ def get_min_max_hex_prob_df(data_dir: str) -> list:
     all_hex_ids = find_hex_ids(data_dir)
     hex_min_max_bp = []
     for hex_id in all_hex_ids:
-        if hex_id in ["52", "53", "04", "25", "47", "48"]:
+        if hex_id in HEX_ID_NA:
             print("======Skipping hex=======", hex_id)
             continue
         root_dir = os.path.join(data_dir, f"hex{hex_id}")
