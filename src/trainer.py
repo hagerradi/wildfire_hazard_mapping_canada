@@ -45,7 +45,12 @@ class Trainer:
             self.log_every_n_step = self.config.logger.log_every_n_step
             # log all the params.
             self.logger.log_params(self.config.model_dump())
+        self.setup()
 
+    def setup(self):
+        """
+        define model, loss function and optimizer.
+        """
         # Automatically infer input channels based on data config
         self.input_channels = compute_number_input_channels(
             feature_names_list=self.config.data.feature_names_list,
@@ -55,12 +60,6 @@ class Trainer:
         )
         print(f"[Trainer] Auto-inferred Input Channels: {self.input_channels}")
 
-        self.setup()
-
-    def setup(self):
-        """
-        define model, loss function and optimizer.
-        """
         self.model = UNet(input_channels=self.input_channels, num_classes=self.config.model.num_classes)
         self.model.to(self.device)
 

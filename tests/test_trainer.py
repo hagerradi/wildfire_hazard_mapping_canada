@@ -55,7 +55,6 @@ def mock_compute_channels(monkeypatch):
     """
     import src.trainer as trainer_module
 
-    # We patch the function name as it is imported in src/trainer.py
     monkeypatch.setattr(
         trainer_module,
         "compute_number_input_channels",
