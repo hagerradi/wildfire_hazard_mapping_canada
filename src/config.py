@@ -34,6 +34,8 @@ class DataConfig(BaseModel):
     train_split: str
     val_split: str
     test_split: str
+    transforms_list: list[str] = []
+    augmentation_prob: float = 0.5
 
     batch_size: int = 64
     filename_col: str = "filename"
