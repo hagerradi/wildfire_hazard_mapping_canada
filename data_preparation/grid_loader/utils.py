@@ -28,6 +28,10 @@ MAX_WIND_VELOCITY = 16.170000076293945
 FIRE_INTENSITY_MAX = 131456.0
 FIRE_INTENSITY_MIN = 0.0
 
+# Global Burn Count Min Max
+BURN_COUNT_MAX = 1336.0
+BURN_COUNT_MIN = 0.0
+
 # mapping cause to cause index
 fire_cause_mapping = {1: "h", 2: "l"}
 
