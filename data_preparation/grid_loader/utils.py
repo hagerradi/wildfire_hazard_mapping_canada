@@ -24,8 +24,8 @@ ELEV_NATIONAL_MIN = -158
 # Max wind velocity (TODO: need to modify when we have the remaining dataset)
 MAX_WIND_VELOCITY = 16.170000076293945
 
-# Normalization values for Fire Intensity (TODO: need to rerun once we have the entire dataset)
-FIRE_INTENSITY_MAX = 127247.0
+# Normalization values for Fire Intensity (TODO: need to rerun once we have the remaining dataset)
+FIRE_INTENSITY_MAX = 131456.0
 FIRE_INTENSITY_MIN = 0.0
 
 # mapping cause to cause index
@@ -139,9 +139,9 @@ def get_range_output_fire_intensity(data_path: str) -> tuple[float, float]:
     min_fire_intensity, max_fire_intensity = np.inf, -np.inf
     for hex_id in all_hex_ids:
         if hex_id in HEX_ID_NA:
-            print(f"======Skipping {hex} since NA =========")
+            print(f"======Skipping hex{hex_id} since NA =========")
             continue
-        path_output_files = f"{data_path}/{hex}/outputs/hex_{hex_id}_fiRaw_mean.tif"
+        path_output_files = f"{data_path}/hex{hex_id}/outputs/hex_{hex_id}_fiRaw_mean.tif"
         output_fire_intensity_grid = load_raster(path_output_files)
         max_fire_intensity = max(max_fire_intensity, output_fire_intensity_grid.max())
         min_fire_intensity = min(min_fire_intensity, output_fire_intensity_grid.min())
