@@ -14,7 +14,6 @@ class LoggerConfig(BaseModel):
 
 
 class ModelConfig(BaseModel):
-    input_channels: int
     num_classes: int
 
 
