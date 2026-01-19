@@ -29,7 +29,7 @@ FIRE_INTENSITY_MAX = 131456.0
 FIRE_INTENSITY_MIN = 0.0
 
 # Global Burn Count Min Max
-BURN_COUNT_MAX = 1336.0
+BURN_COUNT_MAX = 2329.0
 BURN_COUNT_MIN = 0.0
 
 # mapping cause to cause index
@@ -158,7 +158,7 @@ def get_range_burn_count(root_dir: str) -> tuple[float, float]:
     BURN_COUNT_MAX, BURN_COUNT_MIN = -np.inf, np.inf
     for hex_id in all_hex_ids:
         if hex_id in HEX_ID_NA:
-            print(f"======Skipping {hex} since NA =========")
+            print(f"======Skipping hex{hex_id} since NA =========")
             continue
         print("In hex ID", hex_id)
         hex_dir = os.path.join(root_dir, f"hex{hex_id}")
@@ -178,7 +178,7 @@ def get_range_burn_prob(root_dir: str) -> tuple[float, float]:
     burn_prob_max_value, burn_prob_min_value = -np.inf, np.inf
     for hex_id in all_hex_ids:
         if hex_id in HEX_ID_NA:
-            print(f"======Skipping {hex} since NA =========")
+            print(f"======Skipping hex{hex_id} since NA =========")
             continue
         hex_dir = os.path.join(root_dir, f"hex{hex_id}")
         outputs_dir = os.path.join(hex_dir, OUTPUT_BURN_PROB_PATH)
