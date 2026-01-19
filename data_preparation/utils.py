@@ -7,7 +7,6 @@ import pandas as pd
 from matplotlib import pyplot as plt
 from sklearn.model_selection import train_test_split
 
-from data_preparation.grid_loader.output import load_output_burn_grid
 from data_preparation.paths import OUTPUT_BURN_PROB_PATH
 
 feature_names = ["ignition_grid", "esc_fires_grid", "fuel_grid", "elevation_grid", "weather_grid", "wind_grid", "out_grid"]
@@ -78,6 +77,8 @@ def find_hex_ids(root_dir: str) -> list:
 
 def get_min_max_hex_prob_df(data_dir: str) -> list:
     """create a list of burn prob dist for stratified sampling"""
+    from data_preparation.grid_loader.output import load_output_burn_grid
+
     output_type, season, cause = "prob", None, None
     all_hex_ids = find_hex_ids(data_dir)
     hex_min_max_bp = []
