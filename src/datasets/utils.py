@@ -1,4 +1,11 @@
+import json
+import os
+
 import numpy as np
+
+from data_preparation.grid_loader.utils import fuel_ranking
+
+MAX_FUEL_GRID = float(max(fuel_ranking.values()))
 
 
 def fill_nan_channel_mean_numpy(arr: np.ndarray) -> np.ndarray:
@@ -73,3 +80,40 @@ def output_burn_prob_norm(output_arr: np.ndarray, burn_prob_max: float, burn_pro
     elif out_norm == "log":
         output_arr = log_norm(output_arr).astype(np.float32)
     return output_arr
+
+
+def compute_number_input_channels(feature_names_list: list[str], fuel_feats_encoding: str, root_dir: str, modelling_approach: str) -> int:
+    """
+    Calculates the total number of input channels based on selected features
+    and encoding strategy.
+    """
+    if not feature_names_list:  # Catch None and []
+        raise ValueError("feature_names_list cannot be None or empty")
+
+    # 1. Load the feature map
+    feature_channel_map_path = os.path.join(root_dir, f"feature_channel_map_{modelling_approach}.json")
+
+    if not os.path.exists(feature_channel_map_path):
+        raise FileNotFoundError(f"Feature map not found at: {feature_channel_map_path}")
+
+    with open(feature_channel_map_path) as f:
+        channel_feature_map = json.load(f)
+
+    # 2. Calculate base channels from the feature map
+    # This sums up the channels for every feature in your list
+    total_channels = 0
+    for name in feature_names_list:
+        if name in channel_feature_map:
+            total_channels += len(channel_feature_map[name])
+        else:
+            raise ValueError(f"Feature '{name}' not found in feature_channel_map.")
+
+    # 3. Adjust for One-Hot Encoding of Fuel
+    # If using one-hot, we remove the original 'fuel_grid' channel (1)
+    # and add the one-hot vectors (MAX_FUEL_GRID + 1)
+    if "fuel_grid" in feature_names_list and fuel_feats_encoding == "one_hot":
+        num_fuel_classes = int(MAX_FUEL_GRID + 1)
+        # Net change: -1 (remove ordinal) + num_classes (add one-hot)
+        total_channels = total_channels - 1 + num_fuel_classes
+
+    return total_channels
