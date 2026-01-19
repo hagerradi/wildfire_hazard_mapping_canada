@@ -8,7 +8,7 @@ import pandas as pd
 from data_preparation.generate_season_cause_output import FireCountRasterizer
 from data_preparation.grid_loader.utils import NODATA, load_fire_shapefiles
 from data_preparation.hexel_loader import load_features_per_hexel
-from data_preparation.utils import find_hex_ids, get_processed_hex_ids
+from data_preparation.utils import HEX_ID_NA, find_hex_ids, get_processed_hex_ids
 
 
 def save_split_hexel_windows(
@@ -126,7 +126,7 @@ def generate_data_samples(
         if hex_id in completed_hex_ids:
             print(f"==========Skipping because completed hex{hex_id}=============")
             continue
-        if hex_id in ["52", "53", "04", "25", "47", "48"]:
+        if hex_id in HEX_ID_NA:
             print("======Skipping hex=======", hex_id)
             continue
         print(f"======Working on Hex ID: {hex_id}==========")

@@ -13,7 +13,7 @@ from rasterio.features import MergeAlg, rasterize
 
 from data_preparation.grid_loader.utils import load_fire_shapefiles
 from data_preparation.paths import ESC_FIRE_DIST_PATH, OUTPUT_BURN_PROB_PATH
-from data_preparation.utils import find_hex_ids
+from data_preparation.utils import HEX_ID_NA, find_hex_ids
 
 
 class FireCountRasterizer:
@@ -200,7 +200,8 @@ def main():
     hex_ids = find_hex_ids(args.root_dir)
 
     for hex_id in hex_ids:
-        if hex_id in ["52", "53", "04", "25", "47", "48"]:
+        if hex_id in HEX_ID_NA:
+            print(f"=======Skipping hex{hex_id} as NA========")
             continue
         generate_season_cause_burn_count_rasters(args.root_dir, hex_id)
 
