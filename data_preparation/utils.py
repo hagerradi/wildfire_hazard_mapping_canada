@@ -2,8 +2,12 @@ import math
 import os
 from pathlib import Path
 
+import numpy as np
+import pandas as pd
 from matplotlib import pyplot as plt
+from sklearn.model_selection import train_test_split
 
+from data_preparation.grid_loader.output import load_output_burn_grid
 from data_preparation.paths import OUTPUT_BURN_PROB_PATH
 
 feature_names = ["ignition_grid", "esc_fires_grid", "fuel_grid", "elevation_grid", "weather_grid", "wind_grid", "out_grid"]
@@ -70,6 +74,39 @@ def find_hex_ids(root_dir: str) -> list:
         return []
 
     return hex_ids
+
+
+def get_min_max_hex_prob_df(data_dir: str) -> list:
+    """create a list of burn prob dist for stratified sampling"""
+    output_type, season, cause = "prob", None, None
+    all_hex_ids = find_hex_ids(data_dir)
+    hex_min_max_bp = []
+    for hex_id in all_hex_ids:
+        if hex_id in ["52", "53", "04", "25", "47", "48"]:
+            print("======Skipping hex=======", hex_id)
+            continue
+        root_dir = os.path.join(data_dir, f"hex{hex_id}")
+        fpath = find_simulation_output_file(root_dir, hex_id, output_type, season=season, cause=cause)
+        out_grid = load_output_burn_grid(fpath)
+        out_grid_ravel = out_grid.ravel()
+        area_burnt = len(out_grid_ravel[out_grid_ravel != 0.0]) / len(out_grid_ravel)
+        hex_min_max_bp.append([hex_id, np.nanmin(out_grid), np.min(out_grid[out_grid != 0.0]), np.nanmax(out_grid), area_burnt])
+    return hex_min_max_bp
+
+
+def get_stratified_data_split(data_dir: str):
+    """Stratified sampling for the valid data split"""
+    hex_min_max_bp = get_min_max_hex_prob_df(data_dir)
+    df_min_max = pd.DataFrame(hex_min_max_bp, columns=["hex_id", "min_prob", "min_except_0", "max_prob", "area_burnt"])
+    df_min_max["area_bin"] = pd.qcut(df_min_max["area_burnt"], q=2, labels=["LowArea", "HighArea"])
+    df_min_max["max_bin"] = pd.qcut(df_min_max["max_prob"], q=2, labels=["LowMax", "HighMax"])
+
+    df_min_max["strat_key"] = df_min_max["area_bin"].astype(str) + "_" + df_min_max["max_bin"].astype(str)
+
+    train_val, test = train_test_split(df_min_max, test_size=5, stratify=df_min_max["strat_key"], random_state=42)
+    train, val = train_test_split(train_val, test_size=5, stratify=train_val["strat_key"], random_state=42)
+
+    print(f"Total: {len(df_min_max)} | Train: {len(train)} | Val: {len(val)} | Test: {len(test)}")
 
 
 def plot_split_window_hexel(windows, channel_index=0, max_cols=5, figsize=(15, 15)):
