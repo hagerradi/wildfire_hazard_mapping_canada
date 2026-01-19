@@ -10,6 +10,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from src.config import Config
+from src.datasets.dataloader import compute_number_input_channels
 from src.logger import CometLogger
 from src.losses import BCELoss, MAELoss, MSELoss
 from src.metrics import compute_bias, compute_mae, compute_mse, compute_spearman, compute_ssim
@@ -45,13 +46,22 @@ class Trainer:
             # log all the params.
             self.logger.log_params(self.config.model_dump())
 
+        # Automatically infer input channels based on data config
+        self.input_channels = compute_number_input_channels(
+            feature_names_list=self.config.data.feature_names_list,
+            fuel_feats_encoding=self.config.data.fuel_feats_encoding,
+            root_dir=self.config.data.root_dir,
+            modelling_approach=self.config.modelling_approach,
+        )
+        print(f"[Trainer] Auto-inferred Input Channels: {self.input_channels}")
+
         self.setup()
 
     def setup(self):
         """
         define model, loss function and optimizer.
         """
-        self.model = UNet(input_channels=self.config.model.input_channels, num_classes=self.config.model.num_classes)
+        self.model = UNet(input_channels=self.input_channels, num_classes=self.config.model.num_classes)
         self.model.to(self.device)
 
         # Get model nbr of params and log them into Logger

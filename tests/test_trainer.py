@@ -47,6 +47,23 @@ def test_trainer_uses_logger(dummy_config, mock_comet_logger):
     mock_comet_logger.log_params.assert_called()
 
 
+@pytest.fixture(autouse=True)
+def mock_compute_channels(monkeypatch):
+    """
+    Mocks the channel computation function.
+    Instead of reading a JSON file, it simply returns 1 (to match dummy_data).
+    """
+    import src.trainer as trainer_module
+
+    # We patch the function name as it is imported in src/trainer.py
+    # Since you renamed it, ensure this matches the import in src/trainer.py
+    monkeypatch.setattr(
+        trainer_module,
+        "compute_number_input_channels",
+        lambda **kwargs: 1,  # Always return 1 channel for tests
+    )
+
+
 @pytest.fixture
 def dummy_config(tmp_path):
     # Minimal config for Trainer
@@ -60,7 +77,6 @@ def dummy_config(tmp_path):
             "log_every_n_step": 1,
         },
         "model": {
-            "input_channels": 1,
             "num_classes": 1,
         },
         "optimizer": {
@@ -74,6 +90,7 @@ def dummy_config(tmp_path):
             "train_split": "",
             "val_split": "",
             "test_split": "",
+            "feature_names_list": ["dummy_feat"],  # Needs to exist for Trainer init access
             "fuel_feats_encoding": "",
         },
         "metrics": ["mse"],
@@ -110,6 +127,7 @@ def patch_trainer(trainer: Trainer) -> Trainer:
 
 def test_trainer_setup(dummy_config):
     trainer = Trainer(dummy_config)
+    assert trainer.input_channels == 1
     assert trainer.model is not None
     assert trainer.loss_fn is not None
     assert isinstance(trainer.optimizer, torch.optim.Optimizer)

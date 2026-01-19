@@ -8,7 +8,7 @@ import os
 import yaml
 
 from src.config import Config
-from src.datasets.dataloader import compute_input_channels, get_test_loader, get_train_val_dataloader
+from src.datasets.dataloader import get_test_loader, get_train_val_dataloader
 from src.trainer import Trainer
 from src.utils import seed_everything
 
@@ -49,17 +49,6 @@ def main() -> None:
 
     # ---------- Data ----------
     train_loader, val_loader = get_train_val_dataloader(config=config.data, modelling_approach=config.modelling_approach, seed=seed)
-
-    # ------- Input Channels -------
-    calculated_channels = compute_input_channels(
-        feature_names_list=config.data.feature_names_list,
-        fuel_feats_encoding=config.data.fuel_feats_encoding,
-        root_dir=config.data.root_dir,
-        modelling_approach=config.modelling_approach,
-    )
-    # Overwrite the config value
-    config.model.input_channels = calculated_channels
-    print(f"[Info] Auto-inferred Input Channels: {config.model.input_channels}")
 
     # ---------- Training ----------
     trainer = Trainer(config)

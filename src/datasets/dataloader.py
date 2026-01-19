@@ -40,18 +40,21 @@ def fill_nan_channel_mean_numpy(arr: np.ndarray) -> np.ndarray:
     return arr
 
 
-def compute_input_channels(feature_names_list: list[str], fuel_feats_encoding: str, root_dir: str, modelling_approach: str) -> int:
+def compute_number_input_channels(feature_names_list: list[str], fuel_feats_encoding: str, root_dir: str, modelling_approach: str) -> int:
     """
     Calculates the total number of input channels based on selected features
     and encoding strategy.
     """
+    if not feature_names_list:  # Catch None and []
+        raise ValueError("feature_names_list cannot be None or empty")
+
     # 1. Load the feature map
-    map_path = os.path.join(root_dir, f"feature_channel_map_{modelling_approach}.json")
+    feature_channel_map_path = os.path.join(root_dir, f"feature_channel_map_{modelling_approach}.json")
 
-    if not os.path.exists(map_path):
-        raise FileNotFoundError(f"Feature map not found at: {map_path}")
+    if not os.path.exists(feature_channel_map_path):
+        raise FileNotFoundError(f"Feature map not found at: {feature_channel_map_path}")
 
-    with open(map_path) as f:
+    with open(feature_channel_map_path) as f:
         channel_feature_map = json.load(f)
 
     # 2. Calculate base channels from the feature map
