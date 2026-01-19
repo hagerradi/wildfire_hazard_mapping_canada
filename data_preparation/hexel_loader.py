@@ -1,3 +1,4 @@
+import glob
 import json
 import os
 from itertools import product
@@ -50,7 +51,7 @@ def generate_feature_channel_map(feature_list: list[np.ndarray], feature_channel
 
 def load_features_per_hexel(
     root_dir: str, hex_id: str, feature_channel_map_path: str, modelling_approach: int = 2, output_type: str = "count"
-) -> tuple[np.ndarray, np.ndarray, dict[int, tuple[int, int]] | None]:
+) -> tuple[np.ndarray | None, np.ndarray | None, dict[int, tuple[int, int]] | None]:
     """
     Load all data (features and output) per hexel
     root_dir: Root directory containing all hexels.
@@ -109,6 +110,14 @@ def load_features_per_hexel(
             return np.zeros_like(elevation_grid, dtype=dtype)  # in case no fires for a scenario
         return load_output_burn_grid(path)
 
+    pattern = os.path.join(root_dir, ESC_FIRE_DIST_PATH + str(int(hex_id)) + "*.csv")
+    esc_fire_distribution_file_paths = glob.glob(pattern)
+    if len(esc_fire_distribution_file_paths) > 0:
+        esc_fire_distribution_file_path = esc_fire_distribution_file_paths[0]
+    else:
+        print(f"The file {pattern} does not exist")
+        return None, None, None
+
     if modelling_approach == 1:
         season_cause_mapping = None
         # input
@@ -116,7 +125,7 @@ def load_features_per_hexel(
 
         esc_fires_prob_grid = load_fire_density_grid(
             zone_grid_file_path=os.path.join(root_dir, FIRE_ZONE_GRID_PATH),
-            esc_fire_distribution_file_path=os.path.join(root_dir, ESC_FIRE_DIST_PATH + str(int(hex_id)) + ".csv"),
+            esc_fire_distribution_file_path=esc_fire_distribution_file_path,
         )
 
         weather_grid = load_weather_grid(
@@ -133,7 +142,7 @@ def load_features_per_hexel(
         return np.expand_dims(stacked_features, axis=0), np.expand_dims(mask, axis=0), None
 
     # modelling approach 2
-    ignitions_df = pd.read_csv(os.path.join(root_dir, ESC_FIRE_DIST_PATH + str(int(hex_id)) + ".csv"))
+    ignitions_df = pd.read_csv(esc_fire_distribution_file_path)
 
     seasons = ignitions_df["season"].unique().tolist()
     causes = ignitions_df["cause"].unique().tolist()
@@ -151,7 +160,7 @@ def load_features_per_hexel(
 
         esc_fires_prob_grid = load_fire_density_grid(
             zone_grid_file_path=os.path.join(root_dir, FIRE_ZONE_GRID_PATH),
-            esc_fire_distribution_file_path=os.path.join(root_dir, ESC_FIRE_DIST_PATH + str(int(hex_id)) + ".csv"),
+            esc_fire_distribution_file_path=esc_fire_distribution_file_path,
             season=season,
             cause=cause,
         )

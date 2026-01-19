@@ -11,7 +11,6 @@ seed: 42
 deterministic: True
 
 model:
-  input_channels: 3 # if using one hot encoding, we add more 14 more features
   num_classes: 1
 
 optimizer:
