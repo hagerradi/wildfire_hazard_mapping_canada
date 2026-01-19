@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from src.config import Config
-from src.datasets.dataloader import compute_number_input_channels
+from src.datasets.utils import compute_number_input_channels
 from src.logger import CometLogger
 from src.losses import BCELoss, MAELoss, MSELoss
 from src.metrics import compute_bias, compute_mae, compute_mse, compute_spearman, compute_ssim
