@@ -5,7 +5,7 @@ import pandas as pd
 import rasterio
 from rasterio.profiles import Profile
 
-from data_preparation.grid_loader.utils import denormalize_burn_count
+from data_preparation.grid_loader.utils import denormalize_burn_count, denormalize_burn_prob
 from data_preparation.paths import ELEVATION_GRID_PATH
 from src.datasets.postprocessing.stitch_hexel import stitch_windows
 
@@ -58,6 +58,7 @@ def get_predicted_hexel(
     min_target_val: float,
     max_target_val: float,
     modelling_approach: str = "2",
+    out_norm: str = "min_max",
     stitch_mode: str = "mean",
     win_h: int = 128,
     win_w: int = 128,
@@ -85,7 +86,9 @@ def get_predicted_hexel(
             win_h=win_h,
             win_w=win_w,
         )
-        reconstructed_hexel_denorm = denormalize_burn_count(data=reconstructed_hexel, min_val=min_target_val, max_val=max_target_val)
+        reconstructed_hexel_denorm = denormalize_burn_prob(
+            data=reconstructed_hexel, min_val=min_target_val, max_val=max_target_val, out_norm=out_norm
+        )
         gt_elevation_grid_profile.update(dtype="float32", compress="lzw", nodata=-9999)  # type: ignore
     else:
         unique_season_cause = list(set(zip(test_df["season"], test_df["cause"])))

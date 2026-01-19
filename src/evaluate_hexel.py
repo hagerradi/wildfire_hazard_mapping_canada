@@ -118,6 +118,7 @@ def main() -> None:
     data_dir = config.data.root_dir
     raw_data_dir = config.data.raw_data_dir
     modelling_approach = config.modelling_approach
+    out_norm = config.data.output_normalization
     if modelling_approach == "1":
         max_target_val, min_target_val = get_range_burn_prob(root_dir=raw_data_dir)
     else:

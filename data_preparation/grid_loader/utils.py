@@ -180,6 +180,18 @@ def denormalize_burn_count(data: np.ndarray, min_val: float, max_val: float) -> 
     return data * (max_val - min_val) + min_val
 
 
+def denormalize_burn_prob(
+    data: np.ndarray, min_val: float, max_val: float, out_norm: str = "min_max", multiplier: int = 1000
+) -> np.ndarray:
+    """Reverse the count normalization to recover true probs."""
+    data = data.astype("float32")
+    if out_norm == "min_max":
+        data = data * (max_val - min_val) + min_val
+    elif out_norm == "log":
+        data = np.expm1(data * np.log1p(multiplier)) / multiplier
+    return data.astype("float32")
+
+
 def visualize_ignition_grid(grid: np.ndarray, cause: int, season: int):
     """
     Visualizes an ignition raster using matplotlib.
