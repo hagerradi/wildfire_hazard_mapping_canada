@@ -107,6 +107,8 @@ def get_stratified_data_split(data_dir: str):
     train, val = train_test_split(train_val, test_size=5, stratify=train_val["strat_key"], random_state=42)
 
     print(f"Total: {len(df_min_max)} | Train: {len(train)} | Val: {len(val)} | Test: {len(test)}")
+    print(f"List of val ids {list(val["hex_id"])}")
+    print(f"List of test ids {list(test["hex_id"])}")
 
 
 def plot_split_window_hexel(windows, channel_index=0, max_cols=5, figsize=(15, 15)):
