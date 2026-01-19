@@ -115,7 +115,7 @@ def load_features_per_hexel(
     if len(esc_fire_distribution_file_paths) > 0:
         esc_fire_distribution_file_path = esc_fire_distribution_file_paths[0]
     else:
-        print(f"The file {pattern} doesnt exist")
+        print(f"The file {pattern} does not exist")
         return None, None, None
 
     if modelling_approach == 1:
