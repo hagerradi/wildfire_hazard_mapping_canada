@@ -21,8 +21,8 @@ NODATA = np.nan
 ELEV_NATIONAL_MAX = 5855
 ELEV_NATIONAL_MIN = -158
 
-# Max wind velocity (TODO: need to modify when we have the entire dataset)
-MAX_WIND_VELOCITY = 14.279999732971191
+# Max wind velocity (TODO: need to modify when we have the remaining dataset)
+MAX_WIND_VELOCITY = 16.170000076293945
 
 # Normalization values for Fire Intensity (TODO: need to rerun once we have the entire dataset)
 FIRE_INTENSITY_MAX = 127247.0
