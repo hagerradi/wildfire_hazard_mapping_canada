@@ -7,7 +7,7 @@ from matplotlib import pyplot as plt
 from data_preparation.paths import OUTPUT_BURN_PROB_PATH
 
 feature_names = ["ignition_grid", "esc_fires_grid", "fuel_grid", "elevation_grid", "weather_grid", "wind_grid", "out_grid"]
-
+HEX_ID_NA = ["52", "53", "04", "25", "47", "48"]
 
 feature_count_map = {
     "ignition_prob": 1,
@@ -68,6 +68,21 @@ def find_hex_ids(root_dir: str) -> list:
     except FileNotFoundError:
         print(f"Directory not found: {root_dir}")
         return []
+
+    return hex_ids
+
+
+def get_processed_hex_ids(folder_path: str) -> list:
+    """
+    Finds all hex_ids from the metadata df files
+    """
+    folder = Path(folder_path)
+    hex_ids = []
+    for file_path in folder.glob("meta_hex_*.csv"):
+        filename_no_ext = file_path.stem
+        extracted_id = filename_no_ext.removeprefix("meta_hex_")
+
+        hex_ids.append(extracted_id)
 
     return hex_ids
 
