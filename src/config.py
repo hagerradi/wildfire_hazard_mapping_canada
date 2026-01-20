@@ -29,6 +29,7 @@ class TrainingConfig(BaseModel):
 
 
 class EvaluationConfig(BaseModel):
+    best_ckpt_metric: str = "spearman"  # metric to choose best checkpoint
     checkpoint_filename: str = "last.pth"
 
 

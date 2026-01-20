@@ -24,6 +24,7 @@ training:
   log_every_n_epoch: 1
 
 evaluation:
+  best_ckpt_metric: "spearman"
   checkpoint_filename: "best.pth" # option to load best or last
 
 data:

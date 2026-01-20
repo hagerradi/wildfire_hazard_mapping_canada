@@ -219,7 +219,9 @@ class Trainer:
     ):
         num_epochs = self.config.training.max_epochs
         log_every_n_epoch = self.config.training.log_every_n_epoch
+
         best_val_metric = None
+        metric_key = getattr(getattr(self.config, "evaluation", None), "best_ckpt_metric", "spearman")
 
         for epoch in range(1, num_epochs + 1):
             start = time.time()
@@ -246,15 +248,21 @@ class Trainer:
                 if self.logger:
                     self.logger.log_metrics(metrics_to_log, epoch=epoch)
 
-            if val_result is not None and (best_val_metric is None or val_result["spearman"] > best_val_metric):
-                best_val_metric = val_result["spearman"]
-                # auto-save best if save_dir configured
-                if self.save_dir:
-                    best_path = self.save_model(epoch=epoch, metric_value=best_val_metric, filename="best.pth")
+            if val_result is not None:
+                if metric_key not in val_result:
+                    raise KeyError(
+                        f"Best metric '{metric_key}' not found in val_result keys={list(val_result.keys())}. "
+                        f"Either compute it in validation or change config.evaluation.best_metric."
+                    )
+                if best_val_metric is None or val_result[metric_key] > best_val_metric:
+                    best_val_metric = val_result["spearman"]
+                    # auto-save best if save_dir configured
+                    if self.save_dir:
+                        best_path = self.save_model(epoch=epoch, metric_value=best_val_metric, filename="best.pth")
 
-                    # log best model to comet
-                    if self.logger:
-                        self.logger.experiment.log_model(name="best", file_or_folder=best_path, overwrite=True)
+                        # log best model to comet
+                        if self.logger:
+                            self.logger.experiment.log_model(name="best", file_or_folder=best_path, overwrite=True)
 
             # save most recent checkpoint
             self.save_model(epoch=epoch, metric_value=val_result["spearman"])
