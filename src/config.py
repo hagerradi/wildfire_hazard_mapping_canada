@@ -37,9 +37,13 @@ class EvaluationConfig(BaseModel):
 class DataConfig(BaseModel):
     root_dir: str
     raw_data_dir: str
+
     train_split: str
     val_split: str
     test_split: str
+
+    transforms_list: list[str] = []
+    augmentation_prob: float = 0.0
 
     batch_size: int = 64
     filename_col: str = "filename"
