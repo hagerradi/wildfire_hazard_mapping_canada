@@ -5,8 +5,6 @@ Baselines: Classic U-Net encoder-decoder with optional skip connections.
 import torch
 import torch.nn as nn
 
-from src.models.utils import get_nbr_model_parameters
-
 
 class UNet(nn.Module):
     def __init__(
