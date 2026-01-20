@@ -212,6 +212,12 @@ class Trainer:
     def test(self, loader: DataLoader, return_predictions: bool = False) -> dict[str, float] | tuple[dict[str, float], np.ndarray]:
         return self.validate(loader, return_predictions=return_predictions)
 
+    @staticmethod
+    def _is_metric_better(curr, best, best_mode):
+        if best is None:
+            return True
+        return curr > best if best_mode == "max" else curr < best
+
     def run_training(
         self,
         train_loader: DataLoader,
@@ -222,6 +228,7 @@ class Trainer:
 
         best_val_metric = None
         metric_key = getattr(getattr(self.config, "evaluation", None), "best_ckpt_metric", "spearman")
+        metric_mode = (getattr(self.config, "best_ckpt_metric_mode", None) or "max").lower()
 
         for epoch in range(1, num_epochs + 1):
             start = time.time()
@@ -254,8 +261,11 @@ class Trainer:
                         f"Best metric '{metric_key}' not found in val_result keys={list(val_result.keys())}. "
                         f"Either compute it in validation or change config.evaluation.best_metric."
                     )
-                if best_val_metric is None or val_result[metric_key] > best_val_metric:
-                    best_val_metric = val_result["spearman"]
+                if metric_mode not in ("max", "min"):
+                    raise ValueError(f"evaluation.best_mode must be 'max' or 'min', got: {metric_mode}")
+
+                if best_val_metric is None or self._is_metric_better(val_result[metric_key], best_val_metric, metric_mode):
+                    best_val_metric = val_result[metric_key]
                     # auto-save best if save_dir configured
                     if self.save_dir:
                         best_path = self.save_model(epoch=epoch, metric_value=best_val_metric, filename="best.pth")
@@ -265,7 +275,7 @@ class Trainer:
                             self.logger.experiment.log_model(name="best", file_or_folder=best_path, overwrite=True)
 
             # save most recent checkpoint
-            self.save_model(epoch=epoch, metric_value=val_result["spearman"])
+            self.save_model(epoch=epoch, metric_value=val_result[metric_key])
 
     def save_model(self, epoch: int, metric_value: float, filename: str = "last.pth"):
         if not self.save_dir:

@@ -68,15 +68,18 @@ def main() -> None:
 
     # ---------- Load best checkpoint ----------
     # Try best.pth first, fall back to last.pth if needed
-    best_ckpt = None
+    model_ckpt = None
     try:
         print(f"\n[Checkpoint] Loading {config.evaluation.checkpoint_filename} for evaluation...")
-        best_ckpt = trainer.load_model(filename=config.evaluation.checkpoint_filename)
+        model_ckpt = trainer.load_model(filename=config.evaluation.checkpoint_filename)
     except (FileNotFoundError, AttributeError):
         raise ValueError("[Checkpoint] checkpoint file not found or invalid...")  # noqa: B904
 
-    if best_ckpt is not None:
-        print(f"[Checkpoint] Loaded epoch={best_ckpt.get('epoch', 'N/A')} " f"spearman={best_ckpt.get('metric_value', 'N/A')}")
+    if model_ckpt is not None:
+        print(
+            f"[Checkpoint] Loaded epoch={model_ckpt.get('epoch', 'N/A')} "
+            f"{config.evaluation.best_ckpt_metric}={model_ckpt.get('metric_value', 'N/A')}"
+        )
 
     # ---------- Evaluation ----------
     print("\n[Evaluation] Running on test set...")
