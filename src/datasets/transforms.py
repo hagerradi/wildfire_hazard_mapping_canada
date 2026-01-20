@@ -3,56 +3,65 @@ import random
 import torch
 import torchvision.transforms.functional as F
 
+from src.config import DataConfig
+
 
 class RandomFlip:
     """Performs either a horizontal or vertical flip (equal chance)."""
 
-    def __call__(self, x, y, mask):
+    def __call__(self, x: torch.Tensor, target: torch.Tensor, mask: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         if random.random() > 0.5:
-            x, y, mask = F.hflip(x), F.hflip(y), F.hflip(mask)
+            x, target, mask = F.hflip(x), F.hflip(target), F.hflip(mask)
         else:
-            x, y, mask = F.vflip(x), F.vflip(y), F.vflip(mask)
-        return x, y, mask
+            x, target, mask = F.vflip(x), F.vflip(target), F.vflip(mask)
+        return x, target, mask
 
 
 class RandomRotate90:
     """Performs a random 90, 180, or 270 degree rotation."""
 
-    def __call__(self, x, y, mask):
-        k = random.randint(1, 3)
+    def __call__(self, x: torch.Tensor, target: torch.Tensor, mask: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        k = random.randint(1, 3)  # k is the number of 90deg rotations to do
         x = torch.rot90(x, k, dims=[1, 2])
-        y = torch.rot90(y, k, dims=[1, 2])
+        target = torch.rot90(target, k, dims=[1, 2])
         mask = torch.rot90(mask, k, dims=[1, 2])
-        return x, y, mask
+        return x, target, mask
 
 
 class Compose:
     """Runs the selected transforms with a global prob."""
 
-    def __init__(self, transforms_list, prob):
+    def __init__(self, transforms_list: list, prob: float):
         self.transforms = transforms_list
         self.prob = prob
 
-    def __call__(self, x, y, mask):
+    def __call__(self, x: torch.Tensor, target: torch.Tensor, mask: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         for t in self.transforms:
+            # we apply the prob. independently for each transform in the list
             if random.random() < self.prob:
-                x, y, mask = t(x, y, mask)
-        return x, y, mask
+                x, target, mask = t(x, target, mask)
+        return x, target, mask
 
 
-def setup_augmentations(config_data):
+def setup_augmentations(config_data: DataConfig):
     """Utils. to get the list of transforms from config."""
+
     if not config_data.transforms_list:
         return None
 
+    # we can add future transforms here
     mapping = {
         "random_flip": RandomFlip(),
         "random_rotate": RandomRotate90(),
     }
 
-    selected = [mapping[name] for name in config_data.transforms_list if name in mapping]
+    # check if the config keys match the options
+    valid_keys = set(mapping.keys())
+    config_keys = set(config_data.transforms_list)
+    unknown_keys = config_keys - valid_keys
 
-    if not selected:
-        return None
+    if unknown_keys:
+        raise ValueError(f"Invalid transforms found in config: {unknown_keys}.\n" f"Allowed options are: {list(valid_keys)}")
 
+    selected = [mapping[name] for name in config_data.transforms_list]
     return Compose(selected, prob=config_data.augmentation_prob)
