@@ -7,8 +7,10 @@ import numpy as np
 import pandas as pd
 import pytest
 import torch
+import torchvision.transforms.functional as F
 
 from src.datasets.dataloader import GridDataset
+from src.datasets.transforms import setup_augmentations
 
 
 @pytest.fixture
@@ -167,3 +169,81 @@ def test_output_normalization_iters(temp_data_dir):
     y_np = y.squeeze().numpy()
     mask = ~np.isnan(expected)
     np.testing.assert_allclose(y_np[mask], expected[mask], rtol=1e-5, atol=1e-5)
+
+
+def test_transforms(temp_data_dir):
+    tmpdir, train_csv, _, _ = temp_data_dir
+
+    # original data
+    ds_orig = GridDataset(
+        csv_name=train_csv,
+        root_dir=tmpdir,
+        filename_col="filename",
+        out_norm="total_iters",
+        fuel_feats_encoding="ordinal",
+        normalize_fuel_feats_ordinal=True,
+        modelling_approach="2",
+        valid_mask_threshold=0.0,
+        transform=None,  # no flipping
+        feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],
+    )
+    x_orig, y_orig, _ = ds_orig[0]
+
+    # mock random flip config and augmented data
+    class MockConfig:
+        transforms_list = ["random_flip"]
+        augmentation_prob = 1.0
+
+    transform_flip = setup_augmentations(MockConfig())
+
+    ds_flip = GridDataset(
+        csv_name=train_csv,
+        root_dir=tmpdir,
+        filename_col="filename",
+        out_norm="total_iters",
+        fuel_feats_encoding="ordinal",
+        normalize_fuel_feats_ordinal=True,
+        modelling_approach="2",
+        valid_mask_threshold=0.0,
+        transform=transform_flip,  # apply flipping
+        feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],
+    )
+
+    x_flip, _, _ = ds_flip[0]
+
+    # possible augmented versions
+    possible_h = F.hflip(x_orig)
+    possible_v = F.vflip(x_orig)
+
+    # check if augmented tensor is one of the flips
+    assert torch.equal(x_flip, possible_h) or torch.equal(x_flip, possible_v)
+
+    # mock random rotate and augmented data
+    class MockConfigRot:
+        transforms_list = ["random_rotate"]
+        augmentation_prob = 1.0
+
+    transform_rot = setup_augmentations(MockConfigRot())
+
+    ds_rot = GridDataset(
+        csv_name=train_csv,
+        root_dir=tmpdir,
+        filename_col="filename",
+        out_norm="total_iters",
+        fuel_feats_encoding="ordinal",
+        normalize_fuel_feats_ordinal=True,
+        modelling_approach="2",
+        valid_mask_threshold=0.0,
+        transform=transform_rot,  # apply rotation
+        feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],
+    )
+
+    # here we test with target since transform should apply to it as well
+    _, y_rot, _ = ds_rot[0]
+
+    # possible rotations expected
+    is_90 = torch.equal(y_rot, torch.rot90(y_orig, 1, dims=[1, 2]))
+    is_180 = torch.equal(y_rot, torch.rot90(y_orig, 2, dims=[1, 2]))
+    is_270 = torch.equal(y_rot, torch.rot90(y_orig, 3, dims=[1, 2]))
+
+    assert is_90 or is_180 or is_270
