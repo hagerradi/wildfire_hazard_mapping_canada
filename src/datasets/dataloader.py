@@ -148,6 +148,7 @@ class GridDataset(Dataset):
         target = torch.from_numpy(np.expand_dims(output_arr, 0))
         mask = torch.from_numpy(np.expand_dims(mask, 0))  # keep as boolean for efficiency
 
+        # apply transforms if provided
         if self.transform:
             x, target, mask = self.transform(x, target, mask)
 
