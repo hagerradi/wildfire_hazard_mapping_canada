@@ -20,6 +20,9 @@ training:
   # Logging frequency in epochs
   log_every_n_epoch: 1
 
+evaluation:
+  checkpoint_filename: "best.pth" # option to load best or last
+
 data:
   root_dir: "../yan_bp3/data_samples_approach_1"
   raw_data_dir: "../yan_bp3"
@@ -47,4 +50,4 @@ logger:
   # log loss and metrics on comet every n steps
   log_every_n_step: 5
 
-metrics: ["mse", "mae", "spearman", "ssim"]
+metrics: ["mse", "mae", "spearman", "ssim", "bias"]
