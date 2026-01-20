@@ -14,6 +14,12 @@ python -m data_preparation.process_hexels_into_grids --root_dir="../yan_bp3" --m
 ```
 
 Step 3: Create training, validation and test splits.
+
+- Run the `get_stratified_data_split` function in `data_preparation/utils.py` to run stratified sampling over the available hex_ids. This will give a train, val, test split with 37,5,5 hexels in each respectively
+- Now, verify this split looking at the geographical map and find if the split is well distributed
+- Once the split is finalized, use the decided split to obtain the train/val/test csvs
+- Finally, run the following with the decided splits
+
 ```bash
-python -m data_preparation.split_data --data_dir="../yan_bp3/data_samples_approach_2" --val_hex_id 16 --test_hex_id 41
+python -m data_preparation.split_data --data_dir="../yan_bp3/data_samples_approach_2" --val_hex_id 02 23 33 18 46 --test_hex_id 01 12 39 16 49
 ```
