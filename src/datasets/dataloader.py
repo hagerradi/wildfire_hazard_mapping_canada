@@ -140,15 +140,15 @@ class GridDataset(Dataset):
                 output_arr=output_arr, burn_prob_max=self.BURN_PROB_MAX, burn_prob_min=self.BURN_PROB_MIN, out_norm=self.out_norm
             )
 
-        x = torch.from_numpy(input_arr).permute(2, 0, 1)
-        target = torch.from_numpy(np.expand_dims(output_arr, 0))
+        input_arr = torch.from_numpy(input_arr).permute(2, 0, 1)
+        output_arr = torch.from_numpy(np.expand_dims(output_arr, 0))
         mask = torch.from_numpy(np.expand_dims(mask, 0))  # keep as boolean for efficiency
 
         # apply transforms if provided
         if self.transform:
-            x, target, mask = self.transform(x, target, mask)
+            input_arr, output_arr, mask = self.transform(input_arr, output_arr, mask)
 
-        return (x, target, mask)  # (C, H, W), (1, H, W), (1, H, W)
+        return (input_arr, output_arr, mask)  # (C, H, W), (1, H, W), (1, H, W)
 
 
 def get_train_val_dataloader(config: DataConfig, modelling_approach: str = "1", seed: int = 42):
