@@ -115,19 +115,3 @@ class UNet(nn.Module):
         # output layer
         x = self.out_conv(x)
         return x
-
-
-# TODO: Add test code to verify the model architecture
-if __name__ == "__main__":
-    model = UNet(input_channels=36, num_classes=1)
-    print(model)
-
-    total, trainable = get_nbr_model_parameters(model)
-
-    print(f"Number of total parameters:     {total:,}")
-    print(f"Number of trainable parameters: {trainable:,}")
-
-    x = torch.randn(2, 36, 256, 256)  # Batch of 2, 2 channel3, 256x256
-    output = model(x)
-    print(f"Input shape: {x.shape}")
-    print(f"Output shape: {output.shape}")
