@@ -12,7 +12,7 @@ from matplotlib.patches import Patch
 from rasterio.plot import show
 
 from data_preparation.paths import OUTPUT_BURN_PROB_PATH
-from data_preparation.utils import find_hex_ids
+from data_preparation.utils import HEX_ID_NA, find_hex_ids
 
 # value for nodata in the rasters
 NODATA = np.nan
@@ -21,12 +21,16 @@ NODATA = np.nan
 ELEV_NATIONAL_MAX = 5855
 ELEV_NATIONAL_MIN = -158
 
-# Max wind velocity (TODO: need to modify when we have the entire dataset)
-MAX_WIND_VELOCITY = 14.279999732971191
+# Max wind velocity (TODO: need to modify when we have the remaining dataset)
+MAX_WIND_VELOCITY = 16.170000076293945
 
-# Normalization values for Fire Intensity (TODO: need to rerun once we have the entire dataset)
-FIRE_INTENSITY_MAX = 127247.0
+# Normalization values for Fire Intensity (TODO: need to rerun once we have the remaining dataset)
+FIRE_INTENSITY_MAX = 131456.0
 FIRE_INTENSITY_MIN = 0.0
+
+# Global Burn Count Min Max
+BURN_COUNT_MAX = 2329.0
+BURN_COUNT_MIN = 0.0
 
 # mapping cause to cause index
 fire_cause_mapping = {1: "h", 2: "l"}
@@ -118,10 +122,14 @@ def load_fire_shapefiles(hex_dir: str) -> list[Path]:
 
 def get_max_wind_velocity(data_path: str) -> float:
     """Get the global maximum wind velocity for normalization"""
-    all_hex = list(os.listdir(data_path))[1:]
+    all_hex_ids = find_hex_ids(data_path)
     global_max_wind_velocity = -np.inf
-    for hex in all_hex:
-        path_wind_grids = f"./{data_path}/{hex}/burning_conditions_module/wind_grids"
+    print(all_hex_ids)
+    for hex_id in all_hex_ids:
+        if hex_id in HEX_ID_NA:
+            print(f"======Skipping hex{hex_id} since NA =========")
+            continue
+        path_wind_grids = f"{data_path}/hex{hex_id}/burning_conditions_module/wind_grids"
         all_wind_velocity_files = list(Path(path_wind_grids).glob("w???_vel.asc"))
         for file_name in all_wind_velocity_files:
             wind_velocity_grid = load_raster(str(file_name))
@@ -131,10 +139,13 @@ def get_max_wind_velocity(data_path: str) -> float:
 
 def get_range_output_fire_intensity(data_path: str) -> tuple[float, float]:
     """Get the maximum and minimum output fire intensity for normalization"""
-    all_hex = list(os.listdir(data_path))[1:]
+    all_hex_ids = find_hex_ids(data_path)
     min_fire_intensity, max_fire_intensity = np.inf, -np.inf
-    for hex in all_hex:
-        path_output_files = f"{data_path}/{hex}/outputs/hex_{hex[3:]}_fiRaw_mean.tif"
+    for hex_id in all_hex_ids:
+        if hex_id in HEX_ID_NA:
+            print(f"======Skipping hex{hex_id} since NA =========")
+            continue
+        path_output_files = f"{data_path}/hex{hex_id}/outputs/hex_{hex_id}_fiRaw_mean.tif"
         output_fire_intensity_grid = load_raster(path_output_files)
         max_fire_intensity = max(max_fire_intensity, output_fire_intensity_grid.max())
         min_fire_intensity = min(min_fire_intensity, output_fire_intensity_grid.min())
@@ -146,6 +157,9 @@ def get_range_burn_count(root_dir: str) -> tuple[float, float]:
     all_hex_ids = find_hex_ids(root_dir)
     BURN_COUNT_MAX, BURN_COUNT_MIN = -np.inf, np.inf
     for hex_id in all_hex_ids:
+        if hex_id in HEX_ID_NA:
+            print(f"======Skipping hex{hex_id} since NA =========")
+            continue
         print("In hex ID", hex_id)
         hex_dir = os.path.join(root_dir, f"hex{hex_id}")
         outputs_dir = os.path.join(hex_dir, OUTPUT_BURN_PROB_PATH)
@@ -163,6 +177,9 @@ def get_range_burn_prob(root_dir: str) -> tuple[float, float]:
     all_hex_ids = find_hex_ids(root_dir)
     burn_prob_max_value, burn_prob_min_value = -np.inf, np.inf
     for hex_id in all_hex_ids:
+        if hex_id in HEX_ID_NA:
+            print(f"======Skipping hex{hex_id} since NA =========")
+            continue
         hex_dir = os.path.join(root_dir, f"hex{hex_id}")
         outputs_dir = os.path.join(hex_dir, OUTPUT_BURN_PROB_PATH)
         pattern = f"hex_{hex_id}_*iter_bp.tif"
