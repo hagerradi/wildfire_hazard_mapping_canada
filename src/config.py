@@ -28,6 +28,12 @@ class TrainingConfig(BaseModel):
     log_every_n_epoch: int = 1
 
 
+class EvaluationConfig(BaseModel):
+    best_ckpt_metric: str = "spearman"  # metric to choose best checkpoint
+    best_ckpt_metric_mode: str = "max"  # max, or min
+    checkpoint_filename: str = "last.pth"
+
+
 class DataConfig(BaseModel):
     root_dir: str
     raw_data_dir: str
@@ -60,6 +66,7 @@ class Config(BaseModel):
     model: ModelConfig
     optimizer: OptimizerConfig
     training: TrainingConfig
+    evaluation: EvaluationConfig
     data: DataConfig
     logger: LoggerConfig
     metrics: list[str] = ["mse", "mae", "spearman", "ssim"]

@@ -5,7 +5,6 @@ from typing import Any
 import numpy as np
 import torch
 import torch.optim as optim
-import yaml
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
@@ -213,6 +212,12 @@ class Trainer:
     def test(self, loader: DataLoader, return_predictions: bool = False) -> dict[str, float] | tuple[dict[str, float], np.ndarray]:
         return self.validate(loader, return_predictions=return_predictions)
 
+    @staticmethod
+    def _is_metric_better(curr, best, best_mode):
+        if best is None:
+            return True
+        return curr > best if best_mode == "max" else curr < best
+
     def run_training(
         self,
         train_loader: DataLoader,
@@ -220,7 +225,10 @@ class Trainer:
     ):
         num_epochs = self.config.training.max_epochs
         log_every_n_epoch = self.config.training.log_every_n_epoch
-        best_val_loss = None
+
+        best_val_metric = None
+        metric_key = getattr(getattr(self.config, "evaluation", None), "best_ckpt_metric", "spearman")
+        metric_mode = (getattr(self.config, "best_ckpt_metric_mode", None) or "max").lower()
 
         for epoch in range(1, num_epochs + 1):
             start = time.time()
@@ -247,20 +255,29 @@ class Trainer:
                 if self.logger:
                     self.logger.log_metrics(metrics_to_log, epoch=epoch)
 
-            if val_result is not None and (best_val_loss is None or val_result["loss"] < best_val_loss):
-                best_val_loss = val_result["loss"]
-                # auto-save best if save_dir configured
-                if self.save_dir:
-                    best_path = self.save_model(epoch=epoch, loss=val_result["loss"], filename="best.pth")
+            if val_result is not None:
+                if metric_key not in val_result:
+                    raise KeyError(
+                        f"Best metric '{metric_key}' not found in val_result keys={list(val_result.keys())}. "
+                        f"Either compute it in validation or change config.evaluation.best_metric."
+                    )
+                if metric_mode not in ("max", "min"):
+                    raise ValueError(f"evaluation.best_mode must be 'max' or 'min', got: {metric_mode}")
 
-                    # log best model to comet
-                    if self.logger:
-                        self.logger.experiment.log_model(name="best", file_or_folder=best_path, overwrite=True)
+                if best_val_metric is None or self._is_metric_better(val_result[metric_key], best_val_metric, metric_mode):
+                    best_val_metric = val_result[metric_key]
+                    # auto-save best if save_dir configured
+                    if self.save_dir:
+                        best_path = self.save_model(epoch=epoch, metric_value=best_val_metric, filename="best.pth")
+
+                        # log best model to comet
+                        if self.logger:
+                            self.logger.experiment.log_model(name="best", file_or_folder=best_path, overwrite=True)
 
             # save most recent checkpoint
-            self.save_model(epoch=epoch, loss=val_result["loss"])
+            self.save_model(epoch=epoch, metric_value=val_result[metric_key])
 
-    def save_model(self, epoch: int, loss: float, filename: str = "last.pth"):
+    def save_model(self, epoch: int, metric_value: float, filename: str = "last.pth"):
         if not self.save_dir:
             raise ValueError("save_dir not set")
 
@@ -270,7 +287,7 @@ class Trainer:
             "model_state": self.model.state_dict(),
             "optimizer_state": self.optimizer.state_dict(),
             "epoch": epoch,
-            "loss": loss,
+            "metric_value": metric_value,
         }
         torch.save(payload, path)
         return path
@@ -285,28 +302,3 @@ class Trainer:
         self.model.load_state_dict(checkpoint["model_state"])
         self.optimizer.load_state_dict(checkpoint["optimizer_state"])
         return checkpoint
-
-
-# TODO: convert to unit test
-if __name__ == "__main__":
-    from torch.utils.data import DataLoader, TensorDataset
-
-    # toy dataset
-    x = torch.randn(2, 20, 64, 64)
-    y = torch.randn(2, 1, 64, 64)
-    mask = torch.rand_like(y) > 0.5
-
-    ds = TensorDataset(x, y, mask)
-    train_dl = DataLoader(ds, batch_size=32, shuffle=True)
-    val_dl = DataLoader(ds, batch_size=64)
-    test_dl = DataLoader(ds, batch_size=64)
-
-    with open("configs/default.yaml") as f:
-        raw = yaml.safe_load(f)
-
-    config = Config(**raw)
-    trainer = Trainer(config)
-
-    trainer.run_training(train_dl, val_loader=val_dl)
-    trainer.load_model()
-    print("Test:", trainer.test(test_dl))

@@ -96,6 +96,7 @@ def dummy_config(tmp_path):
             "max_epochs": 1,
             "log_every_n_epoch": 1,
         },
+        "evaluation": {"best_ckpt_metric": "spearman", "checkpoint_filename": "best.pth"},
         # keep/remove depending on how your Config is defined
         "model_dump": lambda: {},
     }
@@ -119,7 +120,7 @@ def patch_trainer(trainer: Trainer) -> Trainer:
     Logger is already mocked globally by mock_comet_logger.
     """
     trainer.loss_fn = DummyLoss()
-    trainer.metric_functions = {"dummy": dummy_metric}
+    trainer.metric_functions = {"dummy": dummy_metric, "spearman": dummy_metric}
     return trainer
 
 
@@ -170,7 +171,7 @@ def test_save_and_load_model(tmp_path, dummy_config, dummy_data):
     trainer = Trainer(dummy_config)
     patch_trainer(trainer)
     trainer.train_epoch(dummy_data)
-    save_path = trainer.save_model(epoch=1, loss=0.5)
+    save_path = trainer.save_model(epoch=1, metric_value=0.5)
 
     # Model should be saved into config.save_dir (tmp_path)
     assert tmp_path.joinpath("last.pth").exists()
