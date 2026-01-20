@@ -8,14 +8,10 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 
 from config import DataConfig
-from data_preparation.grid_loader.utils import fuel_ranking, get_range_burn_prob
+from data_preparation.grid_loader.utils import BURN_COUNT_MAX, BURN_COUNT_MIN, fuel_ranking, get_range_burn_prob
 from src.datasets.transforms import setup_augmentations
 from src.datasets.utils import fill_nan_channel_mean_numpy, one_hot_encode, output_burn_prob_norm
 from utils import seed_worker
-
-# Global Burn Count Min Max
-BURN_COUNT_MAX = 1336.0
-BURN_COUNT_MIN = 0.0
 
 MAX_FUEL_GRID = float(max(fuel_ranking.values()))
 MIN_FUEL_GRID = float(min(fuel_ranking.values()))
