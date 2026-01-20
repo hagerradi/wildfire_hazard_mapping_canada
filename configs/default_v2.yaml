@@ -31,6 +31,9 @@ data:
   val_split: "val_indices.csv"
   test_split: "test_indices.csv"
 
+  transforms_list: [] # options: "random_flip", "random_rotate"
+  augmentation_prob: 0.0 # float between 0 and 1
+
   batch_size: 64
   num_workers: 2
 

@@ -9,6 +9,7 @@ from torch.utils.data import DataLoader, Dataset
 
 from config import DataConfig
 from data_preparation.grid_loader.utils import BURN_COUNT_MAX, BURN_COUNT_MIN, fuel_ranking, get_range_burn_prob
+from src.datasets.transforms import setup_augmentations
 from src.datasets.utils import fill_nan_channel_mean_numpy, one_hot_encode, output_burn_prob_norm
 from utils import seed_worker
 
@@ -139,11 +140,15 @@ class GridDataset(Dataset):
                 output_arr=output_arr, burn_prob_max=self.BURN_PROB_MAX, burn_prob_min=self.BURN_PROB_MIN, out_norm=self.out_norm
             )
 
-        return (
-            torch.from_numpy(input_arr).permute(2, 0, 1),
-            torch.from_numpy(np.expand_dims(output_arr, 0)),
-            torch.from_numpy(np.expand_dims(mask, 0)),  # keep as boolean for efficiency
-        )  # (C, H, W), (1, H, W), (1, H, W)
+        input_arr = torch.from_numpy(input_arr).permute(2, 0, 1)
+        output_arr = torch.from_numpy(np.expand_dims(output_arr, 0))
+        mask = torch.from_numpy(np.expand_dims(mask, 0))  # keep as boolean for efficiency
+
+        # apply transforms if provided
+        if self.transform:
+            input_arr, output_arr, mask = self.transform(input_arr, output_arr, mask)
+
+        return (input_arr, output_arr, mask)  # (C, H, W), (1, H, W), (1, H, W)
 
 
 def get_train_val_dataloader(config: DataConfig, modelling_approach: str = "1", seed: int = 42):
@@ -157,7 +162,7 @@ def get_train_val_dataloader(config: DataConfig, modelling_approach: str = "1", 
     batch_size = config.batch_size
     num_workers = config.num_workers
     out_norm = config.output_normalization
-    transform = config.transform
+    transform = setup_augmentations(config)
     feature_names_list = config.feature_names_list
     fuel_feats_encoding = config.fuel_feats_encoding
     normalize_fuel_feats_ordinal = config.normalize_fuel_feats_ordinal
@@ -185,7 +190,7 @@ def get_train_val_dataloader(config: DataConfig, modelling_approach: str = "1", 
         normalize_fuel_feats_ordinal=normalize_fuel_feats_ordinal,
         modelling_approach=modelling_approach,
         valid_mask_threshold=valid_mask_threshold,
-        transform=transform,
+        transform=None,  # no transforms for val. set
     )
 
     # Create a deterministic generator
@@ -218,7 +223,6 @@ def get_test_loader(config: DataConfig, modelling_approach: str = "1", seed: int
     batch_size = config.batch_size
     num_workers = config.num_workers
     out_norm = config.output_normalization
-    transform = config.transform
     feature_names_list = config.feature_names_list
     fuel_feats_encoding = config.fuel_feats_encoding
     normalize_fuel_feats_ordinal = config.normalize_fuel_feats_ordinal
@@ -234,7 +238,7 @@ def get_test_loader(config: DataConfig, modelling_approach: str = "1", seed: int
         normalize_fuel_feats_ordinal=normalize_fuel_feats_ordinal,
         modelling_approach=modelling_approach,
         valid_mask_threshold=valid_mask_threshold,
-        transform=transform,
+        transform=None,  # no transforms for test set
     )
 
     g = torch.Generator()
