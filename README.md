@@ -41,10 +41,10 @@ For all the data preparation steps, refer to [the following section](data_prepar
 
 ### Training
 
-```python src/train.py --config=configs/default_v2.yaml```
+```python -m src.train --config=configs/default_v1.yaml```
 
 ### Inference
 
 To visualize predictions and/or save visualizations, add the optional flags `--visualize_predictions` and/or `--save_visualizations`, respectively.
 
-```python -m src.evaluate_hexel --config=configs/default_v2.yaml```
+```python -m src.evaluate_hexels --config=configs/default_v1.yaml```
