@@ -11,7 +11,7 @@ from tqdm import tqdm
 from src.config import Config
 from src.datasets.utils import compute_number_input_channels
 from src.logger import CometLogger
-from src.losses import BCELoss, MAELoss, MSELoss
+from src.losses import BCELoss, DiceLoss, FocalLoss, MAELoss, MSELoss
 from src.metrics import compute_bias, compute_mae, compute_mse, compute_spearman, compute_ssim
 from src.models.baselines import UNet
 from src.models.utils import get_nbr_model_parameters
@@ -77,6 +77,10 @@ class Trainer:
             self.loss_fn = MSELoss()
         elif loss_name in ["mae", "maeloss"]:
             self.loss_fn = MAELoss()
+        elif loss_name in ["focal", "focalloss"]:
+            self.loss_fn = FocalLoss()
+        elif loss_name in ["dice", "diceloss"]:
+            self.loss_fn = DiceLoss()
         else:
             raise ValueError(f"Unknown loss type in config.loss: {self.config.loss}")
 
@@ -121,7 +125,7 @@ class Trainer:
 
         predictions = self.model(inputs)
         # for bce, we will apply sigmoid after the loss
-        if self.config.optimizer.loss_name in ["bce", "bceloss"]:
+        if self.config.optimizer.loss_name in ["bce", "bceloss", "focal", "focalloss"]:
             loss = self.loss_fn(predictions, targets, masks)
             predictions = torch.sigmoid(predictions)
         else:
