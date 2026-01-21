@@ -8,6 +8,7 @@ import json
 import os
 
 import numpy as np
+import pandas as pd
 import yaml
 
 from data_preparation.grid_loader.utils import get_range_burn_count, get_range_burn_prob
@@ -121,6 +122,7 @@ def main() -> None:
     raw_data_dir = config.data.raw_data_dir
     modelling_approach = config.modelling_approach
     out_norm = config.data.output_normalization
+    valid_mask_threshold = config.data.valid_mask_threshold
     if modelling_approach == "1":
         max_target_val, min_target_val = get_range_burn_prob(root_dir=raw_data_dir)
     else:
@@ -130,19 +132,31 @@ def main() -> None:
         # Handle the error or raise an exception
         raise TypeError(f"Expected ndarray, but got string: {test_predictions}")
 
-    reconstructed_hexel_denorm, gt_elevation_grid_profile, hex_id = get_predicted_hexel(
-        base_dir=data_dir,
-        raw_data_dir=raw_data_dir,
-        predictions=test_predictions,
-        min_target_val=min_target_val,
-        max_target_val=max_target_val,
-        modelling_approach=modelling_approach,
-        out_norm=out_norm,
-        stitch_mode="mean",
-        win_h=128,
-        win_w=128,
-    )
-    save_predicted_hexels(reconstructed_hexel_denorm, gt_elevation_grid_profile, hex_id, config.save_dir)
+    test_df = pd.read_csv(os.path.join(data_dir, config.data.test_split))
+    test_df = test_df[test_df["valid_ratio"] > valid_mask_threshold].reset_index(drop=True)  # type: ignore
+    all_hex_ids = list(test_df["hex_id"].unique())
+    for hex_id in all_hex_ids:
+        print(f"======Working with hex{hex_id}========")
+        df = test_df[test_df["hex_id"] == hex_id]
+        indices = test_df[test_df["hex_id"] == hex_id].index.tolist()
+        if len(str(hex_id)) != 2:
+            hex_id = "0" + str(hex_id)
+        hex_test_predictions = test_predictions[indices]
+        reconstructed_hexel_denorm, gt_elevation_grid_profile = get_predicted_hexel(
+            base_dir=data_dir,
+            raw_data_dir=raw_data_dir,
+            test_df=df,
+            predictions=hex_test_predictions,
+            min_target_val=min_target_val,
+            max_target_val=max_target_val,
+            hex_id=hex_id,
+            modelling_approach=modelling_approach,
+            out_norm=out_norm,
+            stitch_mode="mean",
+            win_h=128,
+            win_w=128,
+        )
+        save_predicted_hexels(reconstructed_hexel_denorm, gt_elevation_grid_profile, hex_id, config.save_dir)
 
 
 if __name__ == "__main__":

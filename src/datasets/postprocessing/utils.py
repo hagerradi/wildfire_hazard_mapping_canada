@@ -54,21 +54,20 @@ def get_stitched_windows(
 def get_predicted_hexel(
     base_dir: str,
     raw_data_dir: str,
+    test_df: pd.DataFrame,
     predictions: np.ndarray,
     min_target_val: float,
     max_target_val: float,
+    hex_id: str,
     modelling_approach: str = "2",
     out_norm: str = "min_max",
     stitch_mode: str = "mean",
     win_h: int = 128,
     win_w: int = 128,
-) -> tuple[np.ndarray, Profile, str]:
+) -> tuple[np.ndarray, Profile]:
     """
     Returns the reconstructed hexel
     """
-    test_df = pd.read_csv(os.path.join(base_dir, "test_indices.csv"))
-    test_df = test_df[test_df["valid_ratio"] != 0.0]  # type: ignore
-    hex_id = str(test_df["hex_id"].iloc[0])
     start_idx = 0
     if os.path.exists(os.path.join(os.path.join(raw_data_dir, "hex" + str(hex_id)), ELEVATION_GRID_PATH)):
         with rasterio.open(os.path.join(os.path.join(raw_data_dir, "hex" + str(hex_id)), ELEVATION_GRID_PATH)) as src:
@@ -115,4 +114,4 @@ def get_predicted_hexel(
         reconstructed_hexel_denorm = np.rint(reconstructed_hexel_denorm).astype("int32")
         gt_elevation_grid_profile.update(dtype="int32", compress="lzw", nodata=-9999)  # type: ignore
 
-    return reconstructed_hexel_denorm, gt_elevation_grid_profile, hex_id
+    return reconstructed_hexel_denorm, gt_elevation_grid_profile
