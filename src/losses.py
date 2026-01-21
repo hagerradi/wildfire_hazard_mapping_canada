@@ -35,8 +35,8 @@ class MSELoss(nn.Module):
         self.eps = eps
         self.mse = nn.MSELoss(reduction="none")
 
-    def forward(self, logits: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None):
-        loss = self.mse(logits, targets)
+    def forward(self, probs: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None):
+        loss = self.mse(probs, targets)
 
         if mask is None:
             return loss.mean()
@@ -58,8 +58,8 @@ class MAELoss(nn.Module):
         self.eps = eps
         self.mae = nn.L1Loss(reduction="none")
 
-    def forward(self, logits: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None):
-        loss = self.mae(logits, targets)
+    def forward(self, probs: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None):
+        loss = self.mae(probs, targets)
 
         if mask is None:
             return loss.mean()
@@ -85,17 +85,17 @@ class DiceLoss(nn.Module):
         super().__init__()
         self.eps = eps
 
-    def forward(self, preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None):
+    def forward(self, probs: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None):
         if mask is None:
-            p = preds.flatten(1)
-            t = targets.flatten(1)
+            probs = probs.flatten(1)
+            targets = targets.flatten(1)
         else:
-            m = mask.to(dtype=preds.dtype)
-            p = (preds * m).flatten(1)
-            t = (targets * m).flatten(1)
+            mask = mask.to(dtype=probs.dtype)
+            probs = (probs * mask).flatten(1)
+            targets = (targets * mask).flatten(1)
 
-        intersection = (p * t).sum(dim=1)
-        denom = p.sum(dim=1) + t.sum(dim=1)
+        intersection = (probs * targets).sum(dim=1)
+        denom = probs.sum(dim=1) + targets.sum(dim=1)
         dice = (2.0 * intersection + self.eps) / (denom + self.eps)
         return 1.0 - dice.mean()
 

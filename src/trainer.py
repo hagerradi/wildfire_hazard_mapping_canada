@@ -70,7 +70,7 @@ class Trainer:
 
         # setup loss
         loss_name = str(self.config.optimizer.loss_name).lower()
-
+        # TODO: add to utils
         if loss_name in ["bce", "bceloss"]:
             self.loss_fn = BCELoss()
         elif loss_name in ["mse", "mseloss"]:
