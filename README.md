@@ -43,6 +43,13 @@ For all the data preparation steps, refer to [the following section](data_prepar
 
 ```python src/train.py --config=configs/default_v2.yaml```
 
+#### On the cluster:
+To launch a job on the cluster, use the script `run_files/run.sh`.
+Steps:
+1. export COMET_API_KEY=YOUR_KEY
+2. edit the config file name inside `run_files/run.sh`. By default, it uses `configs/default_v1.yaml`
+3. run `sbatch run_files/run.sh`
+
 ### Inference
 
 To visualize predictions and/or save visualizations, add the optional flags `--visualize_predictions` and/or `--save_visualizations`, respectively.
