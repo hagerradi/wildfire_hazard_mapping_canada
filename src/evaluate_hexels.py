@@ -132,10 +132,11 @@ def main() -> None:
         # Handle the error or raise an exception
         raise TypeError(f"Expected ndarray, but got string: {test_predictions}")
 
-    test_df_path = os.path.join(data_dir, config.data.test_split)
-    if not os.path.exists(test_df_path):
-        raise ValueError("Test df file does not exist")
-    test_df = pd.read_csv(test_df_path)
+    try:
+        test_df = pd.read_csv(os.path.join(data_dir, config.data.test_split))
+    except (FileNotFoundError, AttributeError):
+        raise ValueError("Test df file does not exist.")  # noqa: B904
+
     test_df = test_df[test_df["valid_ratio"] > valid_mask_threshold].reset_index(drop=True)  # type: ignore
     all_hex_ids = list(test_df["hex_id"].unique())
     for hex_id in all_hex_ids:
