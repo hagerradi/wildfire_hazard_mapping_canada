@@ -115,9 +115,13 @@ def get_split_hexel_window(
 
 
 def generate_data_samples(
-    root_dir: str, modelling_approach: int, output_type: str = "count", win_h: int = 128, win_w: int = 128, overlap_ratio: float = 0.2
+    root_dir: str, save_dir: str, modelling_approach: int, output_type: str = "count", win_h: int = 128, win_w: int = 128, overlap_ratio: float = 0.2
 ):
-    out_dir = os.path.join(root_dir, f"data_samples_approach_{modelling_approach}")
+    # If save_dir is provided, use it; otherwise default to root_dir/data_samples...
+    if save_dir:
+        out_dir = save_dir
+    else:
+        out_dir = os.path.join(root_dir, f"data_samples_approach_{modelling_approach}")
     os.makedirs(out_dir, exist_ok=True)
     os.makedirs(os.path.join(out_dir, "numpy_files"), exist_ok=True)
     hex_ids = find_hex_ids(root_dir)
@@ -137,7 +141,8 @@ def generate_data_samples(
             modelling_approach=modelling_approach,
             output_type=output_type,
         )
-        if (stacked_feats is None) or (mask is None) or (season_cause_mapping is None):
+        # Fail if basic feats are missing OR if approach 2 is missing the mapping
+        if (stacked_feats is None) or (mask is None) or (modelling_approach == 2 and season_cause_mapping is None):
             print(f"================Failed for hex {hex_id}===================")
             continue
         get_split_hexel_window(
@@ -158,6 +163,7 @@ def main():
     parser = argparse.ArgumentParser(description="Generate data samples from each hexel")
 
     parser.add_argument("--root_dir", type=str, help="data root directory", required=True)
+    parser.add_argument("--save_dir", type=str, help="save data directory", default=None)
     parser.add_argument("--modelling_approach", type=int, help="Either 1 or 2", default=2)
     parser.add_argument("--output_type", type=str, help="output type as prob or count", default="count")
     parser.add_argument("--win_h", type=int, help="Height of the window", default=128)
@@ -168,6 +174,7 @@ def main():
 
     generate_data_samples(
         root_dir=args.root_dir,
+        save_dir=args.save_dir,
         modelling_approach=args.modelling_approach,
         win_h=args.win_h,
         win_w=args.win_w,

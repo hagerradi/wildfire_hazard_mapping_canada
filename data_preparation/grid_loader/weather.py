@@ -13,6 +13,8 @@ def weather_list_to_grid(
 
     if sampling == "dist":
         out = np.repeat(fire_weather_zone_grid[..., np.newaxis], (len(selected_weather_features)) * 2, axis=-1).astype("float32")
+    elif sampling == "weather_zone_id":
+        out = np.repeat(fire_weather_zone_grid[..., np.newaxis], 1, axis=-1).astype("float32")
     else:
         out = np.repeat(fire_weather_zone_grid[..., np.newaxis], len(selected_weather_features), axis=-1).astype("float32")
 
@@ -27,12 +29,15 @@ def weather_list_to_grid(
         # array of mean, var for all the variables (1x2*len(selected_weather_features))
         elif sampling == "dist":
             value = np.vstack([weather_zone_subset.mean(), weather_zone_subset.std()]).T.flatten()
+        # array of weather zone id 
+        elif sampling == "weather_zone_id":
+            value = zone
         out[fire_weather_zone_grid.data == zone] = value  # type: ignore
     # HxWx2*len(selected_weather_features) (or len(selected_weather_features))
     return out.filled(NODATA)  # type: ignore
 
 
-def load_weather_grid(weather_list_file_path: str, zone_grid_file_path: str, season: int = None, sampling: str = "dist"):
+def load_weather_grid(weather_list_file_path: str, zone_grid_file_path: str, season: int = None, sampling: str = "weather_zone_id"): # TODO dirty change for now, expose this sampling as an arg
     """Single function to run the weather grid creation"""
     weather_csv = load_weather_list(weather_list_file_path, season)
     data = load_raster(zone_grid_file_path)
