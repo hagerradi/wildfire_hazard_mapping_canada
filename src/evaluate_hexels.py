@@ -87,6 +87,8 @@ def main() -> None:
 
     # ---------- Evaluation ----------
     print("\n[Evaluation] Running on test set...")
+    # NOTE: If we need the stats on a particular hexel then modify the test_indices.csv in the config file with
+    # meta_hex_{hex_id}.csv file
     test_loader = get_test_loader(config=config.data, modelling_approach=config.modelling_approach, seed=seed)
     test_metrics, test_predictions = trainer.test(test_loader, return_predictions=True)
 
