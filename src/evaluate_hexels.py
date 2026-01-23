@@ -11,10 +11,13 @@ import numpy as np
 import pandas as pd
 import yaml
 
+from data_preparation.grid_loader.output import load_output_burn_grid
 from data_preparation.grid_loader.utils import get_range_burn_count, get_range_burn_prob
+from data_preparation.utils import find_simulation_output_file
 from src.config import Config
 from src.datasets.dataloader import get_test_loader
 from src.datasets.postprocessing.utils import get_predicted_hexel, save_predicted_hexels
+from src.datasets.postprocessing.visualize_predictions import visualize_burn_prob_grid
 from src.trainer import Trainer
 from src.utils import seed_everything, visualize_model_predictions
 
@@ -123,6 +126,7 @@ def main() -> None:
     modelling_approach = config.modelling_approach
     out_norm = config.data.output_normalization
     valid_mask_threshold = config.data.valid_mask_threshold
+    output_type, season, cause = "prob", None, None
     if modelling_approach == "1":
         max_target_val, min_target_val = get_range_burn_prob(root_dir=raw_data_dir)
     else:
@@ -161,6 +165,12 @@ def main() -> None:
             win_w=128,
         )
         save_predicted_hexels(reconstructed_hexel_denorm, gt_elevation_grid_profile, hex_id, config.save_dir)
+        # Save the hex as plt plot
+        hex_dir = os.path.join(raw_data_dir, f"hex{hex_id}")
+        fpath = find_simulation_output_file(hex_dir, hex_id, output_type, season=season, cause=cause)
+        grid_gt = load_output_burn_grid(fpath)
+        visualize_burn_prob_grid(gt_grid=grid_gt, pred_grid=reconstructed_hexel_denorm, hex_id=hex_id, save_dir=config.save_dir)
+        print(f"=======Saved subplot for hex{hex_id}==============")
 
 
 if __name__ == "__main__":
