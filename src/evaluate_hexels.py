@@ -8,12 +8,16 @@ import json
 import os
 
 import numpy as np
+import pandas as pd
 import yaml
 
+from data_preparation.grid_loader.output import load_output_burn_grid
 from data_preparation.grid_loader.utils import get_range_burn_count, get_range_burn_prob
+from data_preparation.utils import find_simulation_output_file
 from src.config import Config
 from src.datasets.dataloader import get_test_loader
 from src.datasets.postprocessing.utils import get_predicted_hexel, save_predicted_hexels
+from src.datasets.postprocessing.visualize_predictions import visualize_burn_prob_grid
 from src.trainer import Trainer
 from src.utils import seed_everything, visualize_model_predictions
 
@@ -83,6 +87,8 @@ def main() -> None:
 
     # ---------- Evaluation ----------
     print("\n[Evaluation] Running on test set...")
+    # NOTE: If we need the stats on a particular hexel then modify the test_indices.csv in the config file with
+    # meta_hex_{hex_id}.csv file
     test_loader = get_test_loader(config=config.data, modelling_approach=config.modelling_approach, seed=seed)
     test_metrics, test_predictions = trainer.test(test_loader, return_predictions=True)
 
@@ -120,7 +126,9 @@ def main() -> None:
     data_dir = config.data.root_dir
     raw_data_dir = config.data.raw_data_dir
     modelling_approach = config.modelling_approach
-
+    out_norm = config.data.output_normalization
+    valid_mask_threshold = config.data.valid_mask_threshold
+    output_type, season, cause = "prob", None, None
     if modelling_approach == "1":
         max_target_val, min_target_val = get_range_burn_prob(root_dir=raw_data_dir)
     else:
@@ -130,18 +138,41 @@ def main() -> None:
         # Handle the error or raise an exception
         raise TypeError(f"Expected ndarray, but got string: {test_predictions}")
 
-    reconstructed_hexel_denorm, gt_elevation_grid_profile, hex_id = get_predicted_hexel(
-        base_dir=data_dir,
-        raw_data_dir=raw_data_dir,
-        predictions=test_predictions,
-        min_target_val=min_target_val,
-        max_target_val=max_target_val,
-        modelling_approach=modelling_approach,
-        stitch_mode="mean",
-        win_h=128,
-        win_w=128,
-    )
-    save_predicted_hexels(reconstructed_hexel_denorm, gt_elevation_grid_profile, hex_id, config.save_dir)
+    try:
+        test_df = pd.read_csv(os.path.join(data_dir, config.data.test_split))
+    except (FileNotFoundError, AttributeError):
+        raise ValueError("Test df file does not exist.")  # noqa: B904
+
+    test_df = test_df[test_df["valid_ratio"] > valid_mask_threshold].reset_index(drop=True)  # type: ignore
+    all_hex_ids = list(test_df["hex_id"].unique())
+    for hex_id in all_hex_ids:
+        print(f"======Working with hex{hex_id}========")
+        one_hexel_df = test_df[test_df["hex_id"] == hex_id]
+        hexel_indices = test_df[test_df["hex_id"] == hex_id].index.tolist()
+        if len(str(hex_id)) != 2:
+            hex_id = "0" + str(hex_id)
+        hex_test_predictions = test_predictions[hexel_indices]
+        reconstructed_hexel_denorm, gt_elevation_grid_profile = get_predicted_hexel(
+            base_dir=data_dir,
+            raw_data_dir=raw_data_dir,
+            test_df=one_hexel_df,
+            predictions=hex_test_predictions,
+            min_target_val=min_target_val,
+            max_target_val=max_target_val,
+            hex_id=hex_id,
+            modelling_approach=modelling_approach,
+            out_norm=out_norm,
+            stitch_mode="mean",
+            win_h=128,
+            win_w=128,
+        )
+        save_predicted_hexels(reconstructed_hexel_denorm, gt_elevation_grid_profile, hex_id, config.save_dir)
+        # Save the hex as plt plot
+        hex_dir = os.path.join(raw_data_dir, f"hex{hex_id}")
+        fpath = find_simulation_output_file(hex_dir, hex_id, output_type, season=season, cause=cause)
+        grid_gt = load_output_burn_grid(fpath)
+        visualize_burn_prob_grid(gt_grid=grid_gt, pred_grid=reconstructed_hexel_denorm, hex_id=hex_id, save_dir=config.save_dir)
+        print(f"=======Saved subplot for hex{hex_id}==============")
 
 
 if __name__ == "__main__":
