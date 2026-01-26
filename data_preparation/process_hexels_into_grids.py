@@ -141,8 +141,7 @@ def generate_data_samples(
             modelling_approach=modelling_approach,
             output_type=output_type,
         )
-        # Fail if basic feats are missing OR if approach 2 is missing the mapping
-        if (stacked_feats is None) or (mask is None) or (modelling_approach == 2 and season_cause_mapping is None):
+        if (stacked_feats is None) or (mask is None):
             print(f"================Failed for hex {hex_id}===================")
             continue
         get_split_hexel_window(
