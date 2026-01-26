@@ -11,10 +11,11 @@ from tqdm import tqdm
 from src.config import Config
 from src.datasets.utils import compute_number_input_channels
 from src.logger import CometLogger
-from src.losses import BCELoss, DiceLoss, FocalLoss, MAELoss, MSELoss
+from src.losses import WeightedLoss
 from src.metrics import compute_bias, compute_mae, compute_mse, compute_spearman, compute_ssim
 from src.models.baselines import UNet
 from src.models.utils import get_nbr_model_parameters
+from utils import build_single_loss
 
 
 class Trainer:
@@ -69,20 +70,14 @@ class Trainer:
             self.logger.log_params({"model_total_params": total_params, "model_trainable_params": trainable_params})
 
         # setup loss
-        loss_name = str(self.config.optimizer.loss_name).lower()
-        # TODO: add to utils
-        if loss_name in ["bce", "bceloss"]:
-            self.loss_fn = BCELoss()
-        elif loss_name in ["mse", "mseloss"]:
-            self.loss_fn = MSELoss()
-        elif loss_name in ["mae", "maeloss"]:
-            self.loss_fn = MAELoss()
-        elif loss_name in ["focal", "focalloss"]:
-            self.loss_fn = FocalLoss()
-        elif loss_name in ["dice", "diceloss"]:
-            self.loss_fn = DiceLoss()
-        else:
-            raise ValueError(f"Unknown loss type in config.loss: {self.config.loss}")
+        loss_config = self.config.optimizer.loss
+        if isinstance(loss_config, str):  # loss is a string
+            self.loss_fn = build_single_loss(loss_config)
+        else:  # loss is a dict
+            loss_names = loss_config
+            weights = self.config.optimizer.loss_weights
+            losses = {n: build_single_loss(n) for n in loss_names}
+            self.loss_fn = WeightedLoss(losses=losses, weights=weights, normalize_weights=True)
 
         # setup optimizer
         opt_name = self.config.optimizer.name
@@ -124,13 +119,10 @@ class Trainer:
         masks = masks.to(self.device)
 
         predictions = self.model(inputs)
-        # for bce, we will apply sigmoid after the loss
-        if self.config.optimizer.loss_name in ["bce", "bceloss", "focal", "focalloss"]:
-            loss = self.loss_fn(predictions, targets, masks)
-            predictions = torch.sigmoid(predictions)
-        else:
-            predictions = torch.sigmoid(predictions)
-            loss = self.loss_fn(predictions, targets, masks)
+
+        loss = self.loss_fn(predictions, targets, masks)
+        predictions = torch.sigmoid(predictions)
+
         return predictions, loss, targets, masks
 
     def train_epoch(self, loader: DataLoader) -> dict[str, float]:

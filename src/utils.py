@@ -6,6 +6,23 @@ import torch
 from matplotlib import pyplot as plt
 from torch.utils.data import DataLoader
 
+from losses import BCELoss, DiceLoss, FocalLoss, MAELoss, MSELoss
+
+
+def build_single_loss(name: str) -> torch.nn.Module:
+    name = str(name).lower()
+    if name in ["bce", "bceloss"]:
+        return BCELoss()
+    if name in ["mse", "mseloss"]:
+        return MSELoss()
+    if name in ["mae", "maeloss"]:
+        return MAELoss()
+    if name in ["focal", "focalloss"]:
+        return FocalLoss()
+    if name in ["dice", "diceloss"]:
+        return DiceLoss()
+    raise ValueError(f"Unknown loss type: {name}")
+
 
 def visualize_model_predictions(
     test_loader: DataLoader,

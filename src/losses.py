@@ -35,7 +35,8 @@ class MSELoss(nn.Module):
         self.eps = eps
         self.mse = nn.MSELoss(reduction="none")
 
-    def forward(self, probs: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None):
+    def forward(self, logits: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None):
+        probs = torch.sigmoid(logits)
         loss = self.mse(probs, targets)
 
         if mask is None:
@@ -58,7 +59,8 @@ class MAELoss(nn.Module):
         self.eps = eps
         self.mae = nn.L1Loss(reduction="none")
 
-    def forward(self, probs: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None):
+    def forward(self, logits: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None):
+        probs = torch.sigmoid(logits)
         loss = self.mae(probs, targets)
 
         if mask is None:
@@ -85,7 +87,8 @@ class DiceLoss(nn.Module):
         super().__init__()
         self.eps = eps
 
-    def forward(self, probs: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None):
+    def forward(self, logits: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None):
+        probs = torch.sigmoid(logits)
         if mask is None:
             probs = probs.flatten(1)
             targets = targets.flatten(1)
@@ -147,3 +150,75 @@ class FocalLoss(nn.Module):
         loss = loss * mask
         denom = mask.sum().clamp_min(self.eps)
         return loss.sum() / denom
+
+
+from __future__ import annotations
+
+from typing import cast
+
+import torch
+import torch.nn as nn
+
+
+class WeightedLoss(nn.Module):
+    """
+    Combine multiple loss modules with weights.
+
+    All losses are expected to implement:
+        forward(logits: Tensor, targets: Tensor, mask: Tensor|None) -> Tensor
+    """
+
+    losses: nn.ModuleDict
+    _weights: torch.Tensor
+
+    def __init__(
+        self,
+        losses: dict[str, nn.Module],
+        weights: dict[str, float] | None = None,
+        normalize_weights: bool = True,
+        eps: float = 1e-8,
+    ):
+        super().__init__()
+        if not losses:
+            raise ValueError("losses must be a non-empty dict of name -> nn.Module")
+
+        self.losses = nn.ModuleDict(losses)
+        self.eps = eps
+        self.normalize_weights = normalize_weights
+
+        if weights is None:
+            weights = {k: 1.0 for k in losses}
+
+        missing = set(losses.keys()) - set(weights.keys())
+        extra = set(weights.keys()) - set(losses.keys())
+        if missing:
+            raise ValueError(f"weights missing keys: {sorted(missing)}")
+        if extra:
+            raise ValueError(f"weights has unknown keys: {sorted(extra)}")
+
+        w = torch.tensor([weights[k] for k in losses], dtype=torch.float32)
+
+        self._weights = w
+        self.register_buffer("_weights", self._weights)
+
+    def forward(
+        self,
+        logits: torch.Tensor,
+        targets: torch.Tensor,
+        mask: torch.Tensor | None = None,
+    ) -> torch.Tensor | dict[str, torch.Tensor]:
+        w: torch.Tensor = self._weights
+        if self.normalize_weights:
+            w = w / w.sum().clamp_min(self.eps)
+
+        total = logits.new_tensor(0.0)
+        parts: dict[str, torch.Tensor] = {}
+
+        for i, (name, loss_mod) in enumerate(self.losses.items()):
+            loss_mod = cast(nn.Module, loss_mod)
+
+            val = cast(torch.Tensor, loss_mod(logits, targets, mask))
+            parts[name] = val
+            total = total + (w[i].to(dtype=val.dtype) * val)
+
+        return total
