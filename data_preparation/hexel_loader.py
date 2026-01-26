@@ -102,8 +102,11 @@ def load_features_per_hexel(
             features_list,
             axis=-1,
         )
+        # Get all the masks for all the season/cause and channels
         all_feat_mask = np.isnan(stacked)
+        # Aggregate the channel masks to create a single mast (OR operation)
         mask = np.any(all_feat_mask, axis=-1)
+        # Redo the feats with the new mask
         stacked[mask] = NODATA
         return stacked, mask
 
