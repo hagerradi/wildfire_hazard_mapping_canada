@@ -16,6 +16,7 @@ from data_preparation.grid_loader import (
     load_weather_grid,
     load_wind_grid,
 )
+from data_preparation.grid_loader.utils import NODATA
 from data_preparation.paths import (
     ELEVATION_GRID_PATH,
     ESC_FIRE_DIST_PATH,
@@ -101,7 +102,9 @@ def load_features_per_hexel(
             features_list,
             axis=-1,
         )
-        mask = np.isnan(elevation_grid)
+        all_feat_mask = np.isnan(stacked)
+        mask = np.any(all_feat_mask, axis=-1)
+        stacked[mask] = NODATA
         return stacked, mask
 
     def load_output_grid(path):
