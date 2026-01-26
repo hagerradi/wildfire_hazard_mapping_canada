@@ -108,6 +108,8 @@ def load_features_per_hexel(
         mask = np.any(all_feat_mask, axis=-1)
         # Redo the feats with the new mask
         stacked[mask] = NODATA
+        if int(np.sum(mask.astype(bool) != np.isnan(elevation_grid).astype(bool))) > 0:
+            print("======The elevation mask is not the same as the cumulative mask=====")
         return stacked, mask
 
     def load_output_grid(path):
