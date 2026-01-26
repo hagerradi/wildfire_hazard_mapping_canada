@@ -85,14 +85,14 @@ HEX_MAP_LAYOUT = {
 
 
 def get_hex_center(row: int, col: int, radius: float = 1.0) -> tuple[float, float]:
-    """Calculates center (x, y) for a flat-topped hexagon."""
+    """Maps (row, col) to center (x, y) coords. for a flat-topped hexagon."""
     x = col * (1.5 * radius)
     y = -row * (np.sqrt(3) / 2 * radius)
     return x, y
 
 
 def get_flat_hex_vertices(center_x: float, center_y: float, radius: float) -> np.ndarray:
-    """Returns array of vertices of size (6, 2) for a flat-topped hexagon."""
+    """Gets array of coords. of the 6 corners for a flat-topped hexagon."""
     angles = np.radians([0, 60, 120, 180, 240, 300])
     x_offset = radius * np.cos(angles)
     y_offset = radius * np.sin(angles)
@@ -100,7 +100,7 @@ def get_flat_hex_vertices(center_x: float, center_y: float, radius: float) -> np
 
 
 def create_geometric_mask(shape: tuple[int, int], vertices_normalized: np.ndarray) -> np.ndarray:
-    """Creates a boolean mask for the raster based on normalized hexagon vertices."""
+    """Creates a bool. mask for the raster based on normalized hexagon vertices."""
     h, w = shape
     y, x = np.mgrid[:h, :w]
     y = (y / h) * 2 - 1
@@ -122,22 +122,21 @@ def find_hex_files(folder: Path, pattern: str) -> dict[int, Path]:
     return file_map
 
 
-def calculate_global_stats(file_map: dict[int, Path]) -> tuple[float, float, float]:
+def calculate_global_stats(file_map: dict[int, Path]) -> tuple[float, float]:
     """
-    Returns (global_min_absolute, global_min_positive, global_max).
+    Returns (global_min_positive, global_max).
     """
     print(f"Scanning {len(file_map)} files for global statistics...")
     global_max = -np.inf
     global_min_pos = np.inf
-    global_min_abs = np.inf
 
     for f in file_map.values():
         try:
             with rasterio.open(f) as src:
-                # Read low-res subsample
+                # Read low-res subsample for speed
                 h_small = max(1, src.height // 10)
                 w_small = max(1, src.width // 10)
-                data = src.read(1, out_shape=(h_small, w_small), resampling=Resampling.nearest)
+                data = src.read(1, out_shape=(h_small, w_small), resampling=Resampling.max)
 
                 if src.nodata is not None:
                     data = np.ma.masked_equal(data, src.nodata)
@@ -146,12 +145,8 @@ def calculate_global_stats(file_map: dict[int, Path]) -> tuple[float, float, flo
                     continue
 
                 cmax = data.max()
-                cmin = data.min()
-
                 if cmax > global_max:
                     global_max = cmax
-                if cmin < global_min_abs:
-                    global_min_abs = cmin
 
                 # For Log scale, find smallest positive non-zero
                 valid_pos = data[data > 0]
@@ -162,22 +157,20 @@ def calculate_global_stats(file_map: dict[int, Path]) -> tuple[float, float, flo
         except Exception as e:
             print(f"Warning skipping stats for {f}: {e}")
 
-    # fallbacks
+    # fallbacks if inf. values
     if global_max == -np.inf:
         global_max = 1.0
     if global_min_pos == np.inf:
         global_min_pos = 1e-6
-    if global_min_abs == np.inf:
-        global_min_abs = 0.0
 
-    return global_min_abs, global_min_pos, global_max
+    return global_min_pos, global_max
 
 
 def generate_stitched_map(
     data_folder_path: str,
     search_pattern: str,
     downsample_factor: int = 1,
-    scale: str = "log",
+    scale: str = "linear",
     show_hex_borders: bool = True,
     title: str = None,
     output_path: str = None,
@@ -189,7 +182,7 @@ def generate_stitched_map(
         data_folder_path (str): Main dataset directory.
         search_pattern (str): File pattern to look for (default: bp maps).
         downsample_factor (int): Downsampling factor (for faster and lower-res. map).
-        scale (str): Use 'log' for log norm. scale instead of standard linear min-max.
+        scale (str): Use 'log' for log norm. scale or 'linear' for linear min-max.
         show_hex_borders (bool): Whether to show hexel borders in the map.
         title (str): Figure title.
         output_path (str): Figure file output name for saving.
@@ -206,8 +199,8 @@ def generate_stitched_map(
     if not file_map:
         return
 
-    # 2. Calculate Ranges
-    abs_min, pos_min, global_max = calculate_global_stats(file_map)
+    # get the min and max ranges for plotting
+    pos_min, global_max = calculate_global_stats(file_map)
 
     # Get scale type selection for plotting
     if scale == "log":
