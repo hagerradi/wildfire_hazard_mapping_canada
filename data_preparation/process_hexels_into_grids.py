@@ -123,7 +123,7 @@ def generate_data_samples(
     hex_ids = find_hex_ids(root_dir)
     completed_hex_ids = get_processed_hex_ids(out_dir)
     for hex_id in hex_ids:
-        if hex_id in completed_hex_ids:
+        if (hex_id in completed_hex_ids) and (hex_id not in ["20", "22", "50"]):
             print(f"==========Skipping because completed hex{hex_id}=============")
             continue
         if hex_id in HEX_ID_NA:
@@ -137,7 +137,7 @@ def generate_data_samples(
             modelling_approach=modelling_approach,
             output_type=output_type,
         )
-        if (stacked_feats is None) or (mask is None) or (season_cause_mapping is None):
+        if (stacked_feats is None) or (mask is None):
             print(f"================Failed for hex {hex_id}===================")
             continue
         get_split_hexel_window(
