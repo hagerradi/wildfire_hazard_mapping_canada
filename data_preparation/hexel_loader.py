@@ -141,7 +141,6 @@ def load_features_per_hexel(
         out_grid = load_output_grid(fpath)
 
         stacked_features, mask = stack_sample(ignition_prob_grid, esc_fires_prob_grid, weather_grid, out_grid)
-
         return np.expand_dims(stacked_features, axis=0), np.expand_dims(mask, axis=0), None
 
     # modelling approach 2
