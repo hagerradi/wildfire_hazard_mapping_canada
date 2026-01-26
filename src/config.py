@@ -1,8 +1,7 @@
 # base configurations for experiments
 from collections.abc import Callable
-
 from pydantic import BaseModel
-
+from typing import Optional
 
 class LoggerConfig(BaseModel):
     enabled: bool = True
@@ -55,6 +54,11 @@ class DataConfig(BaseModel):
     fuel_feats_encoding: str  # ordinal, one_hot
     normalize_fuel_feats_ordinal: bool = True
     valid_mask_threshold: float = 0.00
+
+    weather_table_path: Optional[str] = None
+    weather_samples_per_item: Optional[int] = 128
+    weather_channel_name: Optional[str] = "weather_grid" 
+    weather_features: Optional[list[str]] = ['temp', 'rh', 'prec', 'ffmc', 'dmc', 'dc', 'isi', 'bui']
 
 
 class Config(BaseModel):

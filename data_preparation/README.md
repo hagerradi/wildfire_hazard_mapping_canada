@@ -33,11 +33,11 @@ The weather table is used to augment the input features for model training.
 Run following code on terminal (on full data set). This will compile and save all the weather tables in the hexels in a `weather_table.csv` found in the directory as the root directory.
 
 ```
-python build_weather_table.py --root_dir="/network/projects/amlrt/nrcan_wildfires/full_data/yan_bp3" --file_name="weather_table.py"
+python build_weather_table.py --root_dir="/network/projects/amlrt/nrcan_wildfires/full_data/yan_bp3" --file_name="weather_table.csv"
 ```
 
 If you would like to save the weather table in another place, you can specify in the `--output_dir` argument. For example
 
 ```
-python build_weather_table.py --root_dir="/network/projects/amlrt/nrcan_wildfires/full_data/yan_bp3" --file_name="weather_table.py" --output_dir="<INSERT PATH HERE>"
+python build_weather_table.py --root_dir="/network/projects/amlrt/nrcan_wildfires/full_data/yan_bp3" --file_name="weather_table.csv" --output_dir="<INSERT PATH HERE>"
 ```
