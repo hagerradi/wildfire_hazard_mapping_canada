@@ -137,7 +137,7 @@ def generate_data_samples(
             modelling_approach=modelling_approach,
             output_type=output_type,
         )
-        if (stacked_feats is None) or (mask is None) or (season_cause_mapping is None):
+        if (stacked_feats is None) or (mask is None):
             print(f"================Failed for hex {hex_id}===================")
             continue
         get_split_hexel_window(
