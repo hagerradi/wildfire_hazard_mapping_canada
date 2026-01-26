@@ -6,6 +6,7 @@ import argparse
 import glob
 import json
 import os
+import time
 
 import numpy as np
 import pandas as pd
@@ -89,8 +90,11 @@ def main() -> None:
     print("\n[Evaluation] Running on test set...")
     # NOTE: If we need the stats on a particular hexel then modify the test_indices.csv in the config file with
     # meta_hex_{hex_id}.csv file
+    start_time = time.time()
     test_loader = get_test_loader(config=config.data, modelling_approach=config.modelling_approach, seed=seed)
+    preds_start_time = time.time()
     test_metrics, test_predictions = trainer.test(test_loader, return_predictions=True)
+    preds_time = time.time() - preds_start_time
 
     if args.visualize_predictions and isinstance(test_predictions, np.ndarray):
         # get the channel mapping dict if it exists
@@ -173,6 +177,9 @@ def main() -> None:
         grid_gt = load_output_burn_grid(fpath)
         visualize_burn_prob_grid(gt_grid=grid_gt, pred_grid=reconstructed_hexel_denorm, hex_id=hex_id, save_dir=config.save_dir)
         print(f"=======Saved subplot for hex{hex_id}==============")
+
+    print(f"=======Total Evaluation Time {time.time()-start_time}s========")
+    print(f"=======Prediction Time {preds_time}s========")
 
 
 if __name__ == "__main__":
