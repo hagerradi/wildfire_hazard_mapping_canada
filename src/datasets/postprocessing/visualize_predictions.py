@@ -20,7 +20,7 @@ def visualize_burn_prob_grid(gt_grid: np.ndarray, pred_grid: np.ndarray, hex_id:
 
     # Plot Ground Truth
     im1 = axes[0].imshow(gt_grid, cmap="viridis", origin="upper", vmax=inferred_vmax)
-    axes[0].set_title("GT")
+    axes[0].set_title("Ground Truth")
     axes[0].set_xlabel("Easting (m)")
     axes[0].set_ylabel("Northing (m)")
 
