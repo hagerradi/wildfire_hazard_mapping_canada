@@ -129,10 +129,7 @@ def calculate_global_stats(file_map: dict[int, Path]) -> tuple[float, float]:
     for f in file_map.values():
         try:
             with rasterio.open(f) as src:
-                # Read low-res subsample for speed
-                h_small = max(1, src.height // 10)
-                w_small = max(1, src.width // 10)
-                data = src.read(1, out_shape=(h_small, w_small), resampling=Resampling.nearest)
+                data = src.read(1)
 
                 if src.nodata is not None:
                     data = np.ma.masked_equal(data, src.nodata)
