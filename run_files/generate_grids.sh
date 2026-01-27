@@ -1,23 +1,35 @@
 #!/bin/bash
-##SBATCH --mail-type=all
-##SBATCH --mail-user=name@mila.quebec
-#SBATCH --job-name=unet_full_data
-#SBATCH --output=logs/job_%x_%j.out
-#SBATCH --error=logs/job_%x_%j.err
-#SBATCH --partition=long
+#SBATCH --job-name=grid_gen
+#SBATCH --output=logs/array_%x_%A_%a.log
+#SBATCH --array=0-52 # hard-coded since we know there's 53 hexel subdirs
 #SBATCH --ntasks=1
-#SBATCH --time=05:59:00
-#SBATCH --mem-per-cpu=10Gb
+#SBATCH --time=00:30:00
+#SBATCH --mem=12G
 #SBATCH --cpus-per-task=2
-#SBATCH --gres=gpu:1
 
 mkdir -p logs
 source .venv/bin/activate
-export COMET_API_KEY=$COMET_API_KEY
+
+# Robust calculation of Num Tasks (Max Index - Min Index + 1)
+TASK_ID=${SLURM_ARRAY_TASK_ID:-0}
+# Default to 1 if not running in array
+if [ -n "$SLURM_ARRAY_TASK_MAX" ]; then
+    NUM_TASKS=$((SLURM_ARRAY_TASK_MAX - SLURM_ARRAY_TASK_MIN + 1))
+else
+    NUM_TASKS=1
+fi
+
+echo "Starting Worker $TASK_ID / $NUM_TASKS"
+
 python -m data_preparation.process_hexels_into_grids \
-    --root_dir="../yan_bp3" \
-    --modelling_approach=2 \
-    --output_type="count" \
+    --root_dir="<INSERT DIRECTIORY HERE>" \
+    --save_dir="<INSERT DIRECTIORY HERE>" \
+    --modelling_approach=1 \
+    --output_type="prob" \
     --win_h=128 \
     --win_w=128 \
-    --overlap_ratio=0.2
+    --overlap_ratio=0.2 \
+    --weather_sampling="weather_zone_id" \
+    --is_array_job \
+    --task_id=$TASK_ID \
+    --num_tasks=$NUM_TASKS
