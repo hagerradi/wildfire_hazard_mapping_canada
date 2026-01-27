@@ -178,8 +178,8 @@ def main() -> None:
         visualize_burn_prob_grid(gt_grid=grid_gt, pred_grid=reconstructed_hexel_denorm, hex_id=hex_id, save_dir=config.save_dir)
         print(f"=======Saved subplot for hex{hex_id}==============")
 
-    print(f"=======Total Evaluation Time {time.time()-start_time}s========")
-    print(f"=======Prediction Time {preds_time}s========")
+    print(f"=======Total Evaluation Time {round(time.time()-start_time, 3)}s========")
+    print(f"=======Prediction Time {round(preds_time, 3)}s========")
 
 
 if __name__ == "__main__":
