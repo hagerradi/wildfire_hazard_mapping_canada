@@ -1,11 +1,12 @@
 import argparse
 import logging
-import sys
 import os
+import sys
 from pathlib import Path
 from typing import Optional
 
 import pandas as pd
+
 from data_preparation.feature_processing.utils import check_weather_list
 from data_preparation.feature_processing.weather import preprocess_weather_list
 
@@ -13,10 +14,8 @@ LOG_FORMAT = "%(asctime)s - %(levelname)s - %(message)s"
 logging.basicConfig(level=logging.INFO, format=LOG_FORMAT)
 logger = logging.getLogger(__name__)
 
-NUMERIC_COLS = [
-    'temp', 'rh', 'ws', 'wd', 'prec', 
-    'ffmc', 'dmc', 'dc', 'isi', 'bui', 'fwi'
-]
+NUMERIC_COLS = ["temp", "rh", "ws", "wd", "prec", "ffmc", "dmc", "dc", "isi", "bui", "fwi"]
+
 
 def load_and_process_single_csv(file_path: Path) -> Optional[pd.DataFrame]:
     """
@@ -25,7 +24,7 @@ def load_and_process_single_csv(file_path: Path) -> Optional[pd.DataFrame]:
     """
     try:
         df = pd.read_csv(file_path)
-        
+
         # Standardize columns and extract IDs using teammate's util
         try:
             df = check_weather_list(df)
@@ -33,22 +32,23 @@ def load_and_process_single_csv(file_path: Path) -> Optional[pd.DataFrame]:
             logger.warning(f"Skipping {file_path.name}: {e}")
             return None
 
-        df = df.loc[:, ~df.columns.str.startswith('Unnamed:')]
-        
+        df = df.loc[:, ~df.columns.str.startswith("Unnamed:")]
+
         try:
-            # Assumes structure: .../hex*/burning_conditions_module/hex_*_weather_list.csv 
+            # Assumes structure: .../hex*/burning_conditions_module/hex_*_weather_list.csv
             hex_folder = file_path.parents[1].name
             hex_id = hex_folder.replace("hex", "")
             df["hex"] = hex_id
         except IndexError:
             logger.warning(f"Could not infer hex_id from path: {file_path}")
             return None
-            
+
         return df
 
     except Exception as e:
         logger.error(f"Failed to process {file_path}: {e}")
         return None
+
 
 def build_aggregated_weather_dataset(root_dir: Path) -> pd.DataFrame:
     """
@@ -56,22 +56,22 @@ def build_aggregated_weather_dataset(root_dir: Path) -> pd.DataFrame:
     """
     pattern = "hex*/burning_conditions_module/hex_*_weather_list.csv"
     files = sorted(root_dir.glob(pattern))
-    
+
     if not files:
         raise FileNotFoundError(f"No files found matching pattern '{pattern}' in {root_dir}")
-    
+
     logger.info(f"Found {len(files)} weather files to process.")
-    
+
     # 1. Load and stack all dataframes
     data_frames = []
     for f in files:
         df = load_and_process_single_csv(f)
         if df is not None:
             data_frames.append(df)
-            
+
     if not data_frames:
         raise ValueError("All files failed to load")
-        
+
     full_df = pd.concat(data_frames, ignore_index=True)
     logger.info(f"Aggregated raw shape: {full_df.shape}")
 
@@ -79,8 +79,8 @@ def build_aggregated_weather_dataset(root_dir: Path) -> pd.DataFrame:
     logger.info("Enforcing numeric types on measurement columns...")
     for col in NUMERIC_COLS:
         if col in full_df.columns:
-            full_df[col] = pd.to_numeric(full_df[col], errors='coerce')
-    
+            full_df[col] = pd.to_numeric(full_df[col], errors="coerce")
+
     # Fill any NaNs created by coercion (optional, but safe for sklearn)
     full_df[NUMERIC_COLS] = full_df[NUMERIC_COLS].fillna(0.0)
 
@@ -91,6 +91,7 @@ def build_aggregated_weather_dataset(root_dir: Path) -> pd.DataFrame:
 
     return full_df
 
+
 def main():
     parser = argparse.ArgumentParser(description="Compile raw weather CSVs into a single lookup table")
     parser.add_argument("--root_dir", type=str, required=True, help="Path to raw data root directory")
@@ -100,13 +101,13 @@ def main():
     args = parser.parse_args()
     root_path = Path(args.root_dir)
     file_name = args.file_name
-    
+
     if args.save_dir:
         save_dir = Path(args.save_dir)
         save_dir.mkdir(parents=True, exist_ok=True)
     else:
         save_dir = root_path
-        
+
     save_file_path = save_dir / file_name
 
     logger.info(f"Starting weather table build...")
@@ -115,6 +116,7 @@ def main():
 
     df.to_csv(save_file_path, index=False)
     logger.info(f"Successfully saved to {save_file_path}")
+
 
 if __name__ == "__main__":
     main()

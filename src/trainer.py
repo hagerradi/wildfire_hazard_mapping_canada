@@ -14,15 +14,15 @@ from src.logger import CometLogger
 from src.losses import BCELoss, DiceLoss, FocalLoss, MAELoss, MSELoss
 from src.metrics import compute_bias, compute_mae, compute_mse, compute_spearman, compute_ssim
 from src.models.baselines import UNet
-from src.models.weather_unet import WeatherUNet
 from src.models.utils import get_nbr_model_parameters
+from src.models.weather_unet import WeatherUNet
 
 
 class Trainer:
     def __init__(
         self,
         config: Config,
-        grid_channel_dim: int,       # Mandatory: Trainer must know input size
+        grid_channel_dim: int,  # Mandatory: Trainer must know input size
         weather_input_dim: int = 0,  # Optional: Defaults to 0 (disabled)
     ):
         self.config = config
@@ -56,7 +56,9 @@ class Trainer:
         """
         # Dynamically instantiate models depending if weather features are used
         if self.weather_input_dim > 0:
-            print(f"[Trainer] Weather fused model instantiated with {self.grid_channel_dim} grid channels and {self.weather_input_dim} weather features")
+            print(
+                f"[Trainer] Weather fused model instantiated with {self.grid_channel_dim} grid channels and {self.weather_input_dim} weather features"
+            )
             self.model = WeatherUNet(
                 input_channels=self.grid_channel_dim,
                 num_classes=self.config.model.num_classes,
@@ -67,10 +69,10 @@ class Trainer:
         else:
             print(f"[Trainer] Unet model instantiated with {self.grid_channel_dim} grid channels")
             self.model = UNet(
-                input_channels=self.grid_channel_dim, 
+                input_channels=self.grid_channel_dim,
                 num_classes=self.config.model.num_classes,
             )
-       
+
         self.model.to(self.device)
 
         # Get model nbr of params and log them into Logger

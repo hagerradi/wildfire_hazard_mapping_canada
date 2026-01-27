@@ -78,11 +78,7 @@ def main() -> None:
     print(f"[Setup] Detected Weather Features: {num_weather_features}")
 
     # ---------- Initialize Trainer ----------
-    trainer = Trainer(
-        config, 
-        grid_channel_dim=num_grid_channels,
-        weather_input_dim=num_weather_features
-    )
+    trainer = Trainer(config, grid_channel_dim=num_grid_channels, weather_input_dim=num_weather_features)
 
     # ---------- Load best checkpoint ----------
     # Try best.pth first, fall back to last.pth if needed

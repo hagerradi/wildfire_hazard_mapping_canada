@@ -2,22 +2,26 @@
 Multi Encoder Models: Contains a Modular U-Net with Weather Injection.
 """
 
+from typing import List, Optional
+
 import torch
 import torch.nn as nn
+
 from src.models.components.bottlenecks import DoubleConvBlock, StandardBottleneck, WeatherFusionBottleneck
+
 
 class WeatherUNet(nn.Module):
     def __init__(
         self,
         input_channels: int = 1,
         num_classes: int = 1,
-        hidden_features: list = None,
+        hidden_features: Optional[List[int]] = None,
         use_skip_connections: bool = True,
         use_transpose_conv: bool = False,
         use_activation_after_upsampling: bool = False,
-        weather_input_dim: int = None,
+        weather_input_dim: Optional[int] = None,
         weather_embed_dim: int = 64,
-        pooling_type: str = "attention"
+        pooling_type: str = "attention",
     ):
         """
         Args:
@@ -53,14 +57,21 @@ class WeatherUNet(nn.Module):
         # 2. Bottleneck
         bottleneck_in = hidden_features[-1]
         bottleneck_out = hidden_features[-1] * 2
-        
+
+        # Explicit type hint prevents MyPy error when assigning different subclasses
+        self.bottleneck: nn.Module
+
         if self.weather_input_dim:
+            # We explicitly assert valid dimension here to satisfy the type checker for WeatherFusionBottleneck
+            if weather_input_dim is None:
+                raise ValueError("weather_input_dim cannot be None when using weather bottleneck")
+
             self.bottleneck = WeatherFusionBottleneck(
                 in_channels=bottleneck_in,
                 out_channels=bottleneck_out,
                 weather_input_dim=weather_input_dim,
                 weather_embed_dim=weather_embed_dim,
-                pooling_type=pooling_type
+                pooling_type=pooling_type,
             )
         else:
             self.bottleneck = StandardBottleneck(bottleneck_in, bottleneck_out)
@@ -69,15 +80,13 @@ class WeatherUNet(nn.Module):
         for h_feature in reversed(hidden_features):
             # Upsampling
             if self.use_transpose_conv:
-                upsample = nn.Sequential(
-                    nn.ConvTranspose2d(h_feature * 2, h_feature, kernel_size=2, stride=2)
-                )
+                upsample = nn.Sequential(nn.ConvTranspose2d(h_feature * 2, h_feature, kernel_size=2, stride=2))
             else:
                 upsample = nn.Sequential(
                     nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True),
                     nn.Conv2d(h_feature * 2, h_feature, kernel_size=3, padding=1, bias=False),
                 )
-            
+
             if self.use_activation_after_upsampling:
                 upsample.add_module("bn_up", nn.BatchNorm2d(h_feature))
                 upsample.add_module("relu_up", nn.LeakyReLU(inplace=True))
@@ -91,7 +100,7 @@ class WeatherUNet(nn.Module):
         # Output
         self.out_conv = nn.Conv2d(hidden_features[0], num_classes, kernel_size=1)
 
-    def forward(self, x: torch.Tensor, x_weather: torch.Tensor = None) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, x_weather: Optional[torch.Tensor] = None) -> torch.Tensor:
         skip_connections = []
 
         # Encoder
@@ -107,13 +116,13 @@ class WeatherUNet(nn.Module):
         skip_connections = skip_connections[::-1]
         for i in range(len(self.decoder) // 2):
             x = self.decoder[2 * i](x)
-            
+
             if self.use_skip_connections:
                 skip_x = skip_connections[i]
                 if x.shape != skip_x.shape:
                     x = nn.functional.interpolate(x, size=skip_x.shape[2:])
                 x = torch.cat([skip_x, x], dim=1)
-            
+
             x = self.decoder[2 * i + 1](x)
 
         return self.out_conv(x)

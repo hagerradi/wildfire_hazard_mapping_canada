@@ -47,7 +47,7 @@ def visualize_model_predictions(
     for batch in test_loader:
         # Flexible unpacking to handle both 3-tuple (standard) and 4-tuple (weather fusion)
         if len(batch) == 4:
-            inputs, targets, masks, _ = batch # Ignore weather for visualization
+            inputs, targets, masks, _ = batch  # Ignore weather for visualization
         else:
             inputs, targets, masks = batch
 

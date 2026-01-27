@@ -48,11 +48,7 @@ def main() -> None:
     seed_everything(seed=seed, deterministic=deterministic)
 
     # ---------- Extract Dimensions ----------
-    train_loader, val_loader = get_train_val_dataloader(
-        config=config.data, 
-        modelling_approach=config.modelling_approach, 
-        seed=seed
-    )
+    train_loader, val_loader = get_train_val_dataloader(config=config.data, modelling_approach=config.modelling_approach, seed=seed)
     # Query the Dataset for Model Setup used for dynamic computation of input channels
     num_grid_channels = train_loader.dataset.num_grid_channels
     num_weather_features = 0
@@ -62,15 +58,8 @@ def main() -> None:
     print(f"[Setup] Detected Weather Features: {num_weather_features}")
 
     # ---------- Training ----------
-    trainer = Trainer(
-        config=config, 
-        grid_channel_dim=num_grid_channels, 
-        weather_input_dim=num_weather_features
-    )
-    trainer.run_training(
-        train_loader=train_loader,
-        val_loader=val_loader
-    )
+    trainer = Trainer(config=config, grid_channel_dim=num_grid_channels, weather_input_dim=num_weather_features)
+    trainer.run_training(train_loader=train_loader, val_loader=val_loader)
 
     # ---------- Load best checkpoint ----------
     # Try best.pth first, fall back to last.pth if needed

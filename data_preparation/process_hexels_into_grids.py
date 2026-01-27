@@ -115,17 +115,17 @@ def get_split_hexel_window(
 
 
 def generate_data_samples(
-    root_dir: str, 
-    save_dir: str, 
-    modelling_approach: int, 
-    output_type: str = "count", 
-    win_h: int = 128, 
-    win_w: int = 128, 
+    root_dir: str,
+    save_dir: str,
+    modelling_approach: int,
+    output_type: str = "count",
+    win_h: int = 128,
+    win_w: int = 128,
     overlap_ratio: float = 0.2,
     weather_sampling: str = "weather_zone_id",
     is_array_job: bool = False,
     task_id: int = 0,
-    num_tasks: int = 1
+    num_tasks: int = 1,
 ):
     # If save_dir is provided, use it; otherwise default to root_dir/data_samples...
     if save_dir:
@@ -141,7 +141,7 @@ def generate_data_samples(
         hex_ids = find_hex_ids(root_dir)
         # IMPORTANT: Sort them to ensure every worker sees the same order
         hex_ids = sorted(list(hex_ids))
-        
+
         # 2. Split the work
         if num_tasks > 1:
             # Python list slicing magic: start at task_id, take every Nth item
@@ -191,7 +191,12 @@ def main():
     parser.add_argument("--win_h", type=int, help="Height of the window", default=128)
     parser.add_argument("--win_w", type=int, help="Height of the window", default=128)
     parser.add_argument("--overlap_ratio", type=float, help="Overlap ratio between windows", default=0.2)
-    parser.add_argument("--weather_sampling", type=str, help="Sampling method for weather data, options 'dist', 'random', or 'weather_zone_id'", default="weather_zone_id")
+    parser.add_argument(
+        "--weather_sampling",
+        type=str,
+        help="Sampling method for weather data, options 'dist', 'random', or 'weather_zone_id'",
+        default="weather_zone_id",
+    )
     parser.add_argument("--is_array_job", action="store_true", help="Boolean to indicate if using SLURM job array")
     parser.add_argument("--task_id", type=int, default=0, help="SLURM array ID")
     parser.add_argument("--num_tasks", type=int, default=1, help="Total number of array tasks")
@@ -208,7 +213,7 @@ def main():
         weather_sampling=args.weather_sampling,
         is_array_job=args.is_array_job,
         task_id=args.task_id,
-        num_tasks=args.num_tasks
+        num_tasks=args.num_tasks,
     )
 
 

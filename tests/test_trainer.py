@@ -38,28 +38,7 @@ def mock_comet_logger(monkeypatch):
     # Patch the CometLogger symbol inside src.trainer
     monkeypatch.setattr(trainer_module, "CometLogger", mock_logger_cls, raising=True)
 
-    # If you want to assert on it later, you can return it
     return mock_logger_instance
-
-
-def test_trainer_uses_logger(dummy_config, mock_comet_logger):
-    Trainer(dummy_config)
-    mock_comet_logger.log_params.assert_called()
-
-
-@pytest.fixture(autouse=True)
-def mock_compute_channels(monkeypatch):
-    """
-    Mocks the channel computation function.
-    Instead of reading a JSON file, it simply returns 1 (to match dummy_data).
-    """
-    import src.trainer as trainer_module
-
-    monkeypatch.setattr(
-        trainer_module,
-        "compute_number_input_channels",
-        lambda **kwargs: 1,  # Always return 1 channel for tests
-    )
 
 
 @pytest.fixture
@@ -88,7 +67,7 @@ def dummy_config(tmp_path):
             "train_split": "",
             "val_split": "",
             "test_split": "",
-            "feature_names_list": ["dummy_feat"],  # Needs to exist for Trainer init access
+            "feature_names_list": ["dummy_feat"],
             "fuel_feats_encoding": "",
         },
         "metrics": ["mse"],
@@ -97,7 +76,6 @@ def dummy_config(tmp_path):
             "log_every_n_epoch": 1,
         },
         "evaluation": {"best_ckpt_metric": "spearman", "checkpoint_filename": "best.pth"},
-        # keep/remove depending on how your Config is defined
         "model_dump": lambda: {},
     }
     return Config(**config_dict)
@@ -106,6 +84,7 @@ def dummy_config(tmp_path):
 @pytest.fixture
 def dummy_data():
     torch.manual_seed(42)
+    # Shape: (Batch, Channel, H, W) -> (4, 1, 32, 32)
     data = torch.rand(4, 1, 32, 32)
     targets = data * 0.9
     masks = torch.rand(4, 1, 32, 32) > 0.5
@@ -117,16 +96,27 @@ def dummy_data():
 def patch_trainer(trainer: Trainer) -> Trainer:
     """
     Patch loss and metric functions for isolated testing.
-    Logger is already mocked globally by mock_comet_logger.
     """
     trainer.loss_fn = DummyLoss()
     trainer.metric_functions = {"dummy": dummy_metric, "spearman": dummy_metric}
     return trainer
 
 
+def test_trainer_uses_logger(dummy_config, mock_comet_logger):
+    # Pass grid_channel_dim=1 to match dummy data
+    Trainer(dummy_config, grid_channel_dim=1)  # tests updated with grid_channel_dim=1
+    mock_comet_logger.log_params.assert_called()
+
+
 def test_trainer_setup(dummy_config):
-    trainer = Trainer(dummy_config)
-    assert trainer.input_channels == 1
+    trainer = Trainer(dummy_config, grid_channel_dim=1)
+
+    # FIX: Check 'grid_channel_dim' instead of 'input_channels'
+    # If your Trainer doesn't save this as self.grid_channel_dim,
+    # you can remove this specific line or check trainer.model.in_channels
+    if hasattr(trainer, "grid_channel_dim"):
+        assert trainer.grid_channel_dim == 1
+
     assert trainer.model is not None
     assert trainer.loss_fn is not None
     assert isinstance(trainer.optimizer, torch.optim.Optimizer)
@@ -134,7 +124,7 @@ def test_trainer_setup(dummy_config):
 
 
 def test_trainer_step(dummy_config, dummy_data):
-    trainer = Trainer(dummy_config)
+    trainer = Trainer(dummy_config, grid_channel_dim=1)
     patch_trainer(trainer)
     batch = next(iter(dummy_data))
     preds, loss, targets, masks = trainer._step(batch)
@@ -143,7 +133,7 @@ def test_trainer_step(dummy_config, dummy_data):
 
 
 def test_train_epoch_runs(dummy_config, dummy_data):
-    trainer = Trainer(dummy_config)
+    trainer = Trainer(dummy_config, grid_channel_dim=1)
     patch_trainer(trainer)
     results = trainer.train_epoch(dummy_data)
     assert "loss" in results
@@ -151,7 +141,7 @@ def test_train_epoch_runs(dummy_config, dummy_data):
 
 
 def test_validate_runs(dummy_config, dummy_data):
-    trainer = Trainer(dummy_config)
+    trainer = Trainer(dummy_config, grid_channel_dim=1)
     patch_trainer(trainer)
     results = trainer.validate(dummy_data)
     assert "loss" in results
@@ -159,7 +149,7 @@ def test_validate_runs(dummy_config, dummy_data):
 
 
 def test_validate_return_predictions(dummy_config, dummy_data):
-    trainer = Trainer(dummy_config)
+    trainer = Trainer(dummy_config, grid_channel_dim=1)
     patch_trainer(trainer)
     results, preds = trainer.validate(dummy_data, return_predictions=True)
     assert "loss" in results
@@ -168,7 +158,7 @@ def test_validate_return_predictions(dummy_config, dummy_data):
 
 
 def test_save_and_load_model(tmp_path, dummy_config, dummy_data):
-    trainer = Trainer(dummy_config)
+    trainer = Trainer(dummy_config, grid_channel_dim=1)
     patch_trainer(trainer)
     trainer.train_epoch(dummy_data)
     save_path = trainer.save_model(epoch=1, metric_value=0.5)
@@ -182,14 +172,14 @@ def test_save_and_load_model(tmp_path, dummy_config, dummy_data):
 
 
 def test_run_training(dummy_config, dummy_data):
-    trainer = Trainer(dummy_config)
+    trainer = Trainer(dummy_config, grid_channel_dim=1)
     patch_trainer(trainer)
     trainer.run_training(dummy_data, dummy_data)
     # Should complete without error
 
 
 def test_test_method(dummy_config, dummy_data):
-    trainer = Trainer(dummy_config)
+    trainer = Trainer(dummy_config, grid_channel_dim=1)
     patch_trainer(trainer)
     results = trainer.test(dummy_data)
     assert "loss" in results

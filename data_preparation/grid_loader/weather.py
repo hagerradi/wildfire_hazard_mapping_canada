@@ -29,7 +29,7 @@ def weather_list_to_grid(
         # array of mean, var for all the variables (1x2*len(selected_weather_features))
         elif sampling == "dist":
             value = np.vstack([weather_zone_subset.mean(), weather_zone_subset.std()]).T.flatten()
-        # array of weather zone id 
+        # array of weather zone id
         elif sampling == "weather_zone_id":
             value = zone
         out[fire_weather_zone_grid.data == zone] = value  # type: ignore

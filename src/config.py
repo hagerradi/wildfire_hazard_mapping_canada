@@ -1,7 +1,9 @@
 # base configurations for experiments
 from collections.abc import Callable
-from pydantic import BaseModel
 from typing import Optional
+
+from pydantic import BaseModel
+
 
 class LoggerConfig(BaseModel):
     enabled: bool = True
@@ -57,8 +59,8 @@ class DataConfig(BaseModel):
 
     weather_table_path: Optional[str] = None
     weather_samples_per_item: Optional[int] = 128
-    weather_channel_name: Optional[str] = "weather_grid" 
-    weather_features: Optional[list[str]] = ['temp', 'rh', 'prec', 'ffmc', 'dmc', 'dc', 'isi', 'bui']
+    weather_channel_name: Optional[str] = "weather_grid"
+    weather_features: Optional[list[str]] = ["temp", "rh", "prec", "ffmc", "dmc", "dc", "isi", "bui"]
 
 
 class Config(BaseModel):
