@@ -106,9 +106,23 @@ class GridDataset(Dataset):
         output_arr = data[:, :, -1]
         output_arr[np.isnan(output_arr)] = 0.0
 
-        # 2. Generate Mask
-        assert np.all(np.isnan(input_arr) == np.isnan(input_arr[..., :1])), "NaN mask differs across channels!"
-        mask = ~np.isnan(input_arr[:, :, 0])
+        # 2. Generate Mask & Verify Consistency
+        # We only check consistency across the channels we actually plan to use spatially.
+        # This ignores 'weather_grid' if it was removed from base_channel_indices.
+        if self.base_channel_indices:
+            # Slice the array to only look at active spatial features (e.g. Fuel, Ignition)
+            relevant_features = input_arr[:, :, self.base_channel_indices]
+            
+            # Define mask based on the first active feature
+            mask = ~np.isnan(relevant_features[:, :, 0])
+            
+            # Assert that ALL active spatial features have the same NaN mask
+            # We compare against the mask we just generated, broadcasted to 3D
+            # Note: We use the relevant_features slice, so we don't crash on weather_grid NaNs
+            assert np.all(~np.isnan(relevant_features) == mask[:, :, np.newaxis]), \
+                f"NaN mask differs across active spatial channels! File: {self.all_files[idx]}"
+        else:
+            mask = ~np.isnan(input_arr[:, :, 0])
 
         # 3. Handle Feature Encoding
         # We use a local variable `current_indices` so we don't modify self.base_channel_indices
@@ -385,7 +399,12 @@ def get_train_val_dataloader(config: DataConfig, modelling_approach: str = "1", 
     )
 
     val_loader = DataLoader(
-        val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, worker_init_fn=seed_worker, generator=g
+        val_dataset, 
+        batch_size=batch_size, 
+        shuffle=False, 
+        num_workers=num_workers, 
+        worker_init_fn=seed_worker, 
+        generator=g
     )
 
     return train_loader, val_loader
@@ -448,7 +467,12 @@ def get_test_loader(config: DataConfig, modelling_approach: str = "1", seed: int
     g.manual_seed(seed)
 
     test_loader = DataLoader(
-        test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, worker_init_fn=seed_worker, generator=g
+        test_dataset, 
+        batch_size=batch_size, 
+        shuffle=False, 
+        num_workers=num_workers, 
+        worker_init_fn=seed_worker, 
+        generator=g
     )
 
     return test_loader
