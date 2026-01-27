@@ -22,7 +22,7 @@ class Trainer:
     def __init__(
         self,
         config: Config,
-        grid_channel_dim: int,         # Mandatory: Trainer must know input size
+        grid_channel_dim: int,       # Mandatory: Trainer must know input size
         weather_input_dim: int = 0,  # Optional: Defaults to 0 (disabled)
     ):
         self.config = config

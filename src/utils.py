@@ -45,7 +45,12 @@ def visualize_model_predictions(
     all_inputs, all_targets, all_masks = [], [], []
 
     for batch in test_loader:
-        inputs, targets, masks = batch
+        # Flexible unpacking to handle both 3-tuple (standard) and 4-tuple (weather fusion)
+        if len(batch) == 4:
+            inputs, targets, masks, _ = batch # Ignore weather for visualization
+        else:
+            inputs, targets, masks = batch
+
         all_inputs.append(inputs.detach().cpu().numpy())
         all_targets.append(targets.detach().cpu().numpy())
         all_masks.append(masks.detach().cpu().numpy())

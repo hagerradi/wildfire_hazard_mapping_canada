@@ -47,8 +47,12 @@ def main() -> None:
     deterministic = getattr(config, "deterministic", True)
     seed_everything(seed=seed, deterministic=deterministic)
 
-    # ---------- Data ----------
-    train_loader, val_loader = get_train_val_dataloader(config=config.data, modelling_approach=config.modelling_approach, seed=seed)
+    # ---------- Extract Dimensions ----------
+    train_loader, val_loader = get_train_val_dataloader(
+        config=config.data, 
+        modelling_approach=config.modelling_approach, 
+        seed=seed
+    )
     # Query the Dataset for Model Setup used for dynamic computation of input channels
     num_grid_channels = train_loader.dataset.num_grid_channels
     num_weather_features = 0

@@ -61,28 +61,15 @@ def load_config(path: str) -> Config:
 def main() -> None:
     args = parse_args()
     config = load_config(args.config)
-    config.logger.enabled = False
 
     # ---------- Set Seed ----------
     seed = getattr(config, "seed", 42)
     deterministic = getattr(config, "deterministic", True)
     seed_everything(seed=seed, deterministic=deterministic)
 
-    # ---------- Extract Dimensions ----------
-    test_loader = get_test_loader(config=config.data, modelling_approach=config.modelling_approach, seed=seed)
-    num_grid_channels = test_loader.dataset.num_grid_channels
-    num_weather_features = 0
-    if hasattr(test_loader.dataset, "num_weather_features"):
-        num_weather_features = test_loader.dataset.num_weather_features
-    print(f"[Setup] Detected Spatial Channels: {num_grid_channels}")
-    print(f"[Setup] Detected Weather Features: {num_weather_features}")
+    config.logger.enabled = False
 
-    # ---------- Initialize Trainer ----------
-    trainer = Trainer(
-        config, 
-        grid_channel_dim=num_grid_channels,
-        weather_input_dim=num_weather_features
-    )
+    trainer = Trainer(config)
 
     # ---------- Load best checkpoint ----------
     # Try best.pth first, fall back to last.pth if needed
@@ -104,6 +91,7 @@ def main() -> None:
     # NOTE: If we need the stats on a particular hexel then modify the test_indices.csv in the config file with
     # meta_hex_{hex_id}.csv file
     start_time = time.time()
+    test_loader = get_test_loader(config=config.data, modelling_approach=config.modelling_approach, seed=seed)
     preds_start_time = time.time()
     test_metrics, test_predictions = trainer.test(test_loader, return_predictions=True)
     preds_time = time.time() - preds_start_time

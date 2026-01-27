@@ -309,6 +309,9 @@ def get_train_val_dataloader(config: DataConfig, modelling_approach: str = "1", 
     weather_channel_name = config.weather_channel_name
     weather_features = config.weather_features
 
+    # If config contains active weather_table_path (df that contains weather sampling),
+    # then create WeatherGridDataset
+
     if config.weather_table_path is None:
         train_dataset = GridDataset(
             csv_name=train_csv_name,
@@ -402,19 +405,44 @@ def get_test_loader(config: DataConfig, modelling_approach: str = "1", seed: int
     fuel_feats_encoding = config.fuel_feats_encoding
     normalize_fuel_feats_ordinal = config.normalize_fuel_feats_ordinal
     valid_mask_threshold = config.valid_mask_threshold
+    weather_table_path = config.weather_table_path
+    weather_samples_per_item = config.weather_samples_per_item
+    weather_channel_name = config.weather_channel_name
+    weather_features = config.weather_features
 
-    test_dataset = GridDataset(
-        csv_name=test_csv_name,
-        root_dir=root_dir,
-        feature_names_list=feature_names_list,
-        filename_col=filename_col,
-        out_norm=out_norm,
-        fuel_feats_encoding=fuel_feats_encoding,
-        normalize_fuel_feats_ordinal=normalize_fuel_feats_ordinal,
-        modelling_approach=modelling_approach,
-        valid_mask_threshold=valid_mask_threshold,
-        transform=None,  # no transforms for test set
-    )
+    # If config contains active weather_table_path (df that contains weather sampling),
+    # then create WeatherGridDataset
+
+    if config.weather_table_path is None:
+        test_dataset = GridDataset(
+            csv_name=test_csv_name,
+            root_dir=root_dir,
+            feature_names_list=feature_names_list,
+            filename_col=filename_col,
+            out_norm=out_norm,
+            fuel_feats_encoding=fuel_feats_encoding,
+            normalize_fuel_feats_ordinal=normalize_fuel_feats_ordinal,
+            modelling_approach=modelling_approach,
+            valid_mask_threshold=valid_mask_threshold,
+            transform=None,  # no transforms for test set
+        )
+    else:
+        test_dataset = WeatherGridDataset(
+            csv_name=test_csv_name,
+            root_dir=root_dir,
+            feature_names_list=feature_names_list,
+            filename_col=filename_col,
+            out_norm=out_norm,
+            fuel_feats_encoding=fuel_feats_encoding,
+            normalize_fuel_feats_ordinal=normalize_fuel_feats_ordinal,
+            modelling_approach=modelling_approach,
+            valid_mask_threshold=valid_mask_threshold,
+            transform=None,  # no transforms for test set
+            weather_table_path=weather_table_path,
+            weather_samples_per_item=weather_samples_per_item,
+            weather_channel_name=weather_channel_name,
+            weather_features=weather_features
+        )
 
     g = torch.Generator()
     g.manual_seed(seed)

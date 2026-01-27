@@ -100,7 +100,7 @@ def builder_weather_dataset(root_dir: Path) -> pd.DataFrame:
 def main():
     parser = argparse.ArgumentParser(description="Compile raw weather CSVs into a single lookup table")
     parser.add_argument("--root_dir", type=str, required=True, help="Path to raw data root directory")
-    parser.add_argument("--file_name", type=str, help="File name (ends in .parquet or .csv)", default="weather_table.csv")
+    parser.add_argument("--file_name", type=str, help="File name (ends in .csv)", default="weather_table.csv")
     parser.add_argument("--output_dir", type=str, help="Path to save directory (optional)", default=None)
 
     # Automatically save to root_dir unless otherwise stated
@@ -118,10 +118,7 @@ def main():
     df = builder_weather_dataset(root_path)
     logger.info(f"Final dataset shape: {df.shape}")
 
-    if save_file_path.suffix == '.parquet':
-        df.to_parquet(save_file_path, index=False)
-    else:
-        df.to_csv(save_file_path, index=False)
+    df.to_csv(save_file_path, index=False)
     logger.info(f"Successfully saved to {save_file_path}")
 
 if __name__ == "__main__":

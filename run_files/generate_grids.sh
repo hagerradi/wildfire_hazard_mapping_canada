@@ -1,7 +1,7 @@
 #!/bin/bash
 ##SBATCH --mail-type=all
 ##SBATCH --mail-user=name@mila.quebec
-#SBATCH --job-name=train
+#SBATCH --job-name=unet_full_data
 #SBATCH --output=logs/job_%x_%j.out
 #SBATCH --error=logs/job_%x_%j.err
 #SBATCH --partition=long
@@ -11,12 +11,13 @@
 #SBATCH --cpus-per-task=2
 #SBATCH --gres=gpu:1
 
-# Capture the first argument, default to 'configs/default_v1.yaml' if empty
-CONFIG_FILE=${1:-configs/default_v1.yaml}
-
 mkdir -p logs
 source .venv/bin/activate
 export COMET_API_KEY=$COMET_API_KEY
-
-echo "Running training with config: $CONFIG_FILE"
-python -m src.train --config="$CONFIG_FILE"
+python -m data_preparation.process_hexels_into_grids \
+    --root_dir="../yan_bp3" \
+    --modelling_approach=2 \
+    --output_type="count" \
+    --win_h=128 \
+    --win_w=128 \
+    --overlap_ratio=0.2
