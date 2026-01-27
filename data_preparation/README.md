@@ -26,18 +26,8 @@ Step 3: Create training, validation and test splits.
 python -m data_preparation.split_data --data_dir="../yan_bp3/data_samples_approach_2" --val_hex_id 02 23 33 18 46 --test_hex_id 01 12 39 16 49
 ```
 
-## Build Weather Table
-
-The weather table is used to augment the input features for model training.
-
-Run following code on terminal (on full data set). This will compile and save all the weather tables in the hexels in a `weather_table.csv` found in the directory as the root directory.
+Step 4: To create the weather aggregated weather table used to sample from in the weather fused unet, run the following. 
 
 ```
-python build_weather_table.py --root_dir="/network/projects/amlrt/nrcan_wildfires/full_data/yan_bp3" --file_name="weather_table.csv"
-```
-
-If you would like to save the weather table in another place, you can specify in the `--output_dir` argument. For example
-
-```
-python build_weather_table.py --root_dir="/network/projects/amlrt/nrcan_wildfires/full_data/yan_bp3" --file_name="weather_table.csv" --output_dir="<INSERT PATH HERE>"
+python build_aggregated_weather_table.py --root_dir="/network/projects/amlrt/nrcan_wildfires/full_data/yan_bp3" --file_name="weather_table.csv" --save_dir="<INSERT PATH HERE>"
 ```
