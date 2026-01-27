@@ -26,7 +26,7 @@ def visualize_burn_prob_grid(gt_grid: np.ndarray, pred_grid: np.ndarray, hex_id:
 
     # Plot Predicted
     im2 = axes[1].imshow(pred_grid, cmap="viridis", origin="upper", vmax=inferred_vmax)
-    axes[1].set_title("Predicted")
+    axes[1].set_title("Prediction")
     axes[1].set_xlabel("Easting (m)")
     # We can hide the ylabel for the second plot if they share the same axis
     axes[1].set_ylabel("Northing (m)")
