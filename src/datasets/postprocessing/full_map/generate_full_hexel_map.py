@@ -6,7 +6,6 @@ import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import numpy as np
 import rasterio
-from matplotlib.colors import LogNorm, Normalize
 from rasterio.enums import Resampling
 
 from datasets.postprocessing.full_map.utils import (
@@ -16,16 +15,17 @@ from datasets.postprocessing.full_map.utils import (
     find_hex_files,
     get_flat_hex_vertices,
     get_hex_center,
+    get_scale_settings,
 )
 
 
 def generate_stitched_map(
     data_folder_path: str,
     search_pattern: str,
+    title: str,
     downsample_factor: int = 1,
     scale: str = "linear",
     show_hex_borders: bool = True,
-    title: str = None,
     output_path: str = None,
 ):
     """
@@ -34,10 +34,10 @@ def generate_stitched_map(
     Args:
         data_folder_path (str): Main dataset directory.
         search_pattern (str): File pattern to look for (default: bp maps).
+        title (str): Figure title.
         downsample_factor (int): Downsampling factor (for faster and lower-res. map).
         scale (str): Use 'log' for log norm. scale or 'linear' for linear min-max.
         show_hex_borders (bool): Whether to show hexel borders in the map.
-        title (str): Figure title.
         output_path (str): Figure file output name for saving.
     """
     # Check data folder
@@ -56,19 +56,7 @@ def generate_stitched_map(
     pos_min, global_max = calculate_global_stats(file_map)
 
     # Get scale type selection for plotting
-    if scale == "log":
-        # For log scale, we use positive min. and global max.
-        print(f"Using LOG scale: {pos_min:.2e} to {global_max:.2e}")
-        norm = LogNorm(vmin=pos_min, vmax=global_max)
-        final_title = title if title else "Canada Burn Probability (Log Scale)"
-    elif scale == "linear":
-        # For linear scale, we start at 0 prob/count.
-        linear_min = 0
-        print(f"Using LINEAR scale: {linear_min} to {global_max:.2e}")
-        norm = Normalize(vmin=linear_min, vmax=global_max)  # type: ignore
-        final_title = title if title else "Canada Burn Probability (Linear Scale)"
-    else:
-        raise ValueError(f"Unknown scale type: '{scale}'. Please use 'log' or 'linear'.")
+    norm = get_scale_settings(scale, pos_min, global_max)
 
     # Setup plot
     _, ax = plt.subplots(figsize=(24, 18), dpi=300)
@@ -147,7 +135,7 @@ def generate_stitched_map(
 
     ax.set_aspect("equal")
     ax.axis("off")
-    plt.title(final_title, fontsize=18)
+    plt.title(title, fontsize=18)
 
     if im:
         cbar = plt.colorbar(im, ax=ax, fraction=0.02, pad=0.04)
@@ -163,9 +151,7 @@ def generate_stitched_map(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Script to generate and save Canada burn probability map.")
 
-    parser.add_argument(
-        "--data-dir", type=str, default="/network/projects/amlrt/nrcan_wildfires/full_data/yan_bp3/", help="Path to base data directory."
-    )
+    parser.add_argument("--data-dir", type=str, help="Path to base data directory.")
 
     parser.add_argument(
         "--pattern",
@@ -191,9 +177,9 @@ if __name__ == "__main__":
     generate_stitched_map(
         data_folder_path=args.data_dir,
         search_pattern=args.pattern,
+        title=args.title,
         downsample_factor=args.downsample,
         scale=args.scale,
         show_hex_borders=args.show_hex_borders,
-        title=args.title,
         output_path=args.output,
     )

@@ -4,6 +4,7 @@ from pathlib import Path
 import matplotlib.path as mpath
 import numpy as np
 import rasterio
+from matplotlib.colors import LogNorm, Normalize
 from rasterio.enums import Resampling
 
 # The grid layout for the Canada map (Row, Col)
@@ -159,3 +160,20 @@ def calculate_global_stats(file_map: dict[int, Path]) -> tuple[float, float]:
         global_min_pos = 1e-6
 
     return global_min_pos, global_max
+
+
+def get_scale_settings(scale: str, pos_min: float, global_max: float) -> Normalize:
+    """Configures the normalization based on the scale type."""
+    if scale == "log":
+        # For log scale, we use positive min. and global max.
+        print(f"Using LOG scale: {pos_min:.2e} to {global_max:.2e}")
+        norm = LogNorm(vmin=pos_min, vmax=global_max)
+    elif scale == "linear":
+        # For linear scale, we start at 0 prob/count.
+        linear_min = 0
+        print(f"Using LINEAR scale: {linear_min} to {global_max:.2e}")
+        norm = Normalize(vmin=linear_min, vmax=global_max)  # type: ignore
+    else:
+        raise ValueError(f"Unknown scale type: '{scale}'. Please use 'log' or 'linear'.")
+
+    return norm
