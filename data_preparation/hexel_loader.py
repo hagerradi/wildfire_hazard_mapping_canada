@@ -51,8 +51,13 @@ def generate_feature_channel_map(feature_list: list[np.ndarray], feature_channel
 
 
 def load_features_per_hexel(
-    root_dir: str, hex_id: str, feature_channel_map_path: str, modelling_approach: int = 2, output_type: str = "count"
-) -> tuple[np.ndarray | None, np.ndarray | None, dict[int, tuple[int, int]] | None]:
+    root_dir: str, 
+    hex_id: str, 
+    feature_channel_map_path: str, 
+    modelling_approach: int = 2, 
+    output_type: str = "count",
+    weather_sampling: str = "weather_zone_id"
+    ) -> tuple[np.ndarray | None, np.ndarray | None, dict[int, tuple[int, int]] | None]:
     """
     Load all data (features and output) per hexel
     root_dir: Root directory containing all hexels.
@@ -137,7 +142,9 @@ def load_features_per_hexel(
         )
 
         weather_grid = load_weather_grid(
-            weather_list_file_path=weather_list_file_path, zone_grid_file_path=os.path.join(root_dir, FIRE_ZONE_GRID_PATH)
+            weather_list_file_path=weather_list_file_path, 
+            zone_grid_file_path=os.path.join(root_dir, FIRE_ZONE_GRID_PATH),
+            sampling=weather_sampling
         )
 
         # for approach 1, we use the existing raster output

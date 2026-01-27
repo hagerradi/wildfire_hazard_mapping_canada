@@ -37,7 +37,7 @@ def weather_list_to_grid(
     return out.filled(NODATA)  # type: ignore
 
 
-def load_weather_grid(weather_list_file_path: str, zone_grid_file_path: str, season: int = None, sampling: str = "weather_zone_id"): # TODO dirty change for now, expose this sampling as an arg
+def load_weather_grid(weather_list_file_path: str, zone_grid_file_path: str, season: int = None, sampling: str = "weather_zone_id"):
     """Single function to run the weather grid creation"""
     weather_csv = load_weather_list(weather_list_file_path, season)
     data = load_raster(zone_grid_file_path)

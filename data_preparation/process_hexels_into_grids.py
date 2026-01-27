@@ -115,7 +115,14 @@ def get_split_hexel_window(
 
 
 def generate_data_samples(
-    root_dir: str, save_dir: str, modelling_approach: int, output_type: str = "count", win_h: int = 128, win_w: int = 128, overlap_ratio: float = 0.2
+    root_dir: str, 
+    save_dir: str, 
+    modelling_approach: int, 
+    output_type: str = "count", 
+    win_h: int = 128, 
+    win_w: int = 128, 
+    overlap_ratio: float = 0.2,
+    weather_sampling: str = "weather_zone_id"
 ):
     # If save_dir is provided, use it; otherwise default to root_dir/data_samples...
     if save_dir:
@@ -168,6 +175,7 @@ def main():
     parser.add_argument("--win_h", type=int, help="Height of the window", default=128)
     parser.add_argument("--win_w", type=int, help="Height of the window", default=128)
     parser.add_argument("--overlap_ratio", type=float, help="Overlap ratio between windows", default=0.2)
+    parser.add_argument("--weather_sampling", type=str, help="Sampling method for weather data, options 'dist', 'random', or 'weather_zone_id'", default="weather_zone_id")
 
     args = parser.parse_args()
 
@@ -179,6 +187,7 @@ def main():
         win_w=args.win_w,
         overlap_ratio=args.overlap_ratio,
         output_type=args.output_type,
+        weather_sampling=args.weather_sampling
     )
 
 
