@@ -32,7 +32,7 @@ python -m data_preparation.split_data --data_dir="../yan_bp3/data_samples_approa
 ```
 
 
-Step 4: To create the weather aggregated weather table used to sample from in the weather fused unet, run the following. 
+Step 4: To create the weather aggregated weather table used to sample from in the weather fused unet, run the following.
 
 ```
 python build_aggregated_weather_table.py --root_dir="/network/projects/amlrt/nrcan_wildfires/full_data/yan_bp3" --file_name="weather_table.csv" --save_dir="<INSERT PATH HERE>"
