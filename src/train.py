@@ -49,12 +49,23 @@ def main() -> None:
 
     # ---------- Data ----------
     train_loader, val_loader = get_train_val_dataloader(config=config.data, modelling_approach=config.modelling_approach, seed=seed)
+    # Query the Dataset for Model Setup used for dynamic computation of input channels
+    num_grid_channels = train_loader.dataset.num_grid_channels
+    num_weather_features = 0
+    if hasattr(train_loader.dataset, "num_weather_features"):
+        num_weather_features = train_loader.dataset.num_weather_features
+    print(f"[Setup] Detected Spatial Channels: {num_grid_channels}")
+    print(f"[Setup] Detected Weather Features: {num_weather_features}")
 
     # ---------- Training ----------
-    trainer = Trainer(config)
+    trainer = Trainer(
+        config=config, 
+        grid_channel_dim=num_grid_channels, 
+        weather_input_dim=num_weather_features
+    )
     trainer.run_training(
         train_loader=train_loader,
-        val_loader=val_loader,
+        val_loader=val_loader
     )
 
     # ---------- Load best checkpoint ----------

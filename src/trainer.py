@@ -14,6 +14,7 @@ from src.logger import CometLogger
 from src.losses import BCELoss, DiceLoss, FocalLoss, MAELoss, MSELoss
 from src.metrics import compute_bias, compute_mae, compute_mse, compute_spearman, compute_ssim
 from src.models.baselines import UNet
+from src.models.weather_unet import WeatherUNet
 from src.models.utils import get_nbr_model_parameters
 
 
@@ -21,9 +22,12 @@ class Trainer:
     def __init__(
         self,
         config: Config,
+        grid_channel_dim: int,         # Mandatory: Trainer must know input size
+        weather_input_dim: int = 0,  # Optional: Defaults to 0 (disabled)
     ):
         self.config = config
-
+        self.grid_channel_dim = grid_channel_dim
+        self.weather_input_dim = weather_input_dim
         self.device = (
             "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() and torch.backends.mps.is_built() else "cpu"
         )
@@ -50,16 +54,23 @@ class Trainer:
         """
         define model, loss function and optimizer.
         """
-        # Automatically infer input channels based on data config
-        self.input_channels = compute_number_input_channels(
-            feature_names_list=self.config.data.feature_names_list,
-            fuel_feats_encoding=self.config.data.fuel_feats_encoding,
-            root_dir=self.config.data.root_dir,
-            modelling_approach=self.config.modelling_approach,
-        )
-        print(f"[Trainer] Auto-inferred Input Channels: {self.input_channels}")
-
-        self.model = UNet(input_channels=self.input_channels, num_classes=self.config.model.num_classes)
+        # Dynamically instantiate models depending if weather features are used
+        if self.weather_input_dim > 0:
+            print(f"[Trainer] Weather fused model instantiated with {self.grid_channel_dim} grid channels and {self.weather_input_dim} weather features")
+            self.model = WeatherUNet(
+                input_channels=self.grid_channel_dim,
+                num_classes=self.config.model.num_classes,
+                weather_input_dim=self.weather_input_dim,
+                weather_embed_dim=getattr(self.config.model, "weather_embed_dim", 64),
+                pooling_type=getattr(self.config.model, "pooling_type", "max"),
+            )
+        else:
+            print(f"[Trainer] Unet model instantiated with {self.grid_channel_dim} grid channels")
+            self.model = UNet(
+                input_channels=self.grid_channel_dim, 
+                num_classes=self.config.model.num_classes,
+            )
+       
         self.model.to(self.device)
 
         # Get model nbr of params and log them into Logger
@@ -115,15 +126,28 @@ class Trainer:
 
     def _step(self, batch: Any) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """
-        Default step. Expects batch -> (inputs, targets, masks).
+        Default step. Expects batch -> (inputs, targets, masks) OR (inputs, targets, masks, weather).
         Returns (predictions, loss, targets_on_device, masks_on_device).
         """
-        inputs, targets, masks = batch
+        # Flexible Unpacking
+        weather = None
+        if len(batch) == 4:
+            inputs, targets, masks, weather = batch
+            weather = weather.to(self.device)
+        else:
+            inputs, targets, masks = batch
+
         inputs = inputs.to(self.device)
         targets = targets.to(self.device)
         masks = masks.to(self.device)
 
-        predictions = self.model(inputs)
+        # Conditional Forward Pass
+        # Only pass weather if the model expects it AND we have it
+        if weather is not None and isinstance(self.model, WeatherUNet):
+            predictions = self.model(inputs, weather)
+        else:
+            predictions = self.model(inputs)
+
         # for bce, we will apply sigmoid after the loss
         if self.config.optimizer.loss_name in ["bce", "bceloss", "focal", "focalloss"]:
             loss = self.loss_fn(predictions, targets, masks)

@@ -174,6 +174,24 @@ class GridDataset(Dataset):
 
         return input_tensor, output_tensor, mask_tensor
 
+    @property
+    def num_grid_channels(self) -> int:
+        """
+        Returns the final number of channels the grids
+        Automatically accounts for:
+        1. Channels dropped by subclasses (e.g. weather grid)
+        2. Channels added by One-Hot Encoding
+        """
+        # 1. Start with the raw indices (subclasses like WeatherGridDataset may have filtered this list already)
+        count = len(self.base_channel_indices)
+        
+        # 2. Adjust for One-Hot Encoding if active
+        # Logic: Drop the 1 ordinal channel and add N one-hot channels
+        if "fuel_grid" in self.feature_names_list and self.fuel_feats_encoding == "one_hot":
+            num_classes = int(MAX_FUEL_GRID + 1)
+            count = count - 1 + num_classes
+            
+        return count
 
 class WeatherGridDataset(GridDataset):
     """
@@ -265,6 +283,10 @@ class WeatherGridDataset(GridDataset):
         
         return input_tensor, output_tensor, mask_tensor, weather_tensor # (C, H, W), (1, H, W), (1, H, W), (N, F), where N=num of subsamples and F=dimension of weather
 
+    @property
+    def num_weather_features(self) -> int:
+        """Returns the number of tabular weather features."""
+        return len(self.weather_features)
 
 def get_train_val_dataloader(config: DataConfig, modelling_approach: str = "1", seed: int = 42):
     """
