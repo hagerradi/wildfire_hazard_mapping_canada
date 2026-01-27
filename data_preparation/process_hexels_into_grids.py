@@ -122,7 +122,10 @@ def generate_data_samples(
     win_h: int = 128, 
     win_w: int = 128, 
     overlap_ratio: float = 0.2,
-    weather_sampling: str = "weather_zone_id"
+    weather_sampling: str = "weather_zone_id",
+    is_array_job: bool = False,
+    task_id: int = 0,
+    num_tasks: int = 1
 ):
     # If save_dir is provided, use it; otherwise default to root_dir/data_samples...
     if save_dir:
@@ -131,8 +134,22 @@ def generate_data_samples(
         out_dir = os.path.join(root_dir, f"data_samples_approach_{modelling_approach}")
     os.makedirs(out_dir, exist_ok=True)
     os.makedirs(os.path.join(out_dir, "numpy_files"), exist_ok=True)
-    hex_ids = find_hex_ids(root_dir)
     completed_hex_ids = get_processed_hex_ids(out_dir)
+
+    if is_array_job:
+        # 1. Get all Hex IDs
+        hex_ids = find_hex_ids(root_dir)
+        # IMPORTANT: Sort them to ensure every worker sees the same order
+        hex_ids = sorted(list(hex_ids))
+        
+        # 2. Split the work
+        if num_tasks > 1:
+            # Python list slicing magic: start at task_id, take every Nth item
+            my_hexels = hex_ids[task_id::num_tasks]
+            print(f"[Worker {task_id}/{num_tasks}] Processing {len(my_hexels)} hexels out of {len(hex_ids)} total.")
+            hex_ids = my_hexels
+    else:
+        hex_ids = find_hex_ids(root_dir)
     for hex_id in hex_ids:
         if hex_id in completed_hex_ids:
             print(f"==========Skipping because completed hex{hex_id}=============")
@@ -167,7 +184,6 @@ def generate_data_samples(
 
 def main():
     parser = argparse.ArgumentParser(description="Generate data samples from each hexel")
-
     parser.add_argument("--root_dir", type=str, help="data root directory", required=True)
     parser.add_argument("--save_dir", type=str, help="save data directory", default=None)
     parser.add_argument("--modelling_approach", type=int, help="Either 1 or 2", default=2)
@@ -176,7 +192,9 @@ def main():
     parser.add_argument("--win_w", type=int, help="Height of the window", default=128)
     parser.add_argument("--overlap_ratio", type=float, help="Overlap ratio between windows", default=0.2)
     parser.add_argument("--weather_sampling", type=str, help="Sampling method for weather data, options 'dist', 'random', or 'weather_zone_id'", default="weather_zone_id")
-
+    parser.add_argument("--is_array_job", action="store_true", help="Boolean to indicate if using SLURM job array")
+    parser.add_argument("--task_id", type=int, default=0, help="SLURM array ID")
+    parser.add_argument("--num_tasks", type=int, default=1, help="Total number of array tasks")
     args = parser.parse_args()
 
     generate_data_samples(
@@ -187,7 +205,10 @@ def main():
         win_w=args.win_w,
         overlap_ratio=args.overlap_ratio,
         output_type=args.output_type,
-        weather_sampling=args.weather_sampling
+        weather_sampling=args.weather_sampling,
+        is_array_job=args.is_array_job,
+        task_id=args.task_id,
+        num_tasks=args.num_tasks
     )
 
 
