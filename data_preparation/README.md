@@ -14,6 +14,11 @@ Step 2: Process hexel data into multiple square windows, which will be our data 
 ```bash
 python -m data_preparation.process_hexels_into_grids --root_dir="../yan_bp3" --modelling_approach=2 --output_type="count" --win_h=128 --win_w=128 --overlap_ratio=0.2
 ```
+Note: If you want to run this in the cluster using SLURM array jobs (much quicker), you can modify the `run_files/generate_grid.sh` by changing the save directory path and run the following in the terminal (from the main directory)
+
+```
+sbatch run_files/generate_grids.sh
+```
 
 Step 3: Create training, validation and test splits.
 
@@ -25,6 +30,7 @@ Step 3: Create training, validation and test splits.
 ```bash
 python -m data_preparation.split_data --data_dir="../yan_bp3/data_samples_approach_2" --val_hex_id 02 23 33 18 46 --test_hex_id 01 12 39 16 49
 ```
+
 
 Step 4: To create the weather aggregated weather table used to sample from in the weather fused unet, run the following. 
 
