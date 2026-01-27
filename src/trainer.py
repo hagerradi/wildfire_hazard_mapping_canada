@@ -183,8 +183,9 @@ class Trainer:
         running_metrics = {name: 0.0 for name in self.metric_functions}
 
         preds_list = []
+        validation_loop = tqdm(loader, desc="Evaluating", leave=True)
 
-        for batch in loader:
+        for batch in validation_loop:
             predictions, loss, targets, masks = self._step(batch)
 
             if return_predictions:
