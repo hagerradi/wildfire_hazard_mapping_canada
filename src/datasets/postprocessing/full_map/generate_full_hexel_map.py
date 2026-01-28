@@ -148,7 +148,7 @@ def generate_stitched_map(
         plt.show()
 
 
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser(description="Script to generate and save Canada burn probability map.")
 
     parser.add_argument("--data-dir", type=str, help="Path to base data directory.")
@@ -183,3 +183,7 @@ if __name__ == "__main__":
         show_hex_borders=args.show_hex_borders,
         output_path=args.output,
     )
+
+
+if __name__ == "__main__":
+    main()
