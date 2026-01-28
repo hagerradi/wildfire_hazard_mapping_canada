@@ -16,6 +16,7 @@ from data_preparation.grid_loader import (
     load_weather_grid,
     load_wind_grid,
 )
+from data_preparation.grid_loader.utils import NODATA
 from data_preparation.paths import (
     ELEVATION_GRID_PATH,
     ESC_FIRE_DIST_PATH,
@@ -101,7 +102,14 @@ def load_features_per_hexel(
             features_list,
             axis=-1,
         )
-        mask = np.isnan(elevation_grid)
+        # Get all the masks for all the season/cause and channels
+        all_feat_mask = np.isnan(stacked)
+        # Aggregate the channel masks to create a single mast (OR operation)
+        mask = np.any(all_feat_mask, axis=-1)
+        # Redo the feats with the new mask
+        stacked[mask] = NODATA
+        if int(np.sum(mask.astype(bool) != np.isnan(elevation_grid).astype(bool))) > 0:
+            print("======The elevation mask is not the same as the cumulative mask=====")
         return stacked, mask
 
     def load_output_grid(path):
@@ -138,7 +146,6 @@ def load_features_per_hexel(
         out_grid = load_output_grid(fpath)
 
         stacked_features, mask = stack_sample(ignition_prob_grid, esc_fires_prob_grid, weather_grid, out_grid)
-
         return np.expand_dims(stacked_features, axis=0), np.expand_dims(mask, axis=0), None
 
     # modelling approach 2
