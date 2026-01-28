@@ -21,6 +21,12 @@ jobs:
           python-version-file: "pyproject.toml"
           enable-cache: true
           cache-dependency-glob: "uv.lock"
+          cache-suffix: "torchsort-rebuild-1"
+
+      - name: Install build tools (needed for torchsort compile)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential python3-dev
 
       - name: Cache pre-commit
         uses: actions/cache@v4
@@ -32,6 +38,11 @@ jobs:
 
       - name: Install the project
         run: uv sync --locked --all-extras --dev
+
+      - name: Rebuild torchsort against the installed torch (fix ABI mismatch)
+        run: |
+          uv cache clean torchsort
+          uv pip install -v --no-cache-dir --no-binary=:all: --no-build-isolation --reinstall-package torchsort torchsort
 
       # ruff linting is now done in pre-commit
       - name: Run pre-commit hooks
