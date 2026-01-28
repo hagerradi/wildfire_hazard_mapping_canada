@@ -56,3 +56,9 @@ Steps:
 To visualize predictions and/or save visualizations, add the optional flags `--visualize_predictions` and/or `--save_visualizations`, respectively.
 
 ```python -m src.evaluate_hexels --config=configs/default_v1.yaml```
+
+### Generate full Canada map of hexels
+
+To generate the full Canada hexel map of targets and/or predictions, run the following script (see --help for more args. information):
+
+```python -m src.datasets.postprocessing.full_map.generate_full_hexel_map --data-dir data/ --scale "log" --show_hex_borders --output "experiments/full_canada_map.png"```
