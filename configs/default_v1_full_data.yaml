@@ -1,5 +1,5 @@
 # Where to save checkpoints
-save_dir: "experiments/unet_run_001_approach_1"
+save_dir: "experiments/unet_full_data"
 
 # approaches 1 or 2
 modelling_approach: "1"
@@ -17,7 +17,7 @@ optimizer:
   # loss_weights: {"bce": 0.8, "kl": 0.2} # use if loss is a dict
 
 training:
-  max_epochs: 10
+  max_epochs: 50
   # Logging frequency in epochs
   log_every_n_epoch: 1
 
@@ -27,8 +27,8 @@ evaluation:
   checkpoint_filename: "best.pth" # option to load best or last
 
 data:
-  root_dir: "../yan_bp3/data_samples_approach_1"
-  raw_data_dir: "../yan_bp3"
+  root_dir: "/network/projects/amlrt/nrcan_wildfires/full_data/yan_bp3/data_samples_approach_1"
+  raw_data_dir: "/network/projects/amlrt/nrcan_wildfires/full_data/yan_bp3"
 
   train_split: "train_indices.csv"
   val_split: "val_indices.csv"
@@ -37,7 +37,7 @@ data:
   transforms_list: [] # options: "random_flip", "random_rotate"
   augmentation_prob: 0.0 # float between 0 and 1
 
-  batch_size: 64
+  batch_size: 256
   num_workers: 2
 
   output_normalization: "min_max" #log
@@ -51,8 +51,8 @@ logger:
   enabled: True
   project_name: "nrcan-wildfireriskmapping"
   workspace: "mila-amlrt"
-  experiment_name: "unet_run_001_approach_1"
-  tags: ["baseline", "first-exp", "modelling_approach=1", "sigmoid+mae", "3inputfeatures"]
+  experiment_name: "unet_full_data"
+  tags: ["baseline", "full_data", "modelling_approach=1", "sigmoid+mae", "3inputfeatures"]
   # log loss and metrics on comet every n steps
   log_every_n_step: 5
 
