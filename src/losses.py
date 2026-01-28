@@ -6,7 +6,6 @@ from typing import cast
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torchsort import soft_rank
 
 
 class BCELoss(nn.Module):
@@ -213,65 +212,48 @@ class CorrCoef(nn.Module):
         return corr.mean()
 
 
+def soft_rank_pairwise(x: torch.Tensor, tau: float = 1.0, eps: float = 1e-8) -> torch.Tensor:
+    # x: (B, N)
+    # r_i = 1 + sum_j sigmoid((x_i - x_j)/tau)
+    diff = (x.unsqueeze(-1) - x.unsqueeze(1)) / max(tau, eps)  # (B, N, N)
+    P = torch.sigmoid(diff)
+    return 1.0 + P.sum(dim=-1)  # (B, N)
+
+
 class SpearmanCorrLoss(nn.Module):
-    """
-    Differentiable Spearman correlation for tensors shaped (B, 1, H, W).
-    Warning: Not supported for mps training - only for cpu or gpu
-
-    - Ranks are computed per-sample across flattened spatial dimension N=H*W.
-    - Optionally ranks targets as well (rank_targets=True).
-    - Returns mean correlation over batch by default (reduce="mean").
-    """
-
-    def __init__(
-        self,
-        eps: float = 1e-8,
-        regularization: str = "l2",
-        regularization_strength: float = 1e-2,
-        rank_targets: bool = False,
-        reduce: str = "mean",
-    ):
+    def __init__(self, eps: float = 1e-8, tau: float = 0.25, rank_targets: bool = False, reduce: str = "mean", pool: int = 8):
         super().__init__()
         self.eps = eps
-        self.regularization = regularization
-        self.regularization_strength = regularization_strength
+        self.tau = tau
         self.rank_targets = rank_targets
+        self.pool = pool
         self.corr = CorrCoef(eps=eps, reduce=reduce)
 
-    def _rank(self, x: torch.Tensor) -> torch.Tensor:
-        # x is (B, N). soft_rank returns ~[1..N]
-        r = soft_rank(
-            x,
-            regularization=self.regularization,
-            regularization_strength=self.regularization_strength,
-        )
-        n = x.shape[-1]
-        return r / max(n, 1)  # scale to ~ (0,1]
+    def forward(self, logits: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor | None = None) -> torch.Tensor:
+        # Convert logits -> probs for ranking stability
+        preds = torch.sigmoid(logits)
+        if self.pool > 1:
+            preds = F.avg_pool2d(preds, kernel_size=self.pool, stride=self.pool)
+            target = F.avg_pool2d(targets, kernel_size=self.pool, stride=self.pool)
+            if mask is not None:
+                mask = F.avg_pool2d(mask.float(), kernel_size=self.pool, stride=self.pool).squeeze(1)
+                mask = (mask > 0.5).to(dtype=preds.dtype)  # back to 0/1
 
-    def forward(
-        self,
-        pred: torch.Tensor,  # (B, 1, H, W)
-        target: torch.Tensor,  # (B, 1, H, W)
-        mask: torch.Tensor | None = None,  # (B, H, W) optional
-    ) -> torch.Tensor:
-        if pred.ndim != 4 or target.ndim != 4:
-            raise ValueError(f"Expected pred/target to be (B, H, W). Got {pred.shape}, {target.shape}")
-
-        b, c, h, w = pred.shape
-        n = h * w * c
-
-        pred_f = pred.reshape(b, n)
+        b, c, h, w = preds.shape
+        n = c * h * w
+        pred_f = preds.reshape(b, n)
         target_f = target.reshape(b, n)
+        mask_f = mask.reshape(b, n) if mask is not None else None
 
-        mask_f = None
-        if mask is not None:
-            mask_f = mask.reshape(b, n)
+        # rank pred (and optionally target) using pure-torch soft rank
+        pred_rank = soft_rank_pairwise(pred_f, tau=self.tau, eps=self.eps)
+        denom = (mask_f.sum(dim=1, keepdim=True) if mask_f is not None else pred_f.new_full((b, 1), float(n))).clamp_min(1.0)
+        pred_rank = pred_rank / denom  # ~ (0,1]
 
-        pred_rank = self._rank(pred_f)
+        target_used = soft_rank_pairwise(target_f, tau=self.tau, eps=self.eps) / denom if self.rank_targets else target_f
 
-        target_used = self._rank(target_f) if self.rank_targets else target_f
-
-        return self.corr(pred_rank, target_used, mask=mask_f)
+        # convert the range to be between [0-1] instead of [-1,1]
+        return (1 - self.corr(pred_rank, target_used, mask=mask_f)) / 2
 
 
 class BernoulliKLLoss(nn.Module):

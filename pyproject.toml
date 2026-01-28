@@ -21,7 +21,6 @@ dependencies = [
     "scikit-learn>=1.7.2",
     "torch>=2.9.1",
     "torchmetrics>=1.8.2",
-    "torchsort>=0.1.10",
     "torchvision>=0.24.1",
     "tqdm>=4.67.1",
 ]
@@ -34,12 +33,6 @@ dev = [
 
 [tool.uv]
 package = true
-
-# Ensure torchsort builds/links against the torch in THIS environment
-no-build-isolation-package = ["torchsort"]
-
-# Optional but recommended for torchsort: avoid cached/prebuilt binaries and always build from source
-no-binary-package = ["torchsort"]
 
 # Ruff config
 [tool.ruff]
