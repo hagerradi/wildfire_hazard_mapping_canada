@@ -221,7 +221,8 @@ def soft_rank_pairwise(x: torch.Tensor, tau: float = 1.0, eps: float = 1e-8) -> 
 
 
 class SpearmanCorrLoss(nn.Module):
-    def __init__(self, eps: float = 1e-8, tau: float = 0.25, rank_targets: bool = False, reduce: str = "mean", pool: int = 8):
+    # proxy spearman correlation loss
+    def __init__(self, eps: float = 1e-8, tau: float = 0.25, rank_targets: bool = True, reduce: str = "mean", pool: int = 4):
         super().__init__()
         self.eps = eps
         self.tau = tau
