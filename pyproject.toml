@@ -35,6 +35,12 @@ dev = [
 [tool.uv]
 package = true
 
+# Ensure torchsort builds/links against the torch in THIS environment
+no-build-isolation-package = ["torchsort"]
+
+# Optional but recommended for torchsort: avoid cached/prebuilt binaries and always build from source
+no-binary-package = ["torchsort"]
+
 # Ruff config
 [tool.ruff]
 indent-width = 4
