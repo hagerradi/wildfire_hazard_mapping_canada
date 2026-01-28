@@ -6,7 +6,7 @@ import torch
 from matplotlib import pyplot as plt
 from torch.utils.data import DataLoader
 
-from losses import BCELoss, BernoulliKLLoss, DiceLoss, FocalLoss, MAELoss, MSELoss, SpearmanCorrLoss
+from losses import BCELoss, BernoulliKLLoss, DiceLoss, FocalLoss, MAELoss, MSELoss
 
 
 def build_single_loss(name: str) -> torch.nn.Module:
@@ -21,8 +21,6 @@ def build_single_loss(name: str) -> torch.nn.Module:
         return FocalLoss()
     if name in ["dice", "diceloss"]:
         return DiceLoss()
-    if name in ["spearman", "spearmanloss", "spearmancorrloss"]:
-        return SpearmanCorrLoss()
     if name in ["klloss", "kl", "bernoullikl", "bernoulliklloss"]:
         return BernoulliKLLoss()
     raise ValueError(f"Unknown loss type: {name}")
