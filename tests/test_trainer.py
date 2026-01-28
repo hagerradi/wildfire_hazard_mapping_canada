@@ -78,7 +78,7 @@ def dummy_config(tmp_path):
             "num_classes": 1,
         },
         "optimizer": {
-            "loss_name": "mse",
+            "loss": "mse",
             "name": "Adam",
             "lr": 0.001,
         },

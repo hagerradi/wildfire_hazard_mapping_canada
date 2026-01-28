@@ -46,7 +46,7 @@ def test_bce_loss_all_masked(dummy_data):
 def test_mse_loss_no_mask(dummy_data):
     preds, targets, _ = dummy_data
     loss_fn = MSELoss()
-    expected = ((preds - targets) ** 2).mean()
+    expected = ((torch.sigmoid(preds) - targets) ** 2).mean()
     result = loss_fn(preds, targets)
     assert torch.allclose(result, expected, atol=1e-6)
 
@@ -55,7 +55,7 @@ def test_mse_loss_with_mask(dummy_data):
     preds, targets, masks = dummy_data
     loss_fn = MSELoss()
     # Compute expected masked MSE manually
-    loss = (preds - targets) ** 2
+    loss = (torch.sigmoid(preds) - targets) ** 2
     expected = (loss * masks).sum() / masks.sum()
     result = loss_fn(preds, targets, masks)
     assert torch.allclose(result, expected, atol=1e-6)
