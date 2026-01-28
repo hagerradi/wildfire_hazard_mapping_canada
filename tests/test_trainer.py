@@ -110,10 +110,6 @@ def test_trainer_uses_logger(dummy_config, mock_comet_logger):
 
 def test_trainer_setup(dummy_config):
     trainer = Trainer(dummy_config, grid_channel_dim=1)
-
-    # FIX: Check 'grid_channel_dim' instead of 'input_channels'
-    # If your Trainer doesn't save this as self.grid_channel_dim,
-    # you can remove this specific line or check trainer.model.in_channels
     if hasattr(trainer, "grid_channel_dim"):
         assert trainer.grid_channel_dim == 1
 
