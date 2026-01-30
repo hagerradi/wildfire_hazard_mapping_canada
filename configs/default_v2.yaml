@@ -16,7 +16,7 @@ model:
 optimizer:
   name: "AdamW" # "SGD", "Adam", "AdamW"
   lr: 1.0e-3
-  loss_name: "mae" # mse, bce, mae, etc
+  loss: "mae" # mse, bce, mae, etc
 
 training:
   max_epochs: 20

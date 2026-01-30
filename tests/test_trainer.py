@@ -78,7 +78,7 @@ def dummy_config(tmp_path):
             "num_classes": 1,
         },
         "optimizer": {
-            "loss_name": "mse",
+            "loss": "mse",
             "name": "Adam",
             "lr": 0.001,
         },
@@ -137,7 +137,7 @@ def test_trainer_step(dummy_config, dummy_data):
     trainer = Trainer(dummy_config)
     patch_trainer(trainer)
     batch = next(iter(dummy_data))
-    preds, loss, targets, masks = trainer._step(batch)
+    preds, loss, loss_parts, targets, masks = trainer._step(batch)
     assert preds.shape == targets.shape
     assert isinstance(loss, torch.Tensor)
 
