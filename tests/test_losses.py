@@ -17,7 +17,7 @@ from src.losses import (
 def dummy_data():
     torch.manual_seed(42)
     targets = torch.rand(4, 1, 32, 32)
-    logits = targets * 0.9  # "preds" are actually logits in your codebase
+    logits = targets * 0.9
     masks = torch.rand(4, 1, 32, 32) > 0.5
     return logits, targets, masks
 
