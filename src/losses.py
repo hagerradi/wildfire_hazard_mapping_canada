@@ -1,4 +1,4 @@
-# Defintions of loss functions
+# Definitions of loss functions
 from __future__ import annotations
 
 from typing import cast
@@ -240,8 +240,9 @@ class WeightedLoss(nn.Module):
             raise ValueError(f"weights has unknown keys: {sorted(extra)}")
 
         w = torch.tensor([weights[k] for k in losses], dtype=torch.float32)
-
-        self._weights = w
+        if self.normalize_weights:
+            w = w / w.sum().clamp_min(self.eps)
+        self.register_buffer("_weights", w)
 
     def forward(
         self,
@@ -249,9 +250,7 @@ class WeightedLoss(nn.Module):
         targets: torch.Tensor,
         mask: torch.Tensor | None = None,
     ) -> torch.Tensor | dict[str, torch.Tensor]:
-        w: torch.Tensor = self._weights
-        if self.normalize_weights:
-            w = w / w.sum().clamp_min(self.eps)
+        w = self._weights
 
         total = logits.new_tensor(0.0)
         parts: dict[str, torch.Tensor] = {}

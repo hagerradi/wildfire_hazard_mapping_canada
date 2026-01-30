@@ -1,5 +1,5 @@
 # Where to save checkpoints
-save_dir: "experiments/unet_run_001_approach_1"
+save_dir: "experiments/unet_data_subset_spearman_loss"
 
 # approaches 1 or 2
 modelling_approach: "1"
@@ -13,8 +13,8 @@ model:
 optimizer:
   name: "AdamW" # "SGD", "Adam", "AdamW"
   lr: 1.0e-3
-  loss: "mae" # or ["bce", "kl"], str for single loss or dict for multiple weighted losses
-  # loss_weights: {"bce": 0.8, "kl": 0.2} # use if loss is a dict
+  loss: "mae" # or ["bce", "kl"], str for single loss or list for multiple weighted losses
+  # loss_weights: {"bce": 0.8, "kl": 0.2} # use if loss is a list
 
 training:
   max_epochs: 10

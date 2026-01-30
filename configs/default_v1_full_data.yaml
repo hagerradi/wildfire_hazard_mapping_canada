@@ -13,8 +13,8 @@ model:
 optimizer:
   name: "AdamW" # "SGD", "Adam", "AdamW"
   lr: 1.0e-3
-  loss: "bce" # or ["bce", "kl"], str for single loss or dict for multiple weighted losses
-  # loss_weights: {"bce": 0.8, "kl": 0.2} # use if loss is a dict
+  loss: "bce" # or ["bce", "kl"], str for single loss or list for multiple weighted losses
+  # loss_weights: {"bce": 0.8, "kl": 0.2} # use if loss is a list
 
 training:
   max_epochs: 50

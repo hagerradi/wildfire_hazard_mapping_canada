@@ -73,7 +73,7 @@ class Trainer:
         loss_config = self.config.optimizer.loss
         if isinstance(loss_config, str):  # loss is a string
             self.loss_fn = build_single_loss(loss_config)
-        else:  # loss is a dict
+        else:  # loss is a list
             loss_names = loss_config
             weights = self.config.optimizer.loss_weights
             losses = {n: build_single_loss(n) for n in loss_names}
