@@ -196,7 +196,7 @@ class BernoulliKLLoss(nn.Module):
             return loss.mean()
 
         m = mask.to(dtype=loss.dtype)
-        # Zero-out masked pixels safely (prevents NaNs in masked regions from propagating)
+        # TODO: test if really needed. Zero-out masked pixels safely (prevents NaNs in masked regions from propagating)
         loss = torch.where(m > 0, loss, torch.zeros_like(loss))
 
         denom = m.sum().clamp_min(self.eps)
@@ -249,17 +249,17 @@ class WeightedLoss(nn.Module):
         logits: torch.Tensor,
         targets: torch.Tensor,
         mask: torch.Tensor | None = None,
-    ) -> torch.Tensor | dict[str, torch.Tensor]:
+    ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
         w = self._weights
 
-        total = logits.new_tensor(0.0)
-        parts: dict[str, torch.Tensor] = {}
+        total_loss = logits.new_tensor(0.0)
+        loss_parts: dict[str, torch.Tensor] = {}
 
         for i, (name, loss_mod) in enumerate(self.losses.items()):
             loss_mod = cast(nn.Module, loss_mod)
 
-            val = cast(torch.Tensor, loss_mod(logits, targets, mask))
-            parts[name] = val
-            total = total + (w[i].to(dtype=val.dtype) * val)
+            loss_val = cast(torch.Tensor, loss_mod(logits, targets, mask))
+            loss_parts[name] = loss_val
+            total_loss = total_loss + (w[i].to(dtype=loss_val.dtype) * loss_val)
 
-        return total
+        return total_loss, loss_parts

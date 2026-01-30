@@ -1,6 +1,6 @@
 import os
 import time
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import torch
@@ -108,7 +108,7 @@ class Trainer:
             else:
                 raise ValueError(f"Metric '{name}' in config. is not implemented." f"Available options: {list(available_metrics.keys())}")
 
-    def _step(self, batch: Any) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    def _step(self, batch: Any) -> tuple[torch.Tensor, torch.Tensor, dict[str, torch.Tensor] | None, torch.Tensor, torch.Tensor]:
         """
         Default step. Expects batch -> (inputs, targets, masks).
         Returns (predictions, loss, targets_on_device, masks_on_device).
@@ -120,21 +120,32 @@ class Trainer:
 
         predictions = self.model(inputs)
 
-        loss = self.loss_fn(predictions, targets, masks)
+        loss_out = self.loss_fn(predictions, targets, masks)
+
+        # Support if it is a single loss or weighted loss
+        if isinstance(loss_out, tuple):
+            total_loss, loss_parts = loss_out
+        else:
+            total_loss = cast(torch.Tensor, loss_out)
+            loss_parts = None
+
         predictions = torch.sigmoid(predictions)
 
-        return predictions, loss, targets, masks
+        return predictions, total_loss, loss_parts, targets, masks
 
     def train_epoch(self, loader: DataLoader) -> dict[str, float]:
         self.model.train()
         running_loss = 0.0
         running_batch_count = 0
         running_metrics = {name: 0.0 for name in self.metric_functions}
+        running_loss_parts = None
+        if isinstance(self.config.optimizer.loss, list):
+            running_loss_parts = {name: 0.0 for name in self.config.optimizer.loss}
 
         training_loop = tqdm(loader, desc="Training", leave=True)
 
         for batch in training_loop:
-            predictions, loss, targets, masks = self._step(batch)
+            predictions, loss, loss_parts, targets, masks = self._step(batch)
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
@@ -155,11 +166,24 @@ class Trainer:
                     running_metrics[name] += value.item() * batch_size
                     if self.logger and self.global_step % self.log_every_n_step == 0:
                         self.logger.log_metrics({f"train_step_{name}": value.item()}, step=self.global_step)
+                        if loss_parts is not None:
+                            # log each loss part (raw/unweighted)
+                            self.logger.log_metrics(
+                                {f"train_step_loss_{k}": v.item() for k, v in loss_parts.items()},
+                                step=self.global_step,
+                            )
+                            # accumulate epoch averages
+                            if running_loss_parts is not None:
+                                for k, v in loss_parts.items():
+                                    running_loss_parts[k] += v.item() * batch_size
 
             self.global_step += 1
 
         avg_loss = running_loss / max(1, running_batch_count)
         results = {"loss": avg_loss}
+        if running_loss_parts is not None:
+            for k, total_v in running_loss_parts.items():
+                results[f"loss_{k}"] = total_v / max(1, running_batch_count)
 
         # add averaged metrics to results
         for name, total_value in running_metrics.items():
@@ -173,12 +197,15 @@ class Trainer:
         running_loss = 0.0
         running_batch_count = 0
         running_metrics = {name: 0.0 for name in self.metric_functions}
+        running_loss_parts = None
+        if isinstance(self.config.optimizer.loss, list):
+            running_loss_parts = {name: 0.0 for name in self.config.optimizer.loss}
 
         preds_list = []
         validation_loop = tqdm(loader, desc="Evaluating", leave=True)
 
         for batch in validation_loop:
-            predictions, loss, targets, masks = self._step(batch)
+            predictions, loss, loss_parts, targets, masks = self._step(batch)
 
             if return_predictions:
                 preds_list.append(predictions.detach().cpu().numpy())
@@ -192,9 +219,15 @@ class Trainer:
                 for name, metric_fn in self.metric_functions.items():
                     value = metric_fn(predictions.detach(), targets, masks)
                     running_metrics[name] += value.item() * batch_size
+                    if loss_parts is not None and running_loss_parts is not None:
+                        for k, v in loss_parts.items():
+                            running_loss_parts[k] += v.item() * batch_size
 
         avg_loss = running_loss / max(1, running_batch_count)
         results = {"loss": avg_loss}
+        if running_loss_parts is not None:
+            for k, total_v in running_loss_parts.items():
+                results[f"loss_{k}"] = total_v / max(1, running_batch_count)
 
         # add averaged metrics to results
         for name, total_value in running_metrics.items():
