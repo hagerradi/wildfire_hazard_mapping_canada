@@ -21,7 +21,8 @@ class ModelConfig(BaseModel):
 class OptimizerConfig(BaseModel):
     name: str = "AdamW"
     lr: float = 1e-3
-    loss_name: str
+    loss: str | list[str]
+    loss_weights: dict[str, float] = {}
 
 
 class TrainingConfig(BaseModel):

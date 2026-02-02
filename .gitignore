@@ -9,7 +9,7 @@ __pycache__/
 
 #--- model checkpoints ---
 experiments/
-
+logs/
 # --- UV ---
 .venv/
 .uv/

@@ -32,7 +32,7 @@ class GridDataset(Dataset):
         out_norm: str = "min_max",
         fuel_feats_encoding: str = "ordinal",
         normalize_fuel_feats_ordinal: bool | None = True,
-        modelling_approach: str = "2",
+        modelling_approach: str = "1",
         valid_mask_threshold: float = 0.01,
         transform: Callable | None = None,
     ):
