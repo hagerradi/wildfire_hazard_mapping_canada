@@ -4,8 +4,7 @@ import numpy as np
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 
-from data_preparation.feature_processing.utils import check_weather_list
-
+from data_preparation.feature_processing.utils import check_weather_list, WEATHER_FEATURE_NUMERIC_COLS
 
 def wind_direction_to_sincos(wd: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Convert Wind Direction to Sin/Cos for normalization"""
@@ -43,6 +42,7 @@ def load_weather_list(weather_list_file_path: str, season: int | None = None, no
         raise FileNotFoundError(f"Weather list file not found: {path}")
     weather_list = pd.read_csv(weather_list_file_path)
     weather_list = check_weather_list(weather_list)
+    weather_list = weather_list.loc[:, ~weather_list.columns.str.startswith("Unnamed:")] # Accounts for anomaly columns in hex 32 (just a repeat column of WeatherZone)
     weather_list_subset = weather_list[weather_list["season"] == season].copy() if season else weather_list.copy()
 
     if normalize_weatherlist:
