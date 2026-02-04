@@ -110,12 +110,13 @@ class GridDataset(Dataset):
             input_arr = one_hot_encode(arr=input_arr, channel_idx=self.fuel_feat_index, num_classes=num_classes)
             # Update channel_indices to account for new one-hot channels
             old_fuel_idx = self.fuel_feat_index
-            self.channel_indices = [i for i in self.channel_indices if i != old_fuel_idx]
+            idx_fuel_feats = self.channel_indices.index(old_fuel_idx)
+            self.channel_indices = self.channel_indices[:idx_fuel_feats] + self.channel_indices[idx_fuel_feats + 1 :]
             # Insert new indices for the one-hot channels at the position of the old fuel index
             self.channel_indices = (
-                self.channel_indices[:old_fuel_idx]
+                self.channel_indices[:idx_fuel_feats]
                 + list(range(old_fuel_idx, old_fuel_idx + num_classes))
-                + [i + num_classes - 1 for i in self.channel_indices[old_fuel_idx:]]
+                + [i + num_classes - 1 for i in self.channel_indices[idx_fuel_feats:]]
             )
 
         input_arr = fill_nan_channel_mean_numpy(input_arr)  # remove NaNs from the inp data (replace by mean)
