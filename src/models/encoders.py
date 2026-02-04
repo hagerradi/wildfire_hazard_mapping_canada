@@ -50,8 +50,8 @@ class BaselineEncoder(EncoderBase):
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, list[torch.Tensor]]:
         skip_connections = []
-        for stage in self.layers:
-            x = stage(x)
+        for layer in self.layers:
+            x = layer(x)
             skip_connections.append(x)
             x = self.maxpool(x)
         x = self.bottleneck(x)
