@@ -11,10 +11,15 @@ def weather_list_to_grid(
     """Project weather list onto the Fire Weather Zones"""
     fire_weather_zones = weather_list["wx_zone"].unique()
 
+    # Determine number of output channels based on sampling strategy
     if sampling == "dist":
-        out = np.repeat(fire_weather_zone_grid[..., np.newaxis], (len(selected_weather_features)) * 2, axis=-1).astype("float32")
+        n_channels = len(selected_weather_features) * 2
+    elif sampling == "weather_zone_id":
+        n_channels = 1
     else:
-        out = np.repeat(fire_weather_zone_grid[..., np.newaxis], len(selected_weather_features), axis=-1).astype("float32")
+        n_channels = len(selected_weather_features)
+    h, w = fire_weather_zone_grid.shape
+    out = np.full((h, w, n_channels), NODATA, dtype="float32")
 
     for zone in fire_weather_zones:
         weather_zone_subset = weather_list[weather_list["wx_zone"] == zone][selected_weather_features]
@@ -27,9 +32,11 @@ def weather_list_to_grid(
         # array of mean, var for all the variables (1x2*len(selected_weather_features))
         elif sampling == "dist":
             value = np.vstack([weather_zone_subset.mean(), weather_zone_subset.std()]).T.flatten()
+        elif sampling == "weather_zone_id":
+            value = zone
         out[fire_weather_zone_grid.data == zone] = value  # type: ignore
-    # HxWx2*len(selected_weather_features) (or len(selected_weather_features))
-    return out.filled(NODATA)  # type: ignore
+    # HxWx2*len(selected_weather_features) (or len(selected_weather_features)) (or 1)
+    return out  # type: ignore
 
 
 def load_weather_grid(weather_list_file_path: str, zone_grid_file_path: str, season: int = None, sampling: str = "dist"):

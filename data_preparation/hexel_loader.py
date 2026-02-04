@@ -51,7 +51,7 @@ def generate_feature_channel_map(feature_list: list[np.ndarray], feature_channel
 
 
 def load_features_per_hexel(
-    root_dir: str, hex_id: str, feature_channel_map_path: str, modelling_approach: int = 2, output_type: str = "count"
+    root_dir: str, hex_id: str, feature_channel_map_path: str, modelling_approach: int = 2, output_type: str = "count", weather_sampling: str = "dist",
 ) -> tuple[np.ndarray | None, np.ndarray | None, dict[int, tuple[int, int]] | None]:
     """
     Load all data (features and output) per hexel
