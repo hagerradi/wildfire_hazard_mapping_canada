@@ -9,8 +9,7 @@ import torch.nn as nn
 
 from src.models.components.bottlenecks import DoubleConvBlock, StandardBottleneck, WeatherFusionBottleneck
 
-
-class WeatherUNet(nn.Module):
+class FusionUNet(nn.Module):
     def __init__(
         self,
         input_channels: int = 1,
@@ -22,22 +21,21 @@ class WeatherUNet(nn.Module):
         weather_input_dim: Optional[int] = None,
         weather_embed_dim: int = 64,
         pooling_type: str = "attention",
+        use_spatial_encoder: bool = True,
+        bottleneck_spatial_size: int = 8,  # Required if encoder is disabled (128px / 2^4 = 8px)
     ):
-        """
-        Args:
-            input_channels: Number of input channels
-            num_classes: Number of output channels
-            hidden_features: List of feature maps at each level [64, 128, 256, 512]. Model adjusts accordingly
-            use_skip_connections: Whether to use skip connections in the decoder
-            use_transpose_conv: use TransposeConv2D in the decoder instead of Upsample with Conv2D
-            weather_input_dim: If None, acts like a standard U-Net.
-            weather_embed_dim: Dimension of weather vector after encoding.
-            pooling_type: 'attention', 'mean', or 'max' for the DeepSet encoder.
-        """
         super().__init__()
 
         if hidden_features is None:
             hidden_features = [64, 128, 256, 512]
+
+        # 1. Logic to handle "Weather Only" mode
+        self.use_spatial_encoder = use_spatial_encoder
+        self.bottleneck_spatial_size = bottleneck_spatial_size
+
+        # If no encoder, we must disable skip connections
+        if not self.use_spatial_encoder:
+            use_skip_connections = False
 
         self.use_skip_connections = use_skip_connections
         self.use_transpose_conv = use_transpose_conv
@@ -48,21 +46,23 @@ class WeatherUNet(nn.Module):
         self.decoder = nn.ModuleList()
         self.maxpool = nn.MaxPool2d(kernel_size=2, stride=2)
 
-        # 1. Encoder
-        in_ch = input_channels
-        for h_feature in hidden_features:
-            self.encoder.append(DoubleConvBlock(in_ch, h_feature))
-            in_ch = h_feature
-
-        # 2. Bottleneck
+        # 2. Build Encoder (if enabled)
+        if self.use_spatial_encoder:
+            in_ch = input_channels
+            for h_feature in hidden_features:
+                self.encoder.append(DoubleConvBlock(in_ch, h_feature))
+                in_ch = h_feature
+        
+        # 3. Bottleneck
+        # If encoder exists, input is hidden_features[-1] (e.g. 512)
+        # If no encoder, we will generate a dummy input of this same size
         bottleneck_in = hidden_features[-1]
         bottleneck_out = hidden_features[-1] * 2
 
-        # Explicit type hint prevents MyPy error when assigning different subclasses
+        # Explicit type hint prevents MyPy error
         self.bottleneck: nn.Module
 
         if self.weather_input_dim:
-            # We explicitly assert valid dimension here to satisfy the type checker for WeatherFusionBottleneck
             if weather_input_dim is None:
                 raise ValueError("weather_input_dim cannot be None when using weather bottleneck")
 
@@ -76,7 +76,7 @@ class WeatherUNet(nn.Module):
         else:
             self.bottleneck = StandardBottleneck(bottleneck_in, bottleneck_out)
 
-        # 3. Decoder
+        # 4. Decoder
         for h_feature in reversed(hidden_features):
             # Upsampling
             if self.use_transpose_conv:
@@ -94,25 +94,47 @@ class WeatherUNet(nn.Module):
             self.decoder.append(upsample)
 
             # Conv Block
-            decoder_in_channels = h_feature * 2 if use_skip_connections else h_feature
+            # If skips are OFF (because encoder is OFF), in_channels is just h_feature
+            # If skips are ON, in_channels is h_feature * 2
+            decoder_in_channels = h_feature * 2 if self.use_skip_connections else h_feature
             self.decoder.append(DoubleConvBlock(decoder_in_channels, h_feature))
 
         # Output
         self.out_conv = nn.Conv2d(hidden_features[0], num_classes, kernel_size=1)
 
-    def forward(self, x: torch.Tensor, x_weather: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward(self, x: Optional[torch.Tensor], x_weather: Optional[torch.Tensor] = None) -> torch.Tensor:
         skip_connections = []
 
-        # Encoder
-        for encoder_block in self.encoder:
-            x = encoder_block(x)
-            skip_connections.append(x)
-            x = self.maxpool(x)
+        # --- A. Encoder Path ---
+        if self.use_spatial_encoder:
+            if x is None:
+                raise ValueError("Model initialized with spatial encoder, but input 'x' is None.")
+                
+            for encoder_block in self.encoder:
+                x = encoder_block(x)
+                skip_connections.append(x)
+                x = self.maxpool(x)
+        else:
+            # --- B. No Encoder Path (Generation Mode) ---
+            # We need to construct a "dummy" feature map to start the bottleneck
+            # We use x_weather to get the batch size and device
+            if x_weather is None:
+                raise ValueError("Weather Only mode requires x_weather input.")
+            
+            B = x_weather.shape[0]
+            # Dimensions: (Batch, 512, 8, 8) - Matches output of the last encoder block
+            enc_channels = self.bottleneck.conv.net[0].in_channels # Retrieve input channels dynamically or use hidden_features[-1]
+            H, W = self.bottleneck_spatial_size, self.bottleneck_spatial_size
+            
+            # Create zeros on the correct GPU device
+            x = torch.zeros((B, enc_channels, H, W), device=x_weather.device)
 
-        # Bottleneck (Polymorphic: handles weather injection if configured)
+        # --- Bottleneck ---
+        # If 'x' is zeros, the conv layers act as bias generators, 
+        # and then weather is fused onto it.
         x = self.bottleneck(x, x_weather)
 
-        # Decoder
+        # --- Decoder ---
         skip_connections = skip_connections[::-1]
         for i in range(len(self.decoder) // 2):
             x = self.decoder[2 * i](x)
