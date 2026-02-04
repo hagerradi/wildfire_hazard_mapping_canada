@@ -85,6 +85,17 @@ class GridDataset(Dataset):
             self.channel_indices = [item for key in self.feature_names_list for item in channel_feature_map[key]]
             if "fuel_grid" in self.feature_names_list:
                 self.fuel_feat_index = channel_feature_map["fuel_grid"][0]
+                if self.fuel_feats_encoding == "one_hot":
+                    num_classes = int(MAX_FUEL_GRID + 1)
+                    # Update channel_indices to account for new one-hot channels
+                    idx_fuel_feats = self.channel_indices.index(self.fuel_feat_index)
+                    self.channel_indices = self.channel_indices[:idx_fuel_feats] + self.channel_indices[idx_fuel_feats + 1 :]
+                    # Insert new indices for the one-hot channels at the position of the old fuel index
+                    self.channel_indices = (
+                        self.channel_indices[:idx_fuel_feats]
+                        + list(range(self.fuel_feat_index, self.fuel_feat_index + num_classes))
+                        + [i + num_classes - 1 for i in self.channel_indices[idx_fuel_feats:]]
+                    )
 
     def __len__(self):
         return len(self.metadata_df)
@@ -108,16 +119,6 @@ class GridDataset(Dataset):
         if "fuel_grid" in self.feature_names_list and self.fuel_feats_encoding == "one_hot":  # (H,W,C+20)
             num_classes = int(MAX_FUEL_GRID + 1)
             input_arr = one_hot_encode(arr=input_arr, channel_idx=self.fuel_feat_index, num_classes=num_classes)
-            # Update channel_indices to account for new one-hot channels
-            old_fuel_idx = self.fuel_feat_index
-            idx_fuel_feats = self.channel_indices.index(old_fuel_idx)
-            self.channel_indices = self.channel_indices[:idx_fuel_feats] + self.channel_indices[idx_fuel_feats + 1 :]
-            # Insert new indices for the one-hot channels at the position of the old fuel index
-            self.channel_indices = (
-                self.channel_indices[:idx_fuel_feats]
-                + list(range(old_fuel_idx, old_fuel_idx + num_classes))
-                + [i + num_classes - 1 for i in self.channel_indices[idx_fuel_feats:]]
-            )
 
         input_arr = fill_nan_channel_mean_numpy(input_arr)  # remove NaNs from the inp data (replace by mean)
 
