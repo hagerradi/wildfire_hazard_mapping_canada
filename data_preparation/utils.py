@@ -1,11 +1,11 @@
 import math
 import os
 from pathlib import Path
+from typing import Callable
 
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
-from typing import Callable
 from sklearn.model_selection import train_test_split
 
 from data_preparation.paths import OUTPUT_BURN_PROB_PATH
@@ -23,6 +23,7 @@ feature_count_map = {
     "elevation_grid": 1,
     "out_burn_prob": 1,
 }
+
 
 def load_all_data(root_dir: Path, pattern: str, load_function: Callable | None = None) -> pd.DataFrame:
     """

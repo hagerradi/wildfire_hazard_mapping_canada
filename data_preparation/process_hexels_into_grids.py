@@ -115,17 +115,17 @@ def get_split_hexel_window(
 
 
 def generate_data_samples(
-    root_dir: str, 
+    root_dir: str,
     save_dir: str | None,
-    modelling_approach: int, 
-    output_type: str = "count", 
-    win_h: int = 128, 
-    win_w: int = 128, 
+    modelling_approach: int,
+    output_type: str = "count",
+    win_h: int = 128,
+    win_w: int = 128,
     overlap_ratio: float = 0.2,
     weather_sampling: str = "dist",
     is_array_job: bool = False,
     task_id: int = 0,
-    num_tasks: int = 1
+    num_tasks: int = 1,
 ):
     if save_dir:
         out_dir = save_dir
@@ -134,7 +134,7 @@ def generate_data_samples(
     os.makedirs(out_dir, exist_ok=True)
     os.makedirs(os.path.join(out_dir, "numpy_files"), exist_ok=True)
     completed_hex_ids = get_processed_hex_ids(out_dir)
-    
+
     if is_array_job:
         # 1. Get all Hex IDs
         hex_ids = find_hex_ids(root_dir)
@@ -164,7 +164,7 @@ def generate_data_samples(
             feature_channel_map_path=os.path.join(out_dir, f"feature_channel_map_{modelling_approach}.json"),
             modelling_approach=modelling_approach,
             output_type=output_type,
-            weather_sampling=weather_sampling
+            weather_sampling=weather_sampling,
         )
         if (stacked_feats is None) or (mask is None):
             print(f"================Failed for hex {hex_id}===================")
@@ -193,7 +193,13 @@ def main():
     parser.add_argument("--win_h", type=int, help="Height of the window", default=128)
     parser.add_argument("--win_w", type=int, help="Height of the window", default=128)
     parser.add_argument("--overlap_ratio", type=float, help="Overlap ratio between windows", default=0.2)
-    parser.add_argument("--weather_sampling", type=str, help="Sampling method for weather data, options 'dist', 'random', or 'weather_zone_id'", default="dist", choices=["dist", "random", "weather_zone_id"])
+    parser.add_argument(
+        "--weather_sampling",
+        type=str,
+        help="Sampling method for weather data, options 'dist', 'random', or 'weather_zone_id'",
+        default="dist",
+        choices=["dist", "random", "weather_zone_id"],
+    )
     parser.add_argument("--is_array_job", action="store_true", help="Boolean to indicate if using SLURM job array")
     parser.add_argument("--task_id", type=int, default=0, help="SLURM array ID")
     parser.add_argument("--num_tasks", type=int, default=1, help="Total number of array tasks")
@@ -212,6 +218,7 @@ def main():
         task_id=args.task_id,
         num_tasks=args.num_tasks,
     )
+
 
 if __name__ == "__main__":
     main()

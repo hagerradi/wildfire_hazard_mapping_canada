@@ -52,5 +52,5 @@ def check_weather_list(weather_list: pd.DataFrame) -> pd.DataFrame:
     if check_column_format(weather_list, "wx_zone"):
         print("=============wx_zone check not passed==================")
         weather_list["wx_zone"] = weather_list["wx_zone"].astype(str).str.extract(r"(\d+)").astype(int)
-    
+
     return weather_list
