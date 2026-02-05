@@ -164,6 +164,7 @@ def generate_data_samples(
             feature_channel_map_path=os.path.join(out_dir, f"feature_channel_map_{modelling_approach}.json"),
             modelling_approach=modelling_approach,
             output_type=output_type,
+            weather_sampling=weather_sampling
         )
         if (stacked_feats is None) or (mask is None):
             print(f"================Failed for hex {hex_id}===================")
