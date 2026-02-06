@@ -54,7 +54,7 @@ def load_features_per_hexel(
     root_dir: str,
     hex_id: str,
     feature_channel_map_path: str,
-    modelling_approach: int = 2,
+    modelling_approach: int = 1,
     output_type: str = "count",
     weather_sampling: str = "dist",
 ) -> tuple[np.ndarray | None, np.ndarray | None, dict[int, tuple[int, int]] | None]:

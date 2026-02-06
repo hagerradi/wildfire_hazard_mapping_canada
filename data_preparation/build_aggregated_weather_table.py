@@ -7,7 +7,7 @@ from typing import Callable, Optional
 import pandas as pd
 
 from data_preparation.feature_processing.weather import load_weather_list, preprocess_weather_list
-from data_preparation.utils import load_all_data
+from data_preparation.utils import aggregate_csv_by_pattern
 
 
 def main():
@@ -28,7 +28,7 @@ def main():
 
     print(f"Starting weather table build...")
     pattern = "hex*/burning_conditions_module/hex_*_weather*"  # Accounts for all types of naming including anomalies
-    df = load_all_data(root_dir=root_path, pattern=pattern, load_function=load_weather_list)
+    df = aggregate_csv_by_pattern(root_dir=root_path, pattern=pattern, load_function=load_weather_list)
     # Apply weather specific global normalization
     print("Applying global preprocessing...")
     df = preprocess_weather_list(df)

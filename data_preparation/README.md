@@ -28,3 +28,9 @@ Step 3: Create training, validation and test splits.
 ```bash
 python -m data_preparation.split_data --data_dir="../yan_bp3/data_samples_approach_2" --val_hex_id 02 23 33 18 46 --test_hex_id 01 12 39 16 49
 ```
+
+Step 4: Create the weather aggregated table used for sampling. Note: You can specify `--save_dir=<INSERT PATH>` if you wish to save elsewhere of `--root_dir`
+
+```
+python build_aggregated_weather_table.py --root_dir="/network/projects/amlrt/nrcan_wildfires/full_data/yan_bp3" --file_name="weather_table.csv"
+```

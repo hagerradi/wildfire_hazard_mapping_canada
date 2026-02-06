@@ -25,7 +25,7 @@ feature_count_map = {
 }
 
 
-def load_all_data(root_dir: Path, pattern: str, load_function: Callable | None = None) -> pd.DataFrame:
+def aggregate_csv_by_pattern(root_dir: Path, pattern: str, load_function: Callable | None = None) -> pd.DataFrame:
     """
     Orchestrates the finding, loading, merging files of a certain pattern across all hex folders
     """
