@@ -116,8 +116,8 @@ def get_split_hexel_window(
 
 def generate_data_samples(
     root_dir: str,
-    save_dir: str | None,
     modelling_approach: int,
+    save_dir: str | None,
     output_type: str = "count",
     win_h: int = 128,
     win_w: int = 128,

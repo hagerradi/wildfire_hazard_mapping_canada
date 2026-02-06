@@ -12,6 +12,11 @@ Step 2: Process hexel data into multiple square windows, which will be our data 
 ```bash
 python -m data_preparation.process_hexels_into_grids --root_dir="../yan_bp3" --modelling_approach=2 --output_type="count" --win_h=128 --win_w=128 --overlap_ratio=0.2
 ```
+Note: If you want to run this in the cluster using SLURM array jobs, you can modify the `run_files/generate_grid.sh` by changing the save directory path and run the following in the terminal (from the main directory)
+
+```
+sbatch run_files/generate_grids.sh
+```
 
 Step 3: Create training, validation and test splits.
 
