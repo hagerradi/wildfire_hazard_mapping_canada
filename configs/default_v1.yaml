@@ -13,7 +13,7 @@ model:
 optimizer:
   name: "AdamW" # "SGD", "Adam", "AdamW"
   lr: 1.0e-3
-  loss: "mae" # or ["bce", "kl"], str for single loss or list for multiple weighted losses
+  loss: "kl" # or ["bce", "kl"], str for single loss or list for multiple weighted losses
   # loss_weights: {"bce": 0.8, "kl": 0.2} # use if loss is a list
 
 training:
@@ -43,7 +43,7 @@ data:
   output_normalization: "min_max" #log
 
   feature_names_list: ["ignition_grid", "fuel_grid", "elevation_grid"] # ["ignition_grid", "esc_fires_grid", "fuel_grid", "elevation_grid", "weather_grid", "wind_grid"]
-  fuel_feats_encoding: "ordinal" # ordinal, one_hot
+  fuel_feats_encoding: "one_hot" # ordinal, one_hot
   normalize_fuel_feats_ordinal: True
   valid_mask_threshold:  0.00
 
@@ -52,7 +52,7 @@ logger:
   project_name: "nrcan-wildfireriskmapping"
   workspace: "mila-amlrt"
   experiment_name: "unet_run_001_approach_1"
-  tags: ["baseline", "first-exp", "modelling_approach=1", "sigmoid+mae", "3inputfeatures"]
+  tags: ["baseline", "first-exp", "modelling_approach=1", "one_hot_encoding", "3inputfeatures"]
   # log loss and metrics on comet every n steps
   log_every_n_step: 5
 
