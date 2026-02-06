@@ -54,7 +54,7 @@ logger:
   project_name: "nrcan-wildfireriskmapping"
   workspace: "mila-amlrt"
   experiment_name: "unet_run_001_approach_2"
-  tags: ["baseline", "first-exp", "modelling_approach=2", "one_hot", "3inputfeatures", "standardized_probs", "masked_metrics"]
+  tags: ["baseline", "first-exp", "modelling_approach=2", "fuel_one_hot_encoding", "KL-loss", "3inputfeatures", "standardized_probs", "masked_metrics"]
   # log loss and metrics on comet every n steps
   log_every_n_step: 5
 
