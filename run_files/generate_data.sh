@@ -23,7 +23,7 @@ echo "Starting Worker $TASK_ID / $NUM_TASKS"
 
 python -m data_preparation.process_hexels_into_grids \
     --root_dir="/network/projects/amlrt/nrcan_wildfires/full_data/yan_bp3" \
-    --save_dir=None \
+    --save_dir=None \   # If this is kept as None, the grids will be saved to 'data_samples_modelling_approach_<VERSION_NUMBER_HERE>/' directory in the `root_dir/`
     --modelling_approach=1 \
     --output_type="prob" \
     --win_h=128 \
