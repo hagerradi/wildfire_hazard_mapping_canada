@@ -29,10 +29,10 @@ Step 3: Create training, validation and test splits.
 python -m data_preparation.split_data --data_dir="../yan_bp3/data_samples_approach_1" --val_hex_id 02 23 33 18 46 --test_hex_id 01 12 39 16 49
 ```
 
-Step 4: Create the weather aggregated table used for sampling. 
+Step 4: Create the weather aggregated table used for sampling.
 
 ```
-python build_aggregated_weather_table.py --root_dir="../yan_bp3" --file_path="data_samples_approach_1/weather_table.csv" 
+python build_aggregated_weather_table.py --root_dir="../yan_bp3" --file_path="data_samples_approach_1/weather_table.csv"
 ```
 
 Note: If you perform modelling approach 2, change the `--file_path` to `data_samples_approach_2/weather_table.csv` to save in the same place as the sampling data.
