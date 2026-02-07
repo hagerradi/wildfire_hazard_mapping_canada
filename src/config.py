@@ -1,5 +1,6 @@
 # base configurations for experiments
 from collections.abc import Callable
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -35,27 +36,23 @@ class EvaluationConfig(BaseModel):
     checkpoint_filename: str = "last.pth"
 
 
+class DataSourceConfig(BaseModel):
+    name: str
+    params: dict[str, Any] = {}
+
+
 class DataConfig(BaseModel):
     root_dir: str
-    raw_data_dir: str
+    batch_size: int = 64
+    num_workers: int = 0
 
     train_split: str
     val_split: str
     test_split: str
-
-    transforms_list: list[str] = []
-    augmentation_prob: float = 0.0
-
-    batch_size: int = 64
     filename_col: str = "filename"
-    num_workers: int = 0
-    transform: Callable | None = None
+    valid_mask_threshold: float = 0.0
 
-    output_normalization: str = "min_max"  # options: min_max for approach 2, prob for approach 1
-    feature_names_list: list[str] = ["ignition_grid", "esc_fires_grid", "fuel_grid", "elevation_grid", "weather_grid", "wind_grid"]
-    fuel_feats_encoding: str  # ordinal, one_hot
-    normalize_fuel_feats_ordinal: bool = True
-    valid_mask_threshold: float = 0.00
+    sources: list[DataSourceConfig]
 
 
 class Config(BaseModel):

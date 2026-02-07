@@ -82,6 +82,7 @@ def output_burn_prob_norm(output_arr: np.ndarray, burn_prob_max: float, burn_pro
     return output_arr
 
 
+# TODO: remove since we have sources calculate their own input_dim now
 def compute_number_input_channels(feature_names_list: list[str], fuel_feats_encoding: str, root_dir: str, modelling_approach: str) -> int:
     """
     Calculates the total number of input channels based on selected features
