@@ -16,17 +16,17 @@ model:
   pooling_type: "max"       # Options: "attention", "mean", "max"
 
 optimizer:
-  name: "AdamW" 
+  name: "AdamW"
   lr: 1.0e-3
-  loss: "mae" 
+  loss: "mae"
 
 training:
   max_epochs: 50
   log_every_n_epoch: 1
 
 evaluation:
-  best_ckpt_metric: "spearman" 
-  best_ckpt_metric_mode: "max" 
+  best_ckpt_metric: "spearman"
+  best_ckpt_metric_mode: "max"
   checkpoint_filename: "best.pth"
 
 data:
@@ -34,7 +34,7 @@ data:
   raw_data_dir: "/network/projects/amlrt/nrcan_wildfires/full_data/yan_bp3"
   batch_size: 64
   num_workers: 2
-  
+
   train_split: "train_indices.csv"
   val_split: "val_indices.csv"
   test_split: "test_indices.csv"
@@ -57,7 +57,7 @@ data:
         feature_names_list: ["temp", "rh", "prec", "ffmc", "dmc", "dc", "isi", "bui"]
         sampling_approach: "mode"
         num_samples_per_patch: 128
-        
+
 
 logger:
   enabled: False
