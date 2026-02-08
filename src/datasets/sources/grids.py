@@ -31,7 +31,8 @@ class GridSource(DataSource):
         """
         Args:
             root_dir (str): Directory with all the .npy files.
-            feature_names_list (list): List of features being used for training ((options: None or feature list) All feats: ["ignition_grid", "esc_fires_grid", "fuel_grid", "elevation_grid", "weather_grid", "wind_grid"])
+            feature_names_list (list): List of features being used for training ((options: None or feature list)
+                All feats: ["ignition_grid", "esc_fires_grid", "fuel_grid", "elevation_grid", "weather_grid", "wind_grid"])
             out_norm (str): How to normalize the output burn counts for modelling approach 2. [Options: total_iters, season_cause_iters, min_max]
             fuel_feats_encoding(str): How to process the fuel features [Options: ordinal, one_hot]
             normalize_fuel_feats_ordinal (bool): If we want to normalize the ordinal encoded fuel feats
@@ -103,7 +104,8 @@ class GridSource(DataSource):
                 )
 
         # 5. Filter to just chosen input channel indices or if no features selected just return None
-        input_arr = input_arr[:, :, self.input_channel_indices] if self.input_channel_indices else None
+        if self.input_channel_indices is not None:
+            input_arr = input_arr[:, :, self.input_channel_indices]
 
         # 6. Perform normalizations
         if self.modelling_approach == "2":

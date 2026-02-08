@@ -1,8 +1,8 @@
 # base configurations for experiments
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Literal, Union
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class LoggerConfig(BaseModel):
@@ -36,13 +36,34 @@ class EvaluationConfig(BaseModel):
     checkpoint_filename: str = "last.pth"
 
 
+class GridParams(BaseModel):
+    """Specific parameters for the GridSource."""
+
+    feature_names_list: list[str]
+    out_norm: str = "min_max"
+    fuel_feats_encoding: str = "ordinal"
+    normalize_fuel_feats_ordinal: bool = True
+    transforms_list: list[str]
+    augmentation_prob: float
+
+
+class WeatherParams(BaseModel):
+    """Specific parameters for the WeatherSource."""
+
+    csv_name: str = "weather_table.csv"
+    feature_names_list: list[str]
+    sampling_approach: str = "mode"
+    num_samples_per_patch: int = 128
+
+
 class DataSourceConfig(BaseModel):
-    name: str
-    params: dict[str, Any] = {}
+    name: Literal["grid", "weather"]
+    params: Union[GridParams, WeatherParams]
 
 
 class DataConfig(BaseModel):
     root_dir: str
+    raw_data_dir: str
     batch_size: int = 64
     num_workers: int = 0
 

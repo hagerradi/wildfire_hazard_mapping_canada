@@ -27,12 +27,12 @@ class WeatherSource(DataSource):
     ):
         """
         Args:
-            csv_name (str): Name of the historical weather CSV file
-            root_dir (str): Directory with all the .npy files
-            feature_names_list (list): List containing features we wish to include for model training
-            sampling_approach (str): Name of the sampling approach to select weather samples. Options = ['mode']
-            num_samples_per_patch (int): Number of weather samples to get for each patch grid
-            modelling_approach (str): The approach used for modelling
+            csv_name (str): Name of the historical weather CSV file.
+            root_dir (str): Directory with all the .npy files.
+            feature_names_list (list): List containing features we wish to include for model training.
+            sampling_approach (str): Name of the sampling approach to select weather samples. Options = ['mode'].
+            num_samples_per_patch (int): Number of weather samples to get for each patch grid.
+            modelling_approach (str): The approach used for modelling.
             transform (callable, optional): Optional transform to be applied on a sample.
         """
         self.csv_name = csv_name
@@ -79,6 +79,6 @@ class WeatherSource(DataSource):
 
         return weather_samples
 
-    def input_dim(self) -> int:
+    def input_dim(self):
         """Returns number of features for each weather item"""
         return len(self.feature_names_list)

@@ -45,9 +45,11 @@ class Compose:
 
 def setup_augmentations(config: DataSourceConfig):
     """Utils. to get the list of transforms from config."""
-    transform = config.params.get("transform", [])
-    augmentation_prob = config.params.get("augmentatation_prob", 0.0)
-    if not transform:
+    params = config.params
+    transforms_list = getattr(params, "transforms_list", [])
+    augmentation_prob = getattr(params, "augmentation_prob")
+    prob = getattr(params, "augmentation_prob", 0.0)
+    if not transforms_list:
         return None
 
     # we can add future transforms here
@@ -58,20 +60,19 @@ def setup_augmentations(config: DataSourceConfig):
 
     # check if the config keys match the options
     valid_keys = set(mapping.keys())
-    config_keys = set(config.transforms_list)
-    unknown_keys = config_keys - valid_keys
+    unknown_keys = set(transforms_list) - valid_keys
 
     if unknown_keys:
         raise ValueError(f"Invalid transforms found in config: {unknown_keys}.\n" f"Allowed options are: {list(valid_keys)}")
 
-    selected = [mapping[name] for name in config.transform]
+    selected = [mapping[name] for name in transforms_list]
     return Compose(selected, prob=augmentation_prob)
 
 
 def get_transforms(config: DataSourceConfig):
     """Returns Compose of DataSource specific transforms"""
-    transform = None
+    transforms_list = None
     if config.name == "grid":
-        transform = setup_augmentations(config)
+        transforms_list = setup_augmentations(config)
     else:
-        return transform
+        return transforms_list
