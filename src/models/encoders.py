@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-from collections.abc import Sequence
 
 import torch
 import torch.nn as nn
@@ -15,7 +14,8 @@ class EncoderBase(nn.Module, ABC):
 
     def __init__(self):
         super().__init__()
-        self.out_channels: int | None
+        self.in_channels: int
+        self.hidden_features: list | None
 
     @abstractmethod
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, list[torch.Tensor]]:
@@ -29,11 +29,9 @@ class BaselineEncoder(EncoderBase):
     Sets self.out_channels to bottleneck channels.
     """
 
-    def __init__(self, in_channels: int = 1, hidden_features: Sequence[int] | None = None):
+    def __init__(self, in_channels: int, hidden_features: list):
         super().__init__()
-        if hidden_features is None:
-            hidden_features = [64, 128, 256, 512]
-        self.hidden_features = list(hidden_features)
+        self.hidden_features = hidden_features
 
         self.layers = nn.ModuleList()
         in_ch = in_channels
@@ -41,12 +39,7 @@ class BaselineEncoder(EncoderBase):
             self.layers.append(double_conv_block(in_ch, h_feature))
             in_ch = h_feature
 
-        # bottleneck double conv: last_hidden -> last_hidden * 2
-        self.bottleneck = double_conv_block(self.hidden_features[-1], self.hidden_features[-1] * 2)
         self.maxpool = nn.MaxPool2d(kernel_size=2, stride=2)
-
-        # expose output channels (bottleneck channels)
-        self.out_channels = self.hidden_features[-1] * 2
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, list[torch.Tensor]]:
         skip_connections = []
@@ -54,5 +47,4 @@ class BaselineEncoder(EncoderBase):
             x = layer(x)
             skip_connections.append(x)
             x = self.maxpool(x)
-        x = self.bottleneck(x)
         return x, skip_connections
