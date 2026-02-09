@@ -123,7 +123,8 @@ class Trainer:
         predictions = self.model(inputs)
 
         if self.config.data.output_mult:
-            output_masks = inputs[:, :, :, -1]
+            output_masks = inputs[:, -1, :, :].unsqueeze(1)
+            assert output_masks.min() >= 0 and output_masks.max() <= 1, "Output masks should be between 0 and 1"
             predictions = predictions * output_masks
 
         loss_out = self.loss_fn(predictions, targets, masks)

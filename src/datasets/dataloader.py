@@ -106,6 +106,9 @@ class GridDataset(Dataset):
                         + list(range(self.fuel_feat_index, self.fuel_feat_index + num_classes))
                         + [i + num_classes - 1 for i in self.channel_indices[idx_fuel_feats:]]
                     )
+                if self.output_mult:
+                    max_channel_index = max(max(channel_feature_map.values()))
+                    self.channel_indices.append(max_channel_index)
 
     def __len__(self):
         return len(self.metadata_df)
@@ -140,6 +143,7 @@ class GridDataset(Dataset):
                 if self.normalize_fuel_feats_ordinal:
                     input_arr[:, :, self.fuel_feat_index] = (input_arr[:, :, self.fuel_feat_index] - MIN_FUEL_GRID) / (MAX_FUEL_GRID - MIN_FUEL_GRID)
 
+                # TODO: make this work for one-hot using channels 0 and 1
                 if self.output_mult:
                     # input is flot 0-1
                     fuel = input_arr[:, :, self.fuel_feat_index].copy()
@@ -158,12 +162,8 @@ class GridDataset(Dataset):
                     logical_and_dst = logical_and_dst.astype(np.float32) / 255.0
                     # add new dimension to input_arr
                     input_arr = np.concatenate([input_arr, logical_and_dst[..., np.newaxis]], axis=-1)
-                    
+
         if self.channel_indices is not None:
-            if not self.warned and self.output_mult:
-                print ("=== WARNING: this will mess with the training when using output multiplication")
-                # TODO: maybe we send the output_mult as a separate variable. would be cleaner.
-                self.warned = True
             input_arr = input_arr[:, :, self.channel_indices]
 
         if self.modelling_approach == "2":
