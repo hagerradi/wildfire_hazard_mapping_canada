@@ -33,6 +33,7 @@ class GridDataset(Dataset):
         normalize_fuel_feats_ordinal: bool | None = True,
         modelling_approach: str = "1",
         valid_mask_threshold: float = 0.01,
+        output_mult = False,
         transform: Callable | None = None,
     ):
         """
@@ -55,6 +56,7 @@ class GridDataset(Dataset):
         self.root_dir = root_dir
         self.valid_mask_threshold = valid_mask_threshold
         self.feature_names_list = feature_names_list
+        self.output_mult = output_mult
 
         if not self.feature_names_list:
             raise ValueError(
@@ -152,48 +154,31 @@ class GridDataset(Dataset):
 
         return (input_arr, output_arr, mask)  # (C, H, W), (1, H, W), (1, H, W)
 
+def get_shared_config(config: DataConfig, modelling_approach: int):
+    return {
+        "root_dir": config.root_dir, 
+        "feature_names_list": config.feature_names_list,
+        "filename_col": config.filename_col, 
+        "out_norm": config.output_normalization,
+        "fuel_feats_encoding": config.fuel_feats_encoding,
+        "normalize_fuel_feats_ordinal": config.normalize_fuel_feats_ordinal,
+        "modelling_approach": modelling_approach,
+        "valid_mask_threshold": config.valid_mask_threshold,
+        "output_mult": config.output_mult
+    }
+        
 
 def get_train_val_dataloader(config: DataConfig, modelling_approach: str = "1", seed: int = 42):
     """
     Creates and returns a DataLoader with deterministic shuffling
     """
-    root_dir = config.root_dir
-    train_csv_name = config.train_split
-    val_csv_name = config.val_split
-    filename_col = config.filename_col
+    conf = get_shared_config(config, modelling_approach)
     batch_size = config.batch_size
     num_workers = config.num_workers
-    out_norm = config.output_normalization
     transform = setup_augmentations(config)
-    feature_names_list = config.feature_names_list
-    fuel_feats_encoding = config.fuel_feats_encoding
-    normalize_fuel_feats_ordinal = config.normalize_fuel_feats_ordinal
-    valid_mask_threshold = config.valid_mask_threshold
 
-    train_dataset = GridDataset(
-        csv_name=train_csv_name,
-        root_dir=root_dir,
-        feature_names_list=feature_names_list,
-        filename_col=filename_col,
-        out_norm=out_norm,
-        fuel_feats_encoding=fuel_feats_encoding,
-        normalize_fuel_feats_ordinal=normalize_fuel_feats_ordinal,
-        modelling_approach=modelling_approach,
-        valid_mask_threshold=valid_mask_threshold,
-        transform=transform,
-    )
-    val_dataset = GridDataset(
-        csv_name=val_csv_name,
-        root_dir=root_dir,
-        feature_names_list=feature_names_list,
-        filename_col=filename_col,
-        out_norm=out_norm,
-        fuel_feats_encoding=fuel_feats_encoding,
-        normalize_fuel_feats_ordinal=normalize_fuel_feats_ordinal,
-        modelling_approach=modelling_approach,
-        valid_mask_threshold=valid_mask_threshold,
-        transform=None,  # no transforms for val. set
-    )
+    train_dataset = GridDataset(csv_name=config.train_split, transform=transform, **conf)
+    val_dataset = GridDataset(csv_name=config.val_split, transform=None, **conf)
 
     # Create a deterministic generator
     g = torch.Generator()
@@ -209,7 +194,12 @@ def get_train_val_dataloader(config: DataConfig, modelling_approach: str = "1", 
     )
 
     val_loader = DataLoader(
-        val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, worker_init_fn=seed_worker, generator=g
+        val_dataset, 
+        batch_size=batch_size, 
+        shuffle=False, 
+        num_workers=num_workers, 
+        worker_init_fn=seed_worker, 
+        generator=g,
     )
 
     return train_loader, val_loader
@@ -219,35 +209,26 @@ def get_test_loader(config: DataConfig, modelling_approach: str = "1", seed: int
     """
     Creates and returns the test loader
     """
-    root_dir = config.root_dir
-    test_csv_name = config.test_split
-    filename_col = config.filename_col
+    conf = get_shared_config(config, modelling_approach)
     batch_size = config.batch_size
     num_workers = config.num_workers
-    out_norm = config.output_normalization
-    feature_names_list = config.feature_names_list
-    fuel_feats_encoding = config.fuel_feats_encoding
-    normalize_fuel_feats_ordinal = config.normalize_fuel_feats_ordinal
-    valid_mask_threshold = config.valid_mask_threshold
 
     test_dataset = GridDataset(
-        csv_name=test_csv_name,
-        root_dir=root_dir,
-        feature_names_list=feature_names_list,
-        filename_col=filename_col,
-        out_norm=out_norm,
-        fuel_feats_encoding=fuel_feats_encoding,
-        normalize_fuel_feats_ordinal=normalize_fuel_feats_ordinal,
-        modelling_approach=modelling_approach,
-        valid_mask_threshold=valid_mask_threshold,
+        csv_name=config.test_split,
         transform=None,  # no transforms for test set
+        **conf
     )
 
     g = torch.Generator()
     g.manual_seed(seed)
 
     test_loader = DataLoader(
-        test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, worker_init_fn=seed_worker, generator=g
+        test_dataset, 
+        batch_size=batch_size, 
+        shuffle=False, 
+        num_workers=num_workers, 
+        worker_init_fn=seed_worker, 
+        generator=g
     )
 
     return test_loader

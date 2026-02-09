@@ -46,3 +46,6 @@ data/
 .python-version
 .env
 .env.*
+
+# ----
+configs/default_v1_flo.yaml

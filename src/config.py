@@ -56,6 +56,7 @@ class DataConfig(BaseModel):
     fuel_feats_encoding: str  # ordinal, one_hot
     normalize_fuel_feats_ordinal: bool = True
     valid_mask_threshold: float = 0.00
+    output_mult: bool = False
 
 
 class Config(BaseModel):
