@@ -11,36 +11,22 @@ from src.models.utils import double_conv_block
 class UNetBase(nn.Module, ABC):
     """Abstract base class for unets."""
 
-    def __init__(
-        self,
-        input_channels: int = 1,
-        num_classes: int = 1,
-        hidden_features: list[int] | None = None,
-        feature_list: list | None = None,
-        use_skip_connections: bool = True,
-        use_transpose_conv: bool = False,
-        use_activation_after_upsampling: bool = False,
-    ):
+    def __init__(self):
         super().__init__()
 
-        if hidden_features is None:
-            hidden_features = [64, 128, 256, 512]
-        if feature_list is None:
-            feature_list = ["spatial"]
-
-        self.input_channels = input_channels
-        self.num_classes = num_classes
-        self.hidden_features = hidden_features
-        self.use_skip_connections = use_skip_connections
-        self.use_transpose_conv = use_transpose_conv
-        self.use_activation_after_upsampling = use_activation_after_upsampling
-        self.feature_list = feature_list
+        self.input_channels: int
+        self.num_classes: int
+        self.hidden_features: list[int] | None
+        self.feature_list: list | None
+        self.use_skip_connections: bool
+        self.use_transpose_conv: bool
+        self.use_activation_after_upsampling: bool
 
         self.encoder: nn.Module
-        self.bottlenecks: nn.Module
+        self.bottleneck: nn.Module
         self.decoder: nn.Module
 
-        self._build_components()
+        # self._build_components()
 
     @abstractmethod
     def build_encoder(self) -> nn.Module:
@@ -72,16 +58,41 @@ class UNetBase(nn.Module, ABC):
 
 
 class BaselineUNet(UNetBase):
-    def __init__(self):
+    def __init__(
+        self,
+        input_channels: int = 1,
+        num_classes: int = 1,
+        hidden_features: list[int] | None = None,
+        feature_list: list | None = None,
+        use_skip_connections: bool = True,
+        use_transpose_conv: bool = False,
+        use_activation_after_upsampling: bool = False,
+    ):
         super().__init__()
+        if hidden_features is None:
+            hidden_features = [64, 128, 256, 512]
+        if feature_list is None:
+            feature_list = ["spatial"]
+
+        self.input_channels = input_channels
+        self.num_classes = num_classes
+        self.hidden_features = hidden_features
+        self.use_skip_connections = use_skip_connections
+        self.use_transpose_conv = use_transpose_conv
+        self.use_activation_after_upsampling = use_activation_after_upsampling
+        self.feature_list = feature_list
         # output layer
         self.out_conv = nn.Conv2d(self.hidden_features[0], self.num_classes, kernel_size=1)
+
+        self._build_components()
 
     def build_encoder(self) -> nn.Module:
         encoder = BaselineEncoder(in_channels=self.input_channels, hidden_features=self.hidden_features)
         return encoder
 
     def build_bottleneck(self) -> nn.Module:
+        if self.hidden_features is None:
+            raise ValueError("Hidden features cannot be None")
         return double_conv_block(self.hidden_features[-1], self.hidden_features[-1] * 2)
 
     def build_decoder(self) -> nn.Module:

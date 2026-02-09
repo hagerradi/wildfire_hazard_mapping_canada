@@ -29,12 +29,14 @@ class BaselineDecoder(DecoderBase):
 
     def __init__(
         self,
-        hidden_features: list[int],
+        hidden_features: list[int] | None,
         use_skip_connections: bool = True,
         use_transpose_conv: bool = False,
         use_activation_after_upsampling: bool = False,
     ):
         super().__init__()
+        if hidden_features is None:
+            raise ValueError("Hidden features cannot be None")
         self.hidden_features = list(hidden_features)
         self.use_skip_connections = use_skip_connections
         self.use_transpose_conv = use_transpose_conv

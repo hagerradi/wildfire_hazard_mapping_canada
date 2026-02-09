@@ -29,8 +29,10 @@ class BaselineEncoder(EncoderBase):
     Sets self.out_channels to bottleneck channels.
     """
 
-    def __init__(self, in_channels: int, hidden_features: list):
+    def __init__(self, in_channels: int, hidden_features: list[int] | None):
         super().__init__()
+        if hidden_features is None:
+            raise ValueError("Hidden features cannot be None")
         self.hidden_features = hidden_features
 
         self.layers = nn.ModuleList()
