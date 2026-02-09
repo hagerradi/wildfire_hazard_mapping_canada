@@ -24,8 +24,8 @@ training:
   log_every_n_epoch: 1
 
 evaluation:
-  best_ckpt_metric: "spearman" # loss, ssim, mae, etc
-  best_ckpt_metric_mode: "max" # max, or min
+  best_ckpt_metric: ["spearman", "ssim"] # loss, ssim, mae, etc
+  best_ckpt_metric_mode: ["max", "max"] # max, or min
   checkpoint_filename: "best.pth" # option to load best or last
 
 data:
