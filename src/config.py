@@ -57,6 +57,8 @@ class DataConfig(BaseModel):
     normalize_fuel_feats_ordinal: bool = True
     valid_mask_threshold: float = 0.00
     output_mult: bool = False
+    erosion: int = 1
+    dilation: int = 6
 
 
 class Config(BaseModel):

@@ -6,9 +6,10 @@ import numpy as np
 import pandas as pd
 import torch
 from torch.utils.data import DataLoader, Dataset
-
+import cv2 as cv
+import matplotlib.pyplot as plt
 from config import DataConfig
-from data_preparation.grid_loader.utils import BURN_COUNT_MAX, BURN_COUNT_MIN, fuel_ranking, get_range_burn_prob
+from data_preparation.grid_loader.utils import BURN_COUNT_MAX, BURN_COUNT_MIN, fuel_ranking, get_range_burn_prob, fuel_cutoff
 from src.datasets.transforms import setup_augmentations
 from src.datasets.utils import fill_nan_channel_mean_numpy, one_hot_encode, output_burn_prob_norm
 from utils import seed_worker
@@ -34,6 +35,8 @@ class GridDataset(Dataset):
         modelling_approach: str = "1",
         valid_mask_threshold: float = 0.01,
         output_mult = False,
+        erosion: int = 1,
+        dilation: int = 6,
         transform: Callable | None = None,
     ):
         """
@@ -57,6 +60,10 @@ class GridDataset(Dataset):
         self.valid_mask_threshold = valid_mask_threshold
         self.feature_names_list = feature_names_list
         self.output_mult = output_mult
+        self.erosion = erosion
+        self.dilation = dilation
+        assert self.erosion > 0 and self.dilation > 0, "Erosion and dilation must be greater than 0"
+        assert self.erosion <= self.dilation, "Erosion must be less than or equal to dilation"
 
         if not self.feature_names_list:
             raise ValueError(
@@ -117,20 +124,40 @@ class GridDataset(Dataset):
         assert np.all(np.isnan(input_arr) == np.isnan(input_arr[..., :1])), "NaN mask differs across channels!"
         mask = ~np.isnan(input_arr[:, :, 0])  # mask is True where not NaN, False where NaN
 
-        # Processing one hot encoding
-        if "fuel_grid" in self.feature_names_list and self.fuel_feats_encoding == "one_hot":  # (H,W,C+20)
-            num_classes = int(MAX_FUEL_GRID + 1)
-            input_arr = one_hot_encode(arr=input_arr, channel_idx=self.fuel_feat_index, num_classes=num_classes)
-
         input_arr = fill_nan_channel_mean_numpy(input_arr)  # remove NaNs from the inp data (replace by mean)
 
-        # Processing ordinal encoding norm (if not norm do nothing)
-        if "fuel_grid" in self.feature_names_list and self.fuel_feats_encoding == "ordinal":
-            input_arr[:, :, self.fuel_feat_index][~mask] = 0.0  # Nan is no fuel
-            if self.normalize_fuel_feats_ordinal:
-                input_arr[:, :, self.fuel_feat_index] = (input_arr[:, :, self.fuel_feat_index] - MIN_FUEL_GRID) / (
-                    MAX_FUEL_GRID - MIN_FUEL_GRID
-                )
+        # Processing one hot encoding
+        if "fuel_grid" in self.feature_names_list:
+
+
+
+            if self.fuel_feats_encoding == "one_hot":  # (H,W,C+20)
+                num_classes = int(MAX_FUEL_GRID + 1)
+                input_arr = one_hot_encode(arr=input_arr, channel_idx=self.fuel_feat_index, num_classes=num_classes)
+            elif self.fuel_feats_encoding == "ordinal":
+                input_arr[:, :, self.fuel_feat_index][~mask] = 0.0  # Nan is no fuel
+                if self.normalize_fuel_feats_ordinal:
+                    input_arr[:, :, self.fuel_feat_index] = (input_arr[:, :, self.fuel_feat_index] - MIN_FUEL_GRID) / (MAX_FUEL_GRID - MIN_FUEL_GRID)
+
+                if self.output_mult:
+                    # input is flot 0-1
+                    fuel = input_arr[:, :, self.fuel_feat_index].copy()
+                    fuel_nonzero = fuel > 0
+                    fuel_thresh = fuel > (fuel_cutoff/MAX_FUEL_GRID)
+                    img = (fuel_thresh.astype(np.float32) * 255).astype(np.uint8)
+                    erosion_size = 1
+                    erosion_element = cv.getStructuringElement(cv.MORPH_ELLIPSE, (2 * erosion_size + 1, 2 * erosion_size + 1),
+                                                (erosion_size, erosion_size))
+                    erosion_dst = cv.erode(img, erosion_element)
+                    dilation_size = 6
+                    dilation_element = cv.getStructuringElement(cv.MORPH_ELLIPSE, (2 * dilation_size + 1, 2 * dilation_size + 1),
+                                                    (dilation_size, dilation_size))
+                    dilation_dst = cv.dilate(erosion_dst, dilation_element)
+                    logical_and_dst = cv.bitwise_and((fuel_nonzero * 255).astype(np.uint8), dilation_dst)
+                    logical_and_dst = logical_and_dst.astype(np.float32) / 255.0
+                    # add new dimension to input_arr
+                    input_arr = np.concatenate([input_arr, logical_and_dst[..., np.newaxis]], axis=-1)
+                    
 
         input_arr = input_arr[:, :, self.channel_indices] if self.channel_indices else input_arr
 
@@ -164,7 +191,9 @@ def get_shared_config(config: DataConfig, modelling_approach: int):
         "normalize_fuel_feats_ordinal": config.normalize_fuel_feats_ordinal,
         "modelling_approach": modelling_approach,
         "valid_mask_threshold": config.valid_mask_threshold,
-        "output_mult": config.output_mult
+        "output_mult": config.output_mult,
+        "erosion": config.erosion,
+        "dilation": config.dilation,
     }
         
 

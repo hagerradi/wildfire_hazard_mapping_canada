@@ -57,6 +57,7 @@ class Trainer:
             fuel_feats_encoding=self.config.data.fuel_feats_encoding,
             root_dir=self.config.data.root_dir,
             modelling_approach=self.config.modelling_approach,
+            output_mult=self.config.data.output_mult,
         )
         print(f"[Trainer] Auto-inferred Input Channels: {self.input_channels}")
 

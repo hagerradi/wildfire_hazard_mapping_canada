@@ -79,6 +79,8 @@ fuel_ranking = {
     4: 14,  # C-4 Immature Jack or Lodgepole Pine  # highest spread
 }
 
+fuel_cutoff = 1 # in the fuel ranking above, consider up until this fuel source non-flammable
+
 
 def load_raster(path: str) -> np.ma.MaskedArray:
     """Load raster from given path"""
