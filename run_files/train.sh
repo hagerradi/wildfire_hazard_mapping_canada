@@ -20,4 +20,4 @@ export COMET_API_KEY=$COMET_API_KEY
 echo "Running training with config: $CONFIG_FILE"
 python -m src.train --config="$CONFIG_FILE"
 echo "Running evaluation with config: $CONFIG_FILE"
-python -m src.evaluate_hexels --config=configs/default_v1.yaml
+python -m src.evaluate_hexels --config="$CONFIG_FILE"
