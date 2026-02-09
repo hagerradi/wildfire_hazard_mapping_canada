@@ -10,7 +10,12 @@ This saves the rasters in the original data folders under `outputs`
 
 Step 2: Process hexel data into multiple square windows, which will be our data samples:
 ```bash
-python -m data_preparation.process_hexels_into_grids --root_dir="../yan_bp3" --modelling_approach=2 --output_type="count" --win_h=128 --win_w=128 --overlap_ratio=0.2
+python -m data_preparation.process_hexels_into_grids --root_dir="../yan_bp3" --modelling_approach=1 --output_type="count" --win_h=128 --win_w=128 --overlap_ratio=0.2
+```
+Note: If you want to run this in the cluster using SLURM array jobs, you can modify the `run_files/generate_grid.sh` by changing the save directory path and run the following in the terminal (from the main directory)
+
+```
+sbatch run_files/generate_grids.sh
 ```
 
 Step 3: Create training, validation and test splits.
@@ -21,5 +26,15 @@ Step 3: Create training, validation and test splits.
 - Finally, run the following with the decided splits
 
 ```bash
-python -m data_preparation.split_data --data_dir="../yan_bp3/data_samples_approach_2" --val_hex_id 02 23 33 18 46 --test_hex_id 01 12 39 16 49
+python -m data_preparation.split_data --data_dir="../yan_bp3/data_samples_approach_1" --val_hex_id 02 23 33 18 46 --test_hex_id 01 12 39 16 49
 ```
+
+Step 4: Create the weather aggregated table used for sampling.
+
+```
+python build_aggregated_weather_table.py --root_dir="../yan_bp3" --file_path="data_samples_approach_1/weather_table.csv"
+```
+
+Note: If you perform modelling approach 2, change the `--file_path` to `data_samples_approach_2/weather_table.csv` to save in the same place as the sampling data.
+
+Note: You can specify `--save_dir=<INSERT PATH>` if you wish to save elsewhere of `--root_dir`

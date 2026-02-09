@@ -18,6 +18,8 @@ column_full_form_abrevation_map = {
     "FireWeatherIndex": "fwi",
 }
 
+WEATHER_FEATURE_NUMERIC_COLS = ["temp", "rh", "ws", "wd", "prec", "ffmc", "dmc", "dc", "isi", "bui", "fwi"]
+
 
 def check_column_format(df: pd.DataFrame, col_name: str) -> np.bool:
     # Regex Explanation:
@@ -42,7 +44,7 @@ def check_weather_list(weather_list: pd.DataFrame) -> pd.DataFrame:
         return weather_list
     if not set(list(column_full_form_abrevation_map.keys())).issubset(weather_list.columns):
         raise ValueError("Missing columns/ weather df not in required format")
-    print("==============hexel didnot have the req columns===================")
+    print("==============hexel did not have the req columns===================")
     weather_list = weather_list.rename(columns=column_full_form_abrevation_map)
     if check_column_format(weather_list, "season"):
         print("=============Season check not passed==================")
@@ -50,4 +52,5 @@ def check_weather_list(weather_list: pd.DataFrame) -> pd.DataFrame:
     if check_column_format(weather_list, "wx_zone"):
         print("=============wx_zone check not passed==================")
         weather_list["wx_zone"] = weather_list["wx_zone"].astype(str).str.extract(r"(\d+)").astype(int)
+
     return weather_list

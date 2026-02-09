@@ -1,6 +1,7 @@
 import math
 import os
 from pathlib import Path
+from typing import Callable
 
 import numpy as np
 import pandas as pd
@@ -10,6 +11,7 @@ from sklearn.model_selection import train_test_split
 from data_preparation.paths import OUTPUT_BURN_PROB_PATH
 
 feature_names = ["ignition_grid", "esc_fires_grid", "fuel_grid", "elevation_grid", "weather_grid", "wind_grid", "out_grid"]
+WEATHER_FEATURE_COLS = ["temp", "rh", "ws", "wd", "prec", "ffmc", "dmc", "dc", "isi", "bui", "fwi"]
 HEX_ID_NA = ["52", "53", "04", "25", "47", "48"]
 
 feature_count_map = {
@@ -21,6 +23,33 @@ feature_count_map = {
     "elevation_grid": 1,
     "out_burn_prob": 1,
 }
+
+
+def aggregate_csv_by_pattern(root_dir: Path, pattern: str, load_function: Callable | None = None) -> pd.DataFrame:
+    """
+    Orchestrates the finding, loading, merging files of a certain pattern across all hex folders
+    """
+    # 1. Locate all files to load using specific pattern
+    files = sorted(root_dir.glob(pattern))
+    if not files:
+        raise FileNotFoundError(f"No files found matching pattern '{pattern}' in {root_dir}...")
+    print(f"Found {len(files)} files to process.")
+
+    # 2. Load (with option to use feature specific loader function) and stack all dataframes
+    data_frames = []
+    for f in files:
+        print(f"Loading file {f}")
+        if load_function:
+            df = load_function(f)
+        else:
+            df = pd.read_csv(f)
+        if df is not None:
+            data_frames.append(df)
+
+    full_df = pd.concat(data_frames, ignore_index=True)
+    print(f"Aggregated raw shape: {full_df.shape}")
+
+    return full_df
 
 
 def find_simulation_output_file(root_dir: str, hex_id: str, output_type: str, season: str = None, cause: str = None) -> str:
