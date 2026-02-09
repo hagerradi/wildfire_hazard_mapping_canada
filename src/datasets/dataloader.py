@@ -7,7 +7,6 @@ import pandas as pd
 import torch
 from torch.utils.data import DataLoader, Dataset
 import cv2 as cv
-import matplotlib.pyplot as plt
 from config import DataConfig
 from data_preparation.grid_loader.utils import BURN_COUNT_MAX, BURN_COUNT_MIN, fuel_ranking, get_range_burn_prob, fuel_cutoff
 from src.datasets.transforms import setup_augmentations
