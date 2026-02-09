@@ -1,9 +1,7 @@
 from abc import ABC, abstractmethod
-from collections.abc import Sequence
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 from src.models.utils import double_conv_block
 
@@ -80,7 +78,6 @@ class BaselineDecoder(DecoderBase):
         # reverse skip connections for decoder
         skip_connections = skip_connections[::-1]
 
-        # decoder part
         for i in range(len(self.layers) // 2):  # (0, 3)
             x = self.layers[2 * i](x)  # upsample
             if self.use_skip_connections:
