@@ -62,6 +62,7 @@ class GridDataset(Dataset):
         self.output_mult = output_mult
         self.erosion = erosion
         self.dilation = dilation
+        self.warned = False
         assert self.erosion > 0 and self.dilation > 0, "Erosion and dilation must be greater than 0"
         assert self.erosion <= self.dilation, "Erosion must be less than or equal to dilation"
 
@@ -158,8 +159,12 @@ class GridDataset(Dataset):
                     # add new dimension to input_arr
                     input_arr = np.concatenate([input_arr, logical_and_dst[..., np.newaxis]], axis=-1)
                     
-
-        input_arr = input_arr[:, :, self.channel_indices] if self.channel_indices else input_arr
+        if self.channel_indices is not None:
+            if not self.warned and self.output_mult:
+                print ("=== WARNING: this will mess with the training when using output multiplication")
+                # TODO: maybe we send the output_mult as a separate variable. would be cleaner.
+                self.warned = True
+            input_arr = input_arr[:, :, self.channel_indices]
 
         if self.modelling_approach == "2":
             if self.out_norm == "min_max":

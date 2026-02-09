@@ -119,7 +119,12 @@ class Trainer:
         targets = targets.to(self.device)
         masks = masks.to(self.device)
 
+
         predictions = self.model(inputs)
+
+        if self.config.data.output_mult:
+            output_masks = inputs[:, :, :, -1]
+            predictions = predictions * output_masks
 
         loss_out = self.loss_fn(predictions, targets, masks)
 
