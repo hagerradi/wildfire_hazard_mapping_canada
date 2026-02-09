@@ -1,8 +1,11 @@
 from abc import ABC, abstractmethod
-from typing import Dict, List, Tuple, Union  # noqa: UP035
 
 import torch
 import torch.nn as nn
+
+from src.models.decoders import BaselineDecoder
+from src.models.encoders import BaselineEncoder
+from src.models.utils import double_conv_block
 
 
 class UNetBase(nn.Module, ABC):
@@ -37,6 +40,62 @@ class UNetBase(nn.Module, ABC):
         self.bottlenecks: nn.Module
         self.decoder: nn.Module
 
+        self._build_components()
+
     @abstractmethod
-    def forward(self, x_spatial: torch.Tensor) -> torch.Tensor:
+    def build_encoder(self) -> nn.Module:
+        """Return an EncoderBase-derived module (or any module whose forward returns (bottleneck, skips))."""
         raise NotImplementedError
+
+    @abstractmethod
+    def build_bottleneck(self) -> nn.Module:
+        """Return the bottleneck module (nn.Module) applied to the deepest feature map."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def build_decoder(self) -> nn.Module:
+        """Return a DecoderBase-derived module (or any module that accepts (bottleneck, skips) -> features)."""
+        raise NotImplementedError
+
+    def _build_components(self) -> None:
+        """
+        Top-level hook that calls the build methods.
+        Subclasses may override build_* methods or override _build_components itself.
+        """
+        self.encoder = self.build_encoder()
+        self.bottleneck = self.build_bottleneck()
+        self.decoder = self.build_decoder()
+
+    @abstractmethod
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        raise NotImplementedError
+
+
+class BaselineUNet(UNetBase):
+    def __init__(self):
+        super().__init__()
+        # output layer
+        self.out_conv = nn.Conv2d(self.hidden_features[0], self.num_classes, kernel_size=1)
+
+    def build_encoder(self) -> nn.Module:
+        encoder = BaselineEncoder(in_channels=self.input_channels, hidden_features=self.hidden_features)
+        return encoder
+
+    def build_bottleneck(self) -> nn.Module:
+        return double_conv_block(self.hidden_features[-1], self.hidden_features[-1] * 2)
+
+    def build_decoder(self) -> nn.Module:
+        decoder = BaselineDecoder(
+            hidden_features=self.hidden_features,
+            use_skip_connections=self.use_skip_connections,
+            use_transpose_conv=self.use_transpose_conv,
+            use_activation_after_upsampling=self.use_activation_after_upsampling,
+        )
+        return decoder
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x, skip_connections = self.encoder(x)
+        x = self.bottleneck(x)
+        x = self.decoder(x, skip_connections)
+        x = self.out_conv(x)
+        return x
