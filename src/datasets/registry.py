@@ -3,7 +3,7 @@ import os
 import pandas as pd
 
 
-class Registry:
+class DataRegistry:
     """
     Manages a collection of file paths and metadata stored in the split CSV.
 
@@ -59,7 +59,7 @@ class Registry:
 
 
 if __name__ == "__main__":
-    registry = Registry(
+    registry = DataRegistry(
         csv_name="train_indices.csv",
         root_dir="yan_bp3/data_samples_approach_1/",
     )

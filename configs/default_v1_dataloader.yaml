@@ -57,6 +57,8 @@ data:
         feature_names_list: ["temp", "rh", "prec", "ffmc", "dmc", "dc", "isi", "bui"]
         sampling_approach: "mode"
         num_samples_per_patch: 128
+        transforms_list: []
+        augmentation_prob: 0.00
 
 
 logger:

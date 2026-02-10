@@ -11,7 +11,7 @@ import torchvision.transforms.functional as F
 
 from src.config import DataSourceConfig, GridParams
 from src.datasets.dataset import MultiSourceDataset
-from src.datasets.registry import Registry
+from src.datasets.registry import DataRegistry
 from src.datasets.sources.base import DataSource
 from src.datasets.sources.grids import GridSource
 from src.datasets.sources.weather import WeatherSource
@@ -85,7 +85,7 @@ def temp_data_dir():
 
 def test_multi_source_integration(temp_data_dir):
     tmpdir, train_csv, val_csv, test_csv, weather_csv, weather_feats = temp_data_dir
-    registry = Registry(csv_name=train_csv, root_dir=tmpdir)
+    registry = DataRegistry(csv_name=train_csv, root_dir=tmpdir)
     grid_source = GridSource(root_dir=tmpdir, feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"], modelling_approach="2")
     weather_source = WeatherSource(
         csv_name=weather_csv, root_dir=tmpdir, feature_names_list=weather_feats, modelling_approach="2", num_samples_per_patch=2
@@ -104,7 +104,7 @@ def test_multi_source_integration(temp_data_dir):
 
 def test_grid_one_hot_encoding(temp_data_dir):
     tmpdir, train_csv, _, _, _, _ = temp_data_dir
-    registry = Registry(csv_name=train_csv, root_dir=tmpdir)
+    registry = DataRegistry(csv_name=train_csv, root_dir=tmpdir)
     grid_source = GridSource(
         root_dir=tmpdir,
         feature_names_list=["fuel_grid"],
@@ -121,7 +121,7 @@ def test_grid_one_hot_encoding(temp_data_dir):
 
 def test_grid_feature_names_list(temp_data_dir):
     tmpdir, train_csv, _, _, _, _ = temp_data_dir
-    registry = Registry(csv_name=train_csv, root_dir=tmpdir)
+    registry = DataRegistry(csv_name=train_csv, root_dir=tmpdir)
 
     grid_source = GridSource(root_dir=tmpdir, feature_names_list=["fuel_grid"], modelling_approach="2")
     ds = MultiSourceDataset(registry=registry, sources={"grid": grid_source})
@@ -136,7 +136,7 @@ def test_grid_feature_names_list(temp_data_dir):
 def test_registry_threshold(temp_data_dir):
     tmpdir, train_csv, _, _, _, _ = temp_data_dir
     # Set threshold above 1.0 so no samples are valid
-    registry = Registry(csv_name=train_csv, root_dir=tmpdir, valid_mask_threshold=1.0)
+    registry = DataRegistry(csv_name=train_csv, root_dir=tmpdir, valid_mask_threshold=1.0)
     ds = MultiSourceDataset(registry=registry, sources={})
 
     assert len(ds) == 0
@@ -144,7 +144,7 @@ def test_registry_threshold(temp_data_dir):
 
 def test_grid_output_normalization_iters(temp_data_dir):
     tmpdir, train_csv, _, _, _, _ = temp_data_dir
-    registry = Registry(csv_name=train_csv, root_dir=tmpdir)
+    registry = DataRegistry(csv_name=train_csv, root_dir=tmpdir)
 
     grid_source = GridSource(
         root_dir=tmpdir,
@@ -166,7 +166,7 @@ def test_grid_output_normalization_iters(temp_data_dir):
 
 def test_grid_transforms(temp_data_dir):
     tmpdir, train_csv, _, _, _, _ = temp_data_dir
-    registry = Registry(csv_name=train_csv, root_dir=tmpdir)
+    registry = DataRegistry(csv_name=train_csv, root_dir=tmpdir)
     # Get Original Data (No Transforms)
     ds_orig = MultiSourceDataset(
         registry=registry,

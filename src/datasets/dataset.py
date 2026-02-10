@@ -3,7 +3,7 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 
 from src.config import DataConfig, DataSourceConfig
-from src.datasets.registry import Registry
+from src.datasets.registry import DataRegistry
 from src.datasets.sources.base import DataSource
 from src.datasets.sources.grids import GridSource
 from src.datasets.sources.weather import WeatherSource
@@ -17,15 +17,15 @@ class MultiSourceDataset(Dataset):
     """
     Composable dataset that handles data loading from multiple sources.
 
-    Indexing: Managed by Registry.
+    Indexing: Managed by DataRegistry.
     Extraction: Delegated to DataSource objects.
     I/O Optimization: Files are memory-mapped once per __getitem__ and shared via context to prevent redundant reads.
     """
 
-    def __init__(self, registry: Registry, sources: dict[str, DataSource]):
+    def __init__(self, registry: DataRegistry, sources: dict[str, DataSource]):
         """
         Args:
-            registry (Registry): Manages file paths and metadata.
+            registry (DataRegistry): Manages file paths and metadata.
             sources (dict[str, DataSource]): A dictionary mapping output keys
             (example: 'grid', 'weather') to their respective data sources (example: GridSource, WeatherSource)
         """
@@ -57,7 +57,7 @@ def build_dataset(config: DataConfig, csv_name: str, modelling_approach: str = "
     root_dir = config.root_dir
     filename_col = config.filename_col
     valid_mask_threshold = config.valid_mask_threshold
-    registry = Registry(csv_name=csv_name, root_dir=root_dir, filename_col=filename_col, valid_mask_threshold=valid_mask_threshold)
+    registry = DataRegistry(csv_name=csv_name, root_dir=root_dir, filename_col=filename_col, valid_mask_threshold=valid_mask_threshold)
 
     # 2. Build sources
     sources: dict[str, DataSource] = {}
@@ -122,7 +122,7 @@ def get_test_dataloader(config: DataConfig, modelling_approach: str = "1", seed:
 
 # Very basic implementation of dataset from scratch (not using config)
 if __name__ == "__main__":
-    registry = Registry(csv_name="train_indices.csv", root_dir="yan_bp3/data_samples_approach_1_weather")
+    registry = DataRegistry(csv_name="train_indices.csv", root_dir="yan_bp3/data_samples_approach_1_weather")
     grid_source = GridSource(
         root_dir="yan_bp3/data_samples_approach_1_weather", feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"]
     )

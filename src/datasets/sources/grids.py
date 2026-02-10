@@ -107,7 +107,7 @@ class GridSource(DataSource):
         if self.input_channel_indices is not None:
             input_arr = input_arr[:, :, self.input_channel_indices]
 
-        # 6. Perform normalizations
+        # 6. Perform output normalizations
         if self.modelling_approach == "2":
             if self.out_norm == "min_max":
                 output_arr = (output_arr - BURN_COUNT_MIN) / (BURN_COUNT_MAX - BURN_COUNT_MIN)

@@ -1,6 +1,6 @@
 # base configurations for experiments
 from collections.abc import Callable
-from typing import Any, Literal, Union
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -54,11 +54,13 @@ class WeatherParams(BaseModel):
     feature_names_list: list[str]
     sampling_approach: str = "mode"
     num_samples_per_patch: int = 128
+    transforms_list: list[str]
+    augmentation_prob: float
 
 
 class DataSourceConfig(BaseModel):
     name: Literal["grid", "weather"]
-    params: Union[GridParams, WeatherParams]
+    params: GridParams | WeatherParams
 
 
 class DataConfig(BaseModel):
