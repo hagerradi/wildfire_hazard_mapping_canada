@@ -96,7 +96,7 @@ def dummy_config(tmp_path):
             "max_epochs": 1,
             "log_every_n_epoch": 1,
         },
-        "evaluation": {"best_ckpt_metric": "spearman", "checkpoint_filename": "best.pth"},
+        "evaluation": {"best_ckpt_metrics": ["spearman"], "best_ckpt_metrics_mode": ["max"], "checkpoint_filename": "best.pth"},
         # keep/remove depending on how your Config is defined
         "model_dump": lambda: {},
     }
