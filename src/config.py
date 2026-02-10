@@ -31,8 +31,8 @@ class TrainingConfig(BaseModel):
 
 
 class EvaluationConfig(BaseModel):
-    best_ckpt_metric: str = "spearman"  # metric to choose best checkpoint
-    best_ckpt_metric_mode: str = "max"  # max, or min
+    best_ckpt_metrics: list[str] = ["spearman", "ssim"]  # metric to choose best checkpoint
+    best_ckpt_metrics_mode: list[str] = ["max", "max"]  # max, or min
     checkpoint_filename: str = "last.pth"
 
 

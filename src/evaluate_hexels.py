@@ -81,10 +81,7 @@ def main() -> None:
         raise ValueError("[Checkpoint] checkpoint file not found or invalid...")  # noqa: B904
 
     if model_ckpt is not None:
-        print(
-            f"[Checkpoint] Loaded epoch={model_ckpt.get('epoch', 'N/A')} "
-            f"{config.evaluation.best_ckpt_metric}={model_ckpt.get('metric_value', 'N/A')}"
-        )
+        print(f"[Checkpoint] Loaded epoch={model_ckpt.get('epoch', 'N/A')} " f"Checkpoint Metrics={model_ckpt.get('metric_value', 'N/A')}")
 
     # ---------- Evaluation ----------
     print("\n[Evaluation] Running on test set...")

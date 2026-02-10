@@ -46,6 +46,12 @@ class Trainer:
             # log all the params.
             self.logger.log_params(self.config.model_dump())
         self.setup()
+        # metrics for best checkpoint saving
+        self.best_ckpt_metrics = list(self.config.evaluation.best_ckpt_metrics)
+        self.best_ckpt_modes = list(self.config.evaluation.best_ckpt_metrics_mode)
+        if len(self.best_ckpt_metrics) != len(self.best_ckpt_modes):
+            raise ValueError("Number of best_ckpt_metric and best_ckpt_metric_mode must match!")
+        self._best_metric_list: list[float] = []
 
     def setup(self):
         """
@@ -132,6 +138,27 @@ class Trainer:
         predictions = torch.sigmoid(predictions)
 
         return predictions, total_loss, loss_parts, targets, masks
+
+    @staticmethod
+    def _are_metrics_better(curr: list[float], best: list[float], modes: list[str]):
+        if not best:
+            return True
+
+        improved = False
+        for c, b, mode in zip(curr, best, modes, strict=False):
+            if mode == "min":
+                if c > b:
+                    return False  # a metric got worse!
+                elif c < b:
+                    improved = True
+            elif mode == "max":
+                if c < b:
+                    return False  # a metric got worse!
+                elif c > b:
+                    improved = True
+            else:
+                raise ValueError(f"Unknown mode: {mode}")
+        return improved  # Only True if at least one metric improved, none worse
 
     def train_epoch(self, loader: DataLoader) -> dict[str, float]:
         self.model.train()
@@ -242,12 +269,6 @@ class Trainer:
     def test(self, loader: DataLoader, return_predictions: bool = False) -> dict[str, float] | tuple[dict[str, float], np.ndarray]:
         return self.validate(loader, return_predictions=return_predictions)
 
-    @staticmethod
-    def _is_metric_better(curr, best, best_mode):
-        if best is None:
-            return True
-        return curr > best if best_mode == "max" else curr < best
-
     def run_training(
         self,
         train_loader: DataLoader,
@@ -255,10 +276,6 @@ class Trainer:
     ):
         num_epochs = self.config.training.max_epochs
         log_every_n_epoch = self.config.training.log_every_n_epoch
-
-        best_val_metric = None
-        metric_key = getattr(getattr(self.config, "evaluation", None), "best_ckpt_metric", "spearman")
-        metric_mode = (getattr(self.config, "best_ckpt_metric_mode", None) or "max").lower()
 
         for epoch in range(1, num_epochs + 1):
             start = time.time()
@@ -285,29 +302,24 @@ class Trainer:
                 if self.logger:
                     self.logger.log_metrics(metrics_to_log, epoch=epoch)
 
-            if val_result is not None:
-                if metric_key not in val_result:
-                    raise KeyError(
-                        f"Best metric '{metric_key}' not found in val_result keys={list(val_result.keys())}. "
-                        f"Either compute it in validation or change config.evaluation.best_metric."
-                    )
-                if metric_mode not in ("max", "min"):
-                    raise ValueError(f"evaluation.best_mode must be 'max' or 'min', got: {metric_mode}")
-
-                if best_val_metric is None or self._is_metric_better(val_result[metric_key], best_val_metric, metric_mode):
-                    best_val_metric = val_result[metric_key]
-                    # auto-save best if save_dir configured
+            # Save best checkpoint based on multi-metrics
+            if val_result:
+                curr_metric_list = [val_result[m] for m in self.best_ckpt_metrics]
+                if self._are_metrics_better(curr_metric_list, self._best_metric_list, self.best_ckpt_modes):
+                    self._best_metric_list = curr_metric_list
                     if self.save_dir:
-                        best_path = self.save_model(epoch=epoch, metric_value=best_val_metric, filename="best.pth")
-
-                        # log best model to comet
+                        best_path = self.save_model(
+                            epoch=epoch,
+                            metric_value={m: v for m, v in zip(self.best_ckpt_metrics, curr_metric_list, strict=False)},
+                            filename="best.pth",
+                        )
                         if self.logger:
                             self.logger.experiment.log_model(name="best", file_or_folder=best_path, overwrite=True)
 
-            # save most recent checkpoint
-            self.save_model(epoch=epoch, metric_value=val_result[metric_key])
+                # save most recent checkpoint
+                self.save_model(epoch=epoch, metric_value={m: v for m, v in zip(self.best_ckpt_metrics, curr_metric_list, strict=False)})
 
-    def save_model(self, epoch: int, metric_value: float, filename: str = "last.pth"):
+    def save_model(self, epoch: int, metric_value: float | dict, filename: str = "last.pth"):
         if not self.save_dir:
             raise ValueError("save_dir not set")
 
