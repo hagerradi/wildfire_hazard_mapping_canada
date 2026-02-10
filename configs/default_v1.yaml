@@ -46,6 +46,7 @@ data:
   fuel_feats_encoding: "one_hot" # ordinal, one_hot
   normalize_fuel_feats_ordinal: True
   valid_mask_threshold:  0.00
+  output_mult: False
 
 logger:
   enabled: True

@@ -70,7 +70,9 @@ def log_norm(out_arr: np.ndarray, multiplier: int = 1000) -> np.ndarray:
     return np.log1p(multiplier * out_arr) / np.log1p(multiplier)
 
 
-def output_burn_prob_norm(output_arr: np.ndarray, burn_prob_max: float, burn_prob_min: float, out_norm: str) -> np.ndarray:
+def output_burn_prob_norm(
+    output_arr: np.ndarray, burn_prob_max: float, burn_prob_min: float, out_norm: str
+) -> np.ndarray:
     """
     Normalize the output burn prob map
     """
@@ -82,7 +84,9 @@ def output_burn_prob_norm(output_arr: np.ndarray, burn_prob_max: float, burn_pro
     return output_arr
 
 
-def compute_number_input_channels(feature_names_list: list[str], fuel_feats_encoding: str, root_dir: str, modelling_approach: str) -> int:
+def compute_number_input_channels(
+    feature_names_list: list[str], fuel_feats_encoding: str, root_dir: str, modelling_approach: str, output_mult: bool
+) -> int:
     """
     Calculates the total number of input channels based on selected features
     and encoding strategy.
@@ -115,5 +119,8 @@ def compute_number_input_channels(feature_names_list: list[str], fuel_feats_enco
         num_fuel_classes = int(MAX_FUEL_GRID + 1)
         # Net change: -1 (remove ordinal) + num_classes (add one-hot)
         total_channels = total_channels - 1 + num_fuel_classes
+    
+    if output_mult:
+        total_channels += 1
 
     return total_channels

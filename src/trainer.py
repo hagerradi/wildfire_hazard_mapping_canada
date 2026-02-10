@@ -63,6 +63,7 @@ class Trainer:
             fuel_feats_encoding=self.config.data.fuel_feats_encoding,
             root_dir=self.config.data.root_dir,
             modelling_approach=self.config.modelling_approach,
+            output_mult=self.config.data.output_mult,
         )
         print(f"[Trainer] Auto-inferred Input Channels: {self.input_channels}")
 
@@ -124,7 +125,13 @@ class Trainer:
         targets = targets.to(self.device)
         masks = masks.to(self.device)
 
+
         predictions = self.model(inputs)
+
+        if self.config.data.output_mult:
+            output_masks = inputs[:, -1, :, :].unsqueeze(1)
+            assert output_masks.min() >= 0 and output_masks.max() <= 1, "Output masks should be between 0 and 1"
+            predictions = predictions * output_masks
 
         loss_out = self.loss_fn(predictions, targets, masks)
 
