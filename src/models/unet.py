@@ -6,7 +6,8 @@ import torch.nn as nn
 from src.models.decoders import BaselineDecoder
 from src.models.encoders import BaselineEncoder
 from src.models.utils import double_conv_block
-
+from src.models.encoder import TabularFeatureEncoder
+from src.models.bottlenecks import MultiSourceBottleneck
 
 class UNetBase(nn.Module, ABC):
     """Abstract base class for unets."""
@@ -17,7 +18,7 @@ class UNetBase(nn.Module, ABC):
         self.input_channels: int
         self.num_classes: int
         self.hidden_features: list[int] | None
-        self.feature_list: list | None
+        self.input_feature_list: list | None
         self.use_skip_connections: bool
         self.use_transpose_conv: bool
         self.use_activation_after_upsampling: bool
@@ -29,7 +30,7 @@ class UNetBase(nn.Module, ABC):
         # self._build_components()
 
     @abstractmethod
-    def build_encoder(self) -> nn.Module:
+    def build_encoder(self) -> nn.Module | nn.ModuleDict:
         """Return an EncoderBase-derived module (or any module whose forward returns (bottleneck, skips))."""
         raise NotImplementedError
 
@@ -53,7 +54,7 @@ class UNetBase(nn.Module, ABC):
         self.decoder = self.build_decoder()
 
     @abstractmethod
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, x_tabular: torch.Tensor | None = None) -> torch.Tensor:
         raise NotImplementedError
 
 
@@ -109,3 +110,76 @@ class BaselineUNet(UNetBase):
         x = self.decoder(x, skip_connections)
         x = self.out_conv(x)
         return x
+
+class MultiSourceUNet(UNetBase):
+    def __init__(self, 
+        input_channels: int = 1,
+        num_classes: int = 1,
+        hidden_features: list[int] | None = None,
+        input_feature_list: list | None = None,
+        use_skip_connections: bool = True,
+        use_transpose_conv: bool = False,
+        use_activation_after_upsampling: bool = False,
+        tabular_input_dim: int | None = None,
+        tabular_embed_dim: int | None = None,
+        tabular_feature_encoder_pooling: str | None = None
+        ):
+        super().__init__()
+        
+        self.input_channels = input_channels
+        self.num_classes = num_classes
+        self.hidden_features = hidden_features if hidden_features else [64, 128, 256, 512]
+        self.input_feature_list = input_feature_list
+        self.use_skip_connections = use_skip_connections
+        self.use_transpose_conv = use_transpose_conv
+        self.use_activation_after_upsampling = use_activation_after_upsampling
+        self.tabular_input_dim = tabular_input_dim
+        self.tabular_embed_dim = tabular_embed_dim
+        self.tabular_feature_encoder_pooling = tabular_feature_encoder_pooling
+        self._build_components()
+        self.out_conv = nn.Conv2d(self.hidden_features[0], self.num_classes, kernel_size=1)
+    
+    def build_encoder(self) -> nn.Module:
+        encoders = nn.ModuleDict()
+        if "spatial" in self.input_feature_list:
+            encoders["spatial"] =  BaselineEncoder(in_channels=self.input_channels, hidden_features=self.hidden_features)
+        if "tabular" in self.input_feature_list:
+            encoders["tabular"] = TabularFeatureEncoder(input_dim=self.tabular_input_dim, pooling_type = self.tabular_feature_encoder_pooling)
+        return encoders
+
+    def build_bottleneck(self) -> nn. Module:
+        aux_dims = {}
+        if "tabular" in self.input_feature_list:
+            aux_dims["tabular"] = self.tabular_embed_dim
+        return MultiSourceBottleneck(in_channels=self.hidden_features[-1], out_channels=self.hidden_features[-1] * 2, aux_dims=aux_dims)
+
+    def build_decoder(self) -> nn.Module:
+        decoder = BaselineDecoder(
+            hidden_features=self.hidden_features,
+            use_skip_connections=self.use_skip_connections,
+            use_transpose_conv=self.use_transpose_conv,
+            use_activation_after_upsampling=self.use_activation_after_upsampling,
+        )
+        return decoder
+
+    def forward(self, x: torch.Tensor, x_tabular: torch.Tensor) -> torch.Tensor:
+        skip_connections = []
+        tabular_emb = None 
+
+        # 1. Spatial Path
+        if "spatial" in self.encoder: # Use self.encoder keys for safety
+            x, skip_connections = self.encoder["spatial"](x)
+
+        # 2. Tabular Path
+        if "tabular" in self.encoder and x_tabular is not None:
+            # FIX: Assign to a new variable so the bottleneck receives 
+            # either an embedding or None, never raw tabular data.
+            tabular_emb = self.encoder["tabular"](x_tabular)
+
+        # 3. Bottleneck
+        # Passes the spatial map and the (encoded or None) tabular features
+        x = self.bottleneck(x, tabular_emb)
+
+        # 4. Decoder and Head
+        x = self.decoder(x, skip_connections)
+        return self.out_conv(x)

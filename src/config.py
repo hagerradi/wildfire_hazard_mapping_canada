@@ -15,6 +15,8 @@ class LoggerConfig(BaseModel):
 
 class ModelConfig(BaseModel):
     num_classes: int
+    weather_embed_dim: 64
+    fusion_pooling: "max"
 
 
 class OptimizerConfig(BaseModel):
