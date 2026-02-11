@@ -17,7 +17,7 @@ class WeatherSource(DataSource):
 
     def __init__(
         self,
-        csv_name: str,
+        weather_samples_csv_name: str,
         root_dir: str,
         feature_names_list: list[str],
         sampling_approach: str = "mode",
@@ -27,7 +27,7 @@ class WeatherSource(DataSource):
     ):
         """
         Args:
-            csv_name (str): Name of the historical weather CSV file.
+            weather_samples_csv_name (str): Name of the historical weather CSV file.
             root_dir (str): Directory with all the .npy files.
             feature_names_list (list): List containing features we wish to include for model training.
             sampling_approach (str): Name of the sampling approach to select weather samples. Options = ['mode'].
@@ -35,13 +35,13 @@ class WeatherSource(DataSource):
             modelling_approach (str): The approach used for modelling.
             transform (callable, optional): Optional transform to be applied on a sample.
         """
-        self.csv_name = csv_name
+        self.weather_samples_csv_name = weather_samples_csv_name
         self.root_dir = root_dir
         self.feature_names_list = feature_names_list
         self.sampling_approach = sampling_approach
         self.num_samples_per_patch = num_samples_per_patch
         self.modelling_approach = modelling_approach
-        self.df_weather = pd.read_csv(os.path.join(self.root_dir, self.csv_name))
+        self.df_weather = pd.read_csv(os.path.join(self.root_dir, self.weather_samples_csv_name))
         # 1. Extract weather zone channel index
         with open(os.path.join(self.root_dir, f"feature_channel_map_{self.modelling_approach}.json")) as f:
             channel_feature_map = json.load(f)
@@ -52,13 +52,13 @@ class WeatherSource(DataSource):
             feats = group[self.feature_names_list].values.astype(np.float32)
             self.weather_lut[int(zone)] = feats
 
-    def get_sample(self, context: dict):
-        if "data" in context:
+    def get_sample(self, patch_info: dict):
+        if "data" in patch_info:
             # Fast load (Training)
-            data = context["data"]
+            data = patch_info["data"]
         else:
             # Slow Path (Debugging / Standalone)
-            data = np.load(context["file_path"])
+            data = np.load(patch_info["file_path"])
         weather_arr = data[:, :, self.weather_channel]
         mask = ~np.isnan(weather_arr)
         weather_arr = weather_arr[mask]

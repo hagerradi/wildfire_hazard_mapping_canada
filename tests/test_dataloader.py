@@ -11,10 +11,7 @@ import torchvision.transforms.functional as F
 
 from src.config import DataSourceConfig, GridParams
 from src.datasets.dataset import MultiSourceDataset
-from src.datasets.registry import DataRegistry
-from src.datasets.sources.base import DataSource
-from src.datasets.sources.grids import GridSource
-from src.datasets.sources.weather import WeatherSource
+from src.datasets.sources import GridSource, WeatherSource
 from src.datasets.transforms import setup_augmentations
 
 
@@ -85,12 +82,20 @@ def temp_data_dir():
 
 def test_multi_source_integration(temp_data_dir):
     tmpdir, train_csv, val_csv, test_csv, weather_csv, weather_feats = temp_data_dir
-    registry = DataRegistry(csv_name=train_csv, root_dir=tmpdir)
-    grid_source = GridSource(root_dir=tmpdir, feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"], modelling_approach="2")
-    weather_source = WeatherSource(
-        csv_name=weather_csv, root_dir=tmpdir, feature_names_list=weather_feats, modelling_approach="2", num_samples_per_patch=2
+    grid_source = GridSource(
+        root_dir=tmpdir,
+        feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],
+        modelling_approach="2",
+        fuel_feats_encoding="ordinal",
     )
-    ds = MultiSourceDataset(registry=registry, sources={"grid": grid_source, "weather": weather_source})
+    weather_source = WeatherSource(
+        weather_samples_csv_name=weather_csv,
+        root_dir=tmpdir,
+        feature_names_list=weather_feats,
+        modelling_approach="2",
+        num_samples_per_patch=2,
+    )
+    ds = MultiSourceDataset(csv_name="train.csv", root_dir=tmpdir, sources={"grid": grid_source, "weather": weather_source})
     sample = ds[0]
 
     assert "grid" in sample.keys()
@@ -104,7 +109,6 @@ def test_multi_source_integration(temp_data_dir):
 
 def test_grid_one_hot_encoding(temp_data_dir):
     tmpdir, train_csv, _, _, _, _ = temp_data_dir
-    registry = DataRegistry(csv_name=train_csv, root_dir=tmpdir)
     grid_source = GridSource(
         root_dir=tmpdir,
         feature_names_list=["fuel_grid"],
@@ -112,7 +116,7 @@ def test_grid_one_hot_encoding(temp_data_dir):
         fuel_feats_encoding="one_hot",
         normalize_fuel_feats_ordinal=True,
     )
-    ds = MultiSourceDataset(registry=registry, sources={"grid": grid_source})
+    ds = MultiSourceDataset(csv_name="train.csv", root_dir=tmpdir, sources={"grid": grid_source})
     sample = ds[0]
     x, y, mask = sample["grid"]
     # Should have more channels due to one-hot
@@ -121,10 +125,8 @@ def test_grid_one_hot_encoding(temp_data_dir):
 
 def test_grid_feature_names_list(temp_data_dir):
     tmpdir, train_csv, _, _, _, _ = temp_data_dir
-    registry = DataRegistry(csv_name=train_csv, root_dir=tmpdir)
-
-    grid_source = GridSource(root_dir=tmpdir, feature_names_list=["fuel_grid"], modelling_approach="2")
-    ds = MultiSourceDataset(registry=registry, sources={"grid": grid_source})
+    grid_source = GridSource(root_dir=tmpdir, feature_names_list=["fuel_grid"], modelling_approach="2", fuel_feats_encoding="ordinal")
+    ds = MultiSourceDataset(csv_name="train.csv", root_dir=tmpdir, sources={"grid": grid_source})
 
     sample = ds[0]
     x, y, mask = sample["grid"]
@@ -136,23 +138,20 @@ def test_grid_feature_names_list(temp_data_dir):
 def test_registry_threshold(temp_data_dir):
     tmpdir, train_csv, _, _, _, _ = temp_data_dir
     # Set threshold above 1.0 so no samples are valid
-    registry = DataRegistry(csv_name=train_csv, root_dir=tmpdir, valid_mask_threshold=1.0)
-    ds = MultiSourceDataset(registry=registry, sources={})
+    ds = MultiSourceDataset(csv_name="train.csv", root_dir=tmpdir, valid_mask_threshold=1.0)
 
     assert len(ds) == 0
 
 
 def test_grid_output_normalization_iters(temp_data_dir):
     tmpdir, train_csv, _, _, _, _ = temp_data_dir
-    registry = DataRegistry(csv_name=train_csv, root_dir=tmpdir)
-
     grid_source = GridSource(
         root_dir=tmpdir,
         feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],
         modelling_approach="2",
-        out_norm="total_iters",  # Logic lives here now
+        out_norm="total_iters",
     )
-    ds = MultiSourceDataset(registry=registry, sources={"grid": grid_source})
+    ds = MultiSourceDataset(csv_name="train.csv", root_dir=tmpdir, sources={"grid": grid_source})
     sample = ds[0]
     _, y, _ = sample["grid"]
     # Output should be normalized by total_unique_iters (10)
@@ -166,10 +165,10 @@ def test_grid_output_normalization_iters(temp_data_dir):
 
 def test_grid_transforms(temp_data_dir):
     tmpdir, train_csv, _, _, _, _ = temp_data_dir
-    registry = DataRegistry(csv_name=train_csv, root_dir=tmpdir)
     # Get Original Data (No Transforms)
     ds_orig = MultiSourceDataset(
-        registry=registry,
+        csv_name="train.csv",
+        root_dir=tmpdir,
         sources={
             "grid": GridSource(
                 root_dir=tmpdir,
@@ -195,7 +194,8 @@ def test_grid_transforms(temp_data_dir):
     )
     transform_flip = setup_augmentations(flip_config)
     ds_flip = MultiSourceDataset(
-        registry=registry,
+        csv_name="train.csv",
+        root_dir=tmpdir,
         sources={
             "grid": GridSource(
                 root_dir=tmpdir,
@@ -226,7 +226,8 @@ def test_grid_transforms(temp_data_dir):
     )
     transform_rot = setup_augmentations(rot_config)
     ds_rot = MultiSourceDataset(
-        registry=registry,
+        csv_name="train.csv",
+        root_dir=tmpdir,
         sources={
             "grid": GridSource(
                 root_dir=tmpdir,

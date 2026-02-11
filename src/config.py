@@ -50,7 +50,7 @@ class GridParams(BaseModel):
 class WeatherParams(BaseModel):
     """Specific parameters for the WeatherSource."""
 
-    csv_name: str = "weather_table.csv"
+    weather_samples_csv_name: str = "weather_table.csv"
     feature_names_list: list[str]
     sampling_approach: str = "mode"
     num_samples_per_patch: int = 128

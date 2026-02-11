@@ -8,6 +8,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from src.config import Config
 from src.trainer import Trainer
 
+# TODO: redo once refactor is done
 pytest.skip("Skipping this test file.", allow_module_level=True)
 
 

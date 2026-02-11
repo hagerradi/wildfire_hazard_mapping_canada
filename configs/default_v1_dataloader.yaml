@@ -13,7 +13,6 @@ deterministic: True
 model:
   num_classes: 1
   weather_embed_dim: 64     # Size of the vector fused into the bottleneck
-  pooling_type: "max"       # Options: "attention", "mean", "max"
 
 optimizer:
   name: "AdamW"
@@ -53,7 +52,7 @@ data:
 
     - name: "weather"
       params:
-        csv_name: "weather_table.csv"
+        weather_samples_csv_name: "weather_table.csv"
         feature_names_list: ["temp", "rh", "prec", "ffmc", "dmc", "dc", "isi", "bui"]
         sampling_approach: "mode"
         num_samples_per_patch: 128

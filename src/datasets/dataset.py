@@ -1,47 +1,75 @@
+import os
+
 import numpy as np
+import pandas as pd
 import torch
 from torch.utils.data import DataLoader, Dataset
 
 from src.config import DataConfig, DataSourceConfig
-from src.datasets.registry import DataRegistry
-from src.datasets.sources.base import DataSource
-from src.datasets.sources.grids import GridSource
-from src.datasets.sources.weather import WeatherSource
+from src.datasets.sources import DataSource, GridSource, WeatherSource
 from src.datasets.transforms import get_transforms
+from src.datasets.utils import AVAILABLE_DATA_SOURCES, get_data_source_class
 from src.utils import seed_everything, seed_worker
-
-SOURCE_MAPPING = {"grid": GridSource, "weather": WeatherSource}
 
 
 class MultiSourceDataset(Dataset):
     """
     Composable dataset that handles data loading from multiple sources.
 
-    Indexing: Managed by DataRegistry.
     Extraction: Delegated to DataSource objects.
     I/O Optimization: Files are memory-mapped once per __getitem__ and shared via context to prevent redundant reads.
     """
 
-    def __init__(self, registry: DataRegistry, sources: dict[str, DataSource]):
+    def __init__(
+        self,
+        csv_name: str,
+        root_dir: str,
+        filename_col: str = "filename",
+        valid_mask_threshold: float = 0.01,
+        sources: dict[str, DataSource] | None = None,
+    ):
         """
         Args:
-            registry (DataRegistry): Manages file paths and metadata.
+            csv_name (str): Path to the csv file with annotations.
+
             sources (dict[str, DataSource]): A dictionary mapping output keys
             (example: 'grid', 'weather') to their respective data sources (example: GridSource, WeatherSource)
         """
-        self.registry = registry
+
+        self.csv_name = csv_name
+        self.root_dir = root_dir
+        self.metadata_path = os.path.join(self.root_dir, self.csv_name)
+        self.valid_mask_threshold = valid_mask_threshold
+        self.filename_col = filename_col
+        if not os.path.exists(self.metadata_path):
+            raise FileNotFoundError(f"Metadata not found at: {self.metadata_path}")
+        metadata_df = pd.read_csv(self.metadata_path)
+        # Filter by valid_ratio if the column exists
+        if "valid_ratio" in metadata_df.columns:
+            metadata_df = metadata_df[metadata_df["valid_ratio"] > self.valid_mask_threshold].copy()
+        if filename_col not in metadata_df.columns:
+            raise KeyError(f"Column '{filename_col}' not found in {csv_name}")
+        self.metadata = metadata_df
+        self.records = self.metadata.to_dict("records")  # Convert to list of dicts for O(1) access performance
         self.sources = sources
 
+    def get_patch_info(self, idx: int):
+        row = self.records[idx]
+        patch_info = row.copy()
+        patch_info["idx"] = idx
+        patch_info["file_path"] = os.path.join(self.root_dir, row[self.filename_col])
+        return patch_info
+
     def __getitem__(self, idx):
-        context = self.registry.get_context(idx)
-        context["data"] = np.load(context["file_path"], mmap_mode="r")  # Load once, distribute where needed
+        patch_info = self.get_patch_info(idx)
+        patch_info["data"] = np.load(patch_info["file_path"], mmap_mode="r")  # Load once, distribute where needed
         sample = {}
         for name, source in self.sources.items():
-            sample[name] = source.get_sample(context)
+            sample[name] = source.get_sample(patch_info)
         return sample
 
     def __len__(self):
-        return len(self.registry)
+        return len(self.records)
 
 
 def build_dataset(config: DataConfig, csv_name: str, modelling_approach: str = "1") -> MultiSourceDataset:
@@ -51,35 +79,37 @@ def build_dataset(config: DataConfig, csv_name: str, modelling_approach: str = "
         csv_name (str): Name of CSV file that contains split index information
         modelling_approach (str): The approach used for modelling
     Returns:
-        MultiSourceDataset: containing the registry and all the sources specified in DataConfig
+        MultiSourceDataset: containing the metadata and all the sources specified in DataConfig
     """
-    # 1. Build registry
-    root_dir = config.root_dir
-    filename_col = config.filename_col
-    valid_mask_threshold = config.valid_mask_threshold
-    registry = DataRegistry(csv_name=csv_name, root_dir=root_dir, filename_col=filename_col, valid_mask_threshold=valid_mask_threshold)
-
-    # 2. Build sources
+    # Build sources
     sources: dict[str, DataSource] = {}
     for source_conf in config.sources:
-        if source_conf.name not in SOURCE_MAPPING.keys():
-            raise ValueError(f"Invalid source name '{source_conf.name} in config. " f"Supported sources are: {list(SOURCE_MAPPING.keys())}")
+        if source_conf.name not in AVAILABLE_DATA_SOURCES:
+            raise ValueError(f"Invalid source name '{source_conf.name} in config. " f"Supported sources are: {AVAILABLE_DATA_SOURCES}")
         # Inject global parameters
         params = source_conf.params.model_dump()
-        params["root_dir"] = root_dir
+        params["root_dir"] = config.root_dir
         params["modelling_approach"] = modelling_approach
         # Setup transforms
         is_train = "train" in csv_name.lower()
         transform = get_transforms(source_conf) if is_train else None
 
         # Clean up keys before unpacking
-        params.pop("transforms_list", None)  # Safety removed transform and prob to prevent
-        params.pop("augmentation_prob", None)  # 'multiple values for keyword argument' TypeError
+        params.pop("transforms_list", None)
+        params.pop("augmentation_prob", None)
 
-        # Instantiate
-        source_class = SOURCE_MAPPING[source_conf.name]
+        # Instantiate each data source class
+        source_class = get_data_source_class(source_conf.name)
         sources[source_conf.name] = source_class(**params, transform=transform)
-    return MultiSourceDataset(registry=registry, sources=sources)
+
+    dataset = MultiSourceDataset(
+        csv_name=csv_name,
+        root_dir=config.root_dir,
+        filename_col=config.filename_col,
+        valid_mask_threshold=config.valid_mask_threshold,
+        sources=sources,
+    )
+    return dataset
 
 
 def get_train_val_dataloader(config: DataConfig, modelling_approach: str = "1", seed: int = 42) -> tuple[DataLoader, DataLoader]:
@@ -118,20 +148,3 @@ def get_test_dataloader(config: DataConfig, modelling_approach: str = "1", seed:
         test_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=True, worker_init_fn=seed_worker, generator=g
     )
     return test_dataloader
-
-
-# Very basic implementation of dataset from scratch (not using config)
-if __name__ == "__main__":
-    registry = DataRegistry(csv_name="train_indices.csv", root_dir="yan_bp3/data_samples_approach_1_weather")
-    grid_source = GridSource(
-        root_dir="yan_bp3/data_samples_approach_1_weather", feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"]
-    )
-    weather_source = WeatherSource(
-        csv_name="weather_table.csv",
-        root_dir="yan_bp3/data_samples_approach_1_weather",
-        feature_names_list=["temp", "rh", "prec", "ffmc", "dmc", "dc", "isi", "bui"],
-    )
-    dataset = MultiSourceDataset(registry=registry, sources={"grid": grid_source, "weather": weather_source})
-    dataloader = DataLoader(dataset, batch_size=1)
-    batch = next(iter(dataloader))
-    print(batch)
