@@ -124,6 +124,7 @@ def get_train_val_dataloader(config: DataConfig, modelling_approach: str = "1", 
     val_split = config.val_split
 
     g = torch.Generator()
+    g.manual_seed(seed)
     train_dataset = build_dataset(config, csv_name=train_split)
     val_dataset = build_dataset(config, csv_name=val_split)
     train_dataloader = DataLoader(
