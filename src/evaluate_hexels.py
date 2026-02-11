@@ -15,8 +15,8 @@ import yaml
 from data_preparation.grid_loader.output import load_output_burn_grid
 from data_preparation.grid_loader.utils import get_range_burn_count, get_range_burn_prob
 from data_preparation.utils import find_simulation_output_file
-from src.config import Config
-from src.datasets.dataloader import get_test_loader
+from src.config import Config, GridParams
+from src.datasets.dataset import get_test_dataloader
 from src.datasets.postprocessing.utils import get_predicted_hexel, save_predicted_hexels
 from src.datasets.postprocessing.visualize_predictions import visualize_burn_prob_grid
 from src.trainer import Trainer
@@ -88,7 +88,16 @@ def main() -> None:
     # NOTE: If we need the stats on a particular hexel then modify the test_indices.csv in the config file with
     # meta_hex_{hex_id}.csv file
     start_time = time.time()
-    test_loader = get_test_loader(config=config.data, modelling_approach=config.modelling_approach, seed=seed)
+    test_loader = get_test_dataloader(config=config.data, modelling_approach=config.modelling_approach, seed=seed)
+
+    source_map = {s.name: s for s in config.data.sources}
+    grid_source = source_map.get("grid") if "grid" in source_map.keys() else None
+    grid_features = None
+    out_norm = "min_max"  # default fallback, prevent mypy crash
+    if grid_source and isinstance(grid_source.params, GridParams):
+        grid_features = grid_source.params.feature_names_list
+        out_norm = grid_source.params.out_norm
+
     preds_start_time = time.time()
     test_metrics, test_predictions = trainer.test(test_loader, return_predictions=True)
     preds_time = time.time() - preds_start_time
@@ -113,7 +122,7 @@ def main() -> None:
             test_predictions=test_predictions,
             save_path=viz_save_path,
             channel_map=channel_map,
-            feature_names_list=config.data.feature_names_list,
+            feature_names_list=grid_features,
         )
 
     # Save predictions
@@ -127,7 +136,6 @@ def main() -> None:
     data_dir = config.data.root_dir
     raw_data_dir = config.data.raw_data_dir
     modelling_approach = config.modelling_approach
-    out_norm = config.data.output_normalization
     valid_mask_threshold = config.data.valid_mask_threshold
     output_type, season, cause = "prob", None, None
     if modelling_approach == "1":

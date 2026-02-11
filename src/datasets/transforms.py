@@ -3,7 +3,7 @@ import random
 import torch
 import torchvision.transforms.functional as F
 
-from src.config import DataConfig
+from src.config import DataSourceConfig
 
 
 class RandomFlip:
@@ -43,10 +43,12 @@ class Compose:
         return x, target, mask
 
 
-def setup_augmentations(config_data: DataConfig):
+def setup_augmentations(config: DataSourceConfig):
     """Utils. to get the list of transforms from config."""
-
-    if not config_data.transforms_list:
+    params = config.params
+    transforms_list = params.transforms_list
+    augmentation_prob = params.augmentation_prob
+    if not transforms_list:
         return None
 
     # we can add future transforms here
@@ -57,11 +59,19 @@ def setup_augmentations(config_data: DataConfig):
 
     # check if the config keys match the options
     valid_keys = set(mapping.keys())
-    config_keys = set(config_data.transforms_list)
-    unknown_keys = config_keys - valid_keys
+    unknown_keys = set(transforms_list) - valid_keys
 
     if unknown_keys:
         raise ValueError(f"Invalid transforms found in config: {unknown_keys}.\n" f"Allowed options are: {list(valid_keys)}")
 
-    selected = [mapping[name] for name in config_data.transforms_list]
-    return Compose(selected, prob=config_data.augmentation_prob)
+    selected = [mapping[name] for name in transforms_list]
+    return Compose(selected, prob=augmentation_prob)
+
+
+def get_transforms(config: DataSourceConfig):
+    """Returns Compose of DataSource specific transforms"""
+    transforms_list = None
+    if config.name == "grid":
+        transforms_list = setup_augmentations(config)
+    else:
+        return transforms_list

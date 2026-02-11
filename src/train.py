@@ -8,7 +8,7 @@ import os
 import yaml
 
 from src.config import Config
-from src.datasets.dataloader import get_test_loader, get_train_val_dataloader
+from src.datasets.dataset import get_test_dataloader, get_train_val_dataloader
 from src.trainer import Trainer
 from src.utils import seed_everything
 
@@ -72,7 +72,7 @@ def main() -> None:
 
     # ---------- Evaluation ----------
     print("\n[Evaluation] Running on test set...")
-    test_loader = get_test_loader(
+    test_loader = get_test_dataloader(
         config=config.data,
         modelling_approach=config.modelling_approach,
     )
