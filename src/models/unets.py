@@ -63,7 +63,7 @@ class BaselineUNet(UNetBase):
         input_channels: int = 1,
         num_classes: int = 1,
         hidden_features: list[int] | None = None,
-        feature_list: list | None = None,
+        input_feature_list: list | None = None,
         use_skip_connections: bool = True,
         use_transpose_conv: bool = False,
         use_activation_after_upsampling: bool = False,
@@ -71,8 +71,8 @@ class BaselineUNet(UNetBase):
         super().__init__()
         if hidden_features is None:
             hidden_features = [64, 128, 256, 512]
-        if feature_list is None:
-            feature_list = ["spatial"]
+        if input_feature_list is None:
+            input_feature_list = ["spatial"]
 
         self.input_channels = input_channels
         self.num_classes = num_classes
@@ -80,7 +80,7 @@ class BaselineUNet(UNetBase):
         self.use_skip_connections = use_skip_connections
         self.use_transpose_conv = use_transpose_conv
         self.use_activation_after_upsampling = use_activation_after_upsampling
-        self.feature_list = feature_list
+        self.input_feature_list = input_feature_list
         self._build_components()
         # output layer
         self.out_conv = nn.Conv2d(self.hidden_features[0], self.num_classes, kernel_size=1)
