@@ -53,7 +53,7 @@ class MultiSourceDataset(Dataset):
             raise KeyError(f"Column '{filename_col}' not found in {csv_name}")
         self.metadata = metadata_df
         self.records = self.metadata.to_dict("records")  # Convert to list of dicts for O(1) access performance
-        self.sources = sources
+        self.sources = sources if sources is not None else {}
 
     def get_patch_info(self, idx: int):
         row = self.records[idx]
@@ -144,9 +144,9 @@ def get_test_dataloader(config: DataConfig, modelling_approach: str = "1", seed:
     test_split = config.test_split
 
     g = torch.Generator()
-    test_dataset = build_dataset(config, csv_name=config.train_split)
+    test_dataset = build_dataset(config, csv_name=test_split)
 
     test_dataloader = DataLoader(
-        test_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=True, worker_init_fn=seed_worker, generator=g
+        test_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=False, worker_init_fn=seed_worker, generator=g
     )
     return test_dataloader

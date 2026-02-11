@@ -29,7 +29,7 @@ class GridSource(DataSource):
         Args:
             root_dir (str): Directory with all the .npy files.
             feature_names_list (list): List of features being used for training ((options: None or feature list)
-                All feats: ["ignition_grid", "fuel_grid", "elevation_grid", "weather_grid", "wind_grid"])
+                All feats: ["ignition_grid", "fuel_grid", "elevation_grid", "wind_grid"])
             out_norm (str): How to normalize the output burn counts for modelling approach 2. [Options: total_iters, season_cause_iters, min_max]
             fuel_feats_encoding(str): How to process the fuel features [Options: ordinal, one_hot]
             normalize_fuel_feats_ordinal (bool): If we want to normalize the ordinal encoded fuel feats
