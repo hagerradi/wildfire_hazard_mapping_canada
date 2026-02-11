@@ -41,7 +41,7 @@ class GridParams(BaseModel):
 
     feature_names_list: list[str]
     out_norm: str = "min_max"
-    fuel_feats_encoding: str = "ordinal"
+    fuel_feats_encoding: str = "one_hot"
     normalize_fuel_feats_ordinal: bool = True
     transforms_list: list[str]
     augmentation_prob: float

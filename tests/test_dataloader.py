@@ -135,7 +135,7 @@ def test_grid_feature_names_list(temp_data_dir):
     assert x.shape[0] == 1
 
 
-def test_registry_threshold(temp_data_dir):
+def test_mask_threshold(temp_data_dir):
     tmpdir, train_csv, _, _, _, _ = temp_data_dir
     # Set threshold above 1.0 so no samples are valid
     ds = MultiSourceDataset(csv_name="train.csv", root_dir=tmpdir, valid_mask_threshold=1.0)
