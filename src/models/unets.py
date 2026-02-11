@@ -81,10 +81,9 @@ class BaselineUNet(UNetBase):
         self.use_transpose_conv = use_transpose_conv
         self.use_activation_after_upsampling = use_activation_after_upsampling
         self.feature_list = feature_list
+        self._build_components()
         # output layer
         self.out_conv = nn.Conv2d(self.hidden_features[0], self.num_classes, kernel_size=1)
-
-        self._build_components()
 
     def build_encoder(self) -> nn.Module:
         encoder = BaselineEncoder(in_channels=self.input_channels, hidden_features=self.hidden_features)
