@@ -211,6 +211,10 @@ def seed_everything(seed: int = 42, deterministic: bool = True):
             torch.backends.cudnn.deterministic = True
             torch.backends.cudnn.benchmark = False
 
+    # MacOS / MPS specific
+    if torch.backends.mps.is_available():
+        torch.mps.manual_seed(seed)
+
     # For PyTorch >= 1.8
     # Outside 'if cuda' because PyTorch has deterministic CPU algorithms too.
     if deterministic:
@@ -227,6 +231,8 @@ def seed_worker(worker_id: int):
     Helper function to set the seed for each worker based on the global seed.
     This ensures numpy and random in subprocesses are deterministic.
     """
-    worker_seed = torch.initial_seed() % 2**32
+    base_seed = torch.initial_seed()
+    worker_seed = (base_seed + worker_id) % 2**32
     np.random.seed(worker_seed)
     random.seed(worker_seed)
+    torch.manual_seed(worker_seed)

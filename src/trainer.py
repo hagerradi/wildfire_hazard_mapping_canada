@@ -12,7 +12,7 @@ from src.config import Config
 from src.logger import CometLogger
 from src.losses import WeightedLoss
 from src.metrics import compute_bias, compute_mae, compute_mse, compute_spearman, compute_ssim
-from src.models.baselines import UNet
+from src.models.unet import BaselineUNet
 from src.models.utils import get_nbr_model_parameters
 from utils import build_single_loss
 
@@ -65,7 +65,7 @@ class Trainer:
         )
         print(f"[Trainer] Auto-inferred Input Channels: {self.input_channels}")
 
-        self.model = UNet(input_channels=self.input_channels, num_classes=self.config.model.num_classes)
+        self.model = BaselineUNet(input_channels=self.input_channels, num_classes=self.config.model.num_classes)
         self.model.to(self.device)
 
         # Get model nbr of params and log them into Logger
