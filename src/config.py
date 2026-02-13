@@ -15,7 +15,21 @@ class LoggerConfig(BaseModel):
 
 
 class ModelConfig(BaseModel):
-    num_classes: int
+    num_classes: int = 1
+    hidden_features: list[int] = [64, 128, 256, 512]
+
+    # Controls if we use MultiSourceUNet or BaselineUNet
+    # Use ["spatial"] for base unet, ["spatial", "tabular"] for MultiSource unet
+    input_feature_list: list[str] = ["spatial"]
+
+    # encoder/decoder
+    use_skip_connections: bool = True
+    use_transpose_conv: bool = False
+    use_activation_after_upsampling: bool = False
+
+    # specific to tabular model
+    tabular_embed_dim: int = 64
+    tabular_pooling: str = "max"
 
 
 class OptimizerConfig(BaseModel):
