@@ -11,27 +11,25 @@ from tqdm import tqdm
 from src.config import Config
 from src.logger import CometLogger
 from src.losses import WeightedLoss
-from src.metrics import compute_bias, compute_mae, compute_mse, compute_spearman, compute_ssim
-from src.models.baselines import UNet
+from src.models.unet import BaselineUNet, MultiSourceUNet
 from src.models.utils import get_nbr_model_parameters
-from utils import build_single_loss
+from utils import AVAILABLE_METRICS, build_single_loss, set_device
 
 
 class Trainer:
-    def __init__(
-        self,
-        config: Config,
-    ):
+    def __init__(self, config: Config, spatial_input_channels: int | None = None, tabular_input_dim: int | None = None):
         self.config = config
+        self.spatial_input_channels = spatial_input_channels
+        self.tabular_input_dim = tabular_input_dim
 
-        self.device = (
-            "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() and torch.backends.mps.is_built() else "cpu"
-        )
+        # Set device
+        self.device = set_device()
         print(f"\n[Device] Using: {self.device}")
 
         self.save_dir = self.config.save_dir
         os.makedirs(self.save_dir, exist_ok=True)
 
+        # Comet Logger
         self.logger = None
         # Only initialize logger if not in test-only mode
         if self.config.logger.enabled:
@@ -44,7 +42,9 @@ class Trainer:
             self.log_every_n_step = self.config.logger.log_every_n_step
             # log all the params.
             self.logger.log_params(self.config.model_dump())
+
         self.setup()
+
         # metrics for best checkpoint saving
         self.best_ckpt_metrics = list(self.config.evaluation.best_ckpt_metrics)
         self.best_ckpt_modes = list(self.config.evaluation.best_ckpt_metrics_mode)
@@ -54,27 +54,57 @@ class Trainer:
 
     def setup(self):
         """
-        define model, loss function and optimizer.
+        Define model, loss function and optimizer.
         """
-        # Automatically infer input channels based on data config
-        self.input_channels = compute_number_input_channels(
-            feature_names_list=self.config.data.feature_names_list,
-            fuel_feats_encoding=self.config.data.fuel_feats_encoding,
-            root_dir=self.config.data.root_dir,
-            modelling_approach=self.config.modelling_approach,
-        )
-        print(f"[Trainer] Auto-inferred Input Channels: {self.input_channels}")
 
-        self.model = UNet(input_channels=self.input_channels, num_classes=self.config.model.num_classes)
+        self.in_channels = self.spatial_input_channels if self.spatial_input_channels is not None else self.config.model.input_channels
+        self.use_tabular = "tabular" in self.config.model.input_feature_list
+
+        print(f"[Trainer] Auto-inferred Input Channels: {self.in_channels}")
+
+        if self.use_tabular:
+            if self.tabular_input_dim is None:
+                raise ValueError("Config requests 'tabular' features, but no tabular dimension was detected from DataLoaders.")
+
+            print(f"[Trainer] Mode: Multi-Source (Spatial + Tabular)")
+            print(f"Spatial Ch: {self.in_channels}, Tabular Dim: {self.tabular_input_dim}")
+
+            self.model = MultiSourceUNet(
+                input_channels=self.in_channels,
+                num_classes=self.config.model.num_classes,
+                hidden_features=self.config.model.hidden_features,
+                input_feature_list=self.config.model.input_feature_list,
+                use_skip_connections=self.config.model.use_skip_connections,
+                use_transpose_conv=self.config.model.use_transpose_conv,
+                use_activation_after_upsampling=self.config.model.use_activation_after_upsampling,
+                tabular_input_dim=self.tabular_input_dim,
+                tabular_embed_dim=self.config.model.tabular_embed_dim,
+                tabular_feature_encoder_pooling=self.config.model.tabular_pooling,
+            )
+        else:
+            # --- PATH B: Baseline Model (Spatial Only) ---
+            print(f"[Trainer] Mode: Baseline (Spatial Only)")
+            print(f"Spatial Ch: {self.in_channels}")
+
+            self.model = BaselineUNet(
+                input_channels=self.in_channels,
+                num_classes=self.config.model.num_classes,
+                hidden_features=self.config.model.hidden_features,
+                input_feature_list=self.config.model.input_feature_list,
+                use_skip_connections=self.config.model.use_skip_connections,
+                use_transpose_conv=self.config.model.use_transpose_conv,
+                use_activation_after_upsampling=self.config.model.use_activation_after_upsampling,
+            )
+
         self.model.to(self.device)
 
-        # Get model nbr of params and log them into Logger
+        # Get and log number of model params.
         total_params, trainable_params = get_nbr_model_parameters(self.model)
         print(f"Model Params: Total={total_params:,} | Trainable={trainable_params:,}")
         if self.logger:
             self.logger.log_params({"model_total_params": total_params, "model_trainable_params": trainable_params})
 
-        # setup loss
+        # Setup loss
         loss_config = self.config.optimizer.loss
         if isinstance(loss_config, str):  # loss is a string
             self.loss_fn = build_single_loss(loss_config)
@@ -84,7 +114,7 @@ class Trainer:
             losses = {n: build_single_loss(n) for n in loss_names}
             self.loss_fn = WeightedLoss(losses=losses, weights=weights, normalize_weights=True)
 
-        # setup optimizer
+        # Setup optimizer
         opt_name = self.config.optimizer.name
         # TODO: add other parameters
         opt_params = {
@@ -96,22 +126,14 @@ class Trainer:
 
         self.global_step = 0
 
-        # get metrics to compute
-        available_metrics = {
-            "mse": compute_mse,
-            "mae": compute_mae,
-            "spearman": compute_spearman,
-            "ssim": compute_ssim,
-            "bias": compute_bias,
-        }
+        # Validate and load metrics from config.
+        self._validate_and_load_metrics()
 
-        self.metric_functions = {}
-
-        for name in self.config.metrics:
-            if name in available_metrics:
-                self.metric_functions[name] = available_metrics[name]
-            else:
-                raise ValueError(f"Metric '{name}' in config. is not implemented." f"Available options: {list(available_metrics.keys())}")
+    def _validate_and_load_metrics(self) -> None:
+        """Helper to validate and load metrics to be computed."""
+        if not set(self.config.metrics).issubset(AVAILABLE_METRICS):
+            raise ValueError(f"Invalid metrics found." f"Available options: {list(AVAILABLE_METRICS)}")
+        self.metric_functions = {k: AVAILABLE_METRICS[k] for k in self.config.metrics}
 
     def _step(self, batch: Any) -> tuple[torch.Tensor, torch.Tensor, dict[str, torch.Tensor] | None, torch.Tensor, torch.Tensor]:
         """
