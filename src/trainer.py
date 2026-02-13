@@ -140,12 +140,18 @@ class Trainer:
         Default step. Expects batch -> (inputs, targets, masks).
         Returns (predictions, loss, targets_on_device, masks_on_device).
         """
-        inputs, targets, masks = batch
+
+        inputs, targets, masks = batch["grid"]
         inputs = inputs.to(self.device)
         targets = targets.to(self.device)
         masks = masks.to(self.device)
 
-        predictions = self.model(inputs)
+        x_tabular = None
+        if isinstance(batch, dict) and "weather" in batch:
+            x_tabular = batch["weather"]
+            x_tabular = x_tabular.to(self.device)
+
+        predictions = self.model(inputs, x_tabular)
 
         loss_out = self.loss_fn(predictions, targets, masks)
 
