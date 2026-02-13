@@ -7,6 +7,15 @@ from matplotlib import pyplot as plt
 from torch.utils.data import DataLoader
 
 from losses import BCELoss, BernoulliKLLoss, DiceLoss, FocalLoss, MAELoss, MSELoss
+from src.metrics import compute_bias, compute_mae, compute_mse, compute_spearman, compute_ssim
+
+AVAILABLE_METRICS = {
+    "mse": compute_mse,
+    "mae": compute_mae,
+    "spearman": compute_spearman,
+    "ssim": compute_ssim,
+    "bias": compute_bias,
+}
 
 
 def build_single_loss(name: str) -> torch.nn.Module:
@@ -227,6 +236,20 @@ def seed_worker(worker_id: int):
     Helper function to set the seed for each worker based on the global seed.
     This ensures numpy and random in subprocesses are deterministic.
     """
-    worker_seed = torch.initial_seed() % 2**32
+    base_seed = torch.initial_seed()
+    worker_seed = (base_seed + worker_id) % 2**32
     np.random.seed(worker_seed)
     random.seed(worker_seed)
+    torch.manual_seed(worker_seed)
+
+
+def set_device() -> str:
+    """Utils. to set up device."""
+    if torch.cuda.is_available():
+        device = "cuda"
+    elif torch.backends.mps.is_available() and torch.backends.mps.is_built():
+        device = "mps"
+    else:
+        device = "cpu"
+
+    return device
