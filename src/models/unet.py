@@ -53,7 +53,9 @@ class UNetBase(nn.Module, ABC):
         self.decoder = self.build_decoder()
 
     @abstractmethod
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self, x: torch.Tensor, x_weather: torch.Tensor | None, x_wind: torch.Tensor | None, x_fire_dist: torch.Tensor | None
+    ) -> torch.Tensor:
         raise NotImplementedError
 
 
@@ -103,7 +105,13 @@ class BaselineUNet(UNetBase):
         )
         return decoder
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self,
+        x: torch.Tensor,
+        x_weather: torch.Tensor | None = None,
+        x_wind: torch.Tensor | None = None,
+        x_fire_dist: torch.Tensor | None = None,
+    ) -> torch.Tensor:
         x, skip_connections = self.encoder(x)
         x = self.bottleneck(x)
         x = self.decoder(x, skip_connections)
