@@ -50,13 +50,30 @@ def main() -> None:
     # ---------- Data ----------
     train_loader, val_loader = get_train_val_dataloader(config=config.data, modelling_approach=config.modelling_approach, seed=seed)
 
+    dataset = train_loader.dataset
+    sources = getattr(dataset, "sources", {})
+
+    spatial_channels = None
+    tabular_input_dim = None
+
+    if "grid" in sources:
+        spatial_channels = sources["grid"].input_dim()
+
+    if "weather" in sources:
+        tabular_input_dim = sources["weather"].input_dim()
+
+    # verbose for debug to remove
+    print(f"Detected Data Dimensions:")
+    print(f"Spatial Channels: {spatial_channels}")
+    print(f"Tabular Input Dim: {tabular_input_dim}")
+
     # ---------- Training ----------
-    trainer = Trainer(config)
+    trainer = Trainer(config, spatial_input_channels=spatial_channels, tabular_input_dim=tabular_input_dim)
+
     trainer.run_training(
         train_loader=train_loader,
         val_loader=val_loader,
     )
-
     # ---------- Load best checkpoint ----------
     # Try best.pth first, fall back to last.pth if needed
     best_ckpt = None
