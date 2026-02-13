@@ -1,0 +1,71 @@
+# Note: This is an example of new config for the data generalization refactor. Still a work in progress
+# TODO: Delete after finalized refactor
+
+# Where to save checkpoints
+save_dir: "experiments/weather_unet_approach_1_full_data_wind"
+
+# approaches 1 or 2
+modelling_approach: "1"
+
+seed: 42
+deterministic: True
+
+model:
+  num_classes: 1
+  weather_embed_dim: 64     # Size of the vector fused into the bottleneck
+
+optimizer:
+  name: "AdamW"
+  lr: 1.0e-3
+  loss: "mae"
+
+training:
+  max_epochs: 50
+  log_every_n_epoch: 1
+
+evaluation:
+  best_ckpt_metric: "spearman"
+  best_ckpt_metric_mode: "max"
+  checkpoint_filename: "best.pth"
+
+data:
+  root_dir: "/home/mila/o/oseaj/scratch/nrcan_data/data_samples_approach_1_weather"
+  raw_data_dir: "/network/projects/amlrt/nrcan_wildfires/full_data/yan_bp3"
+  batch_size: 64
+  num_workers: 2
+
+  train_split: "train_indices.csv"
+  val_split: "val_indices.csv"
+  test_split: "test_indices.csv"
+  filename_col: "filename"
+  valid_mask_threshold: 0.00
+
+  sources:
+    - name: "grid"
+      params:
+        feature_names_list: ["ignition_grid", "fuel_grid", "elevation_grid"]
+        out_norm: "min_max"
+        fuel_feats_encoding: "ordinal"
+        normalize_fuel_feats_ordinal: True
+        transforms_list: []
+        augmentation_prob: 0.00
+
+    - name: "weather"
+      params:
+        weather_samples_csv_name: "weather_table.csv"
+        feature_names_list: ["temp", "rh", "prec", "ffmc", "dmc", "dc", "isi", "bui"]
+        sampling_approach: "mode"
+        num_samples_per_patch: 128
+        transforms_list: [] # Always empty
+        augmentation_prob: 0.00
+
+
+logger:
+  enabled: False
+  project_name: "nrcan-wildfireriskmapping"
+  workspace: "mila-amlrt"
+  experiment_name: "weather_unet_approach_1_full_data_wind"
+  tags: ["weather_fusion", "modelling_approach=1", "mae"]
+  log_every_n_step: 5
+
+metrics: ["mse", "mae", "spearman", "ssim", "bias"]
