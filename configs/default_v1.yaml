@@ -9,6 +9,9 @@ deterministic: True
 
 model:
   num_classes: 1
+  input_feature_list: ["spatial"]
+  tabular_embed_dim: 64
+  tabular_pooling: "max"
 
 optimizer:
   name: "AdamW" # "SGD", "Adam", "AdamW"
@@ -34,18 +37,27 @@ data:
   val_split: "val_indices.csv"
   test_split: "test_indices.csv"
 
-  transforms_list: [] # options: "random_flip", "random_rotate"
-  augmentation_prob: 0.0 # float between 0 and 1
-
   batch_size: 64
   num_workers: 2
 
-  output_normalization: "min_max" #log
+  sources:
+    - name: "grid"
+      params:
+        feature_names_list: ["ignition_grid", "fuel_grid", "elevation_grid"]
+        out_norm: "min_max"
+        fuel_feats_encoding: "one_hot"
+        normalize_fuel_feats_ordinal: true
+        transforms_list: []
+        augmentation_prob: 0.0
+    - name: "weather"
+      params:
+        weather_samples_csv_name: "weather_table.csv"
+        feature_names_list: ["temp", "rh", "ws", "wd", "prec", "ffmc", "dmc", "dc", "isi", "bui", "fwi"]
+        sampling_approach: "mode"
+        num_samples_per_patch: 128
+        transforms_list: []
+        augmentation_prob: 0.0
 
-  feature_names_list: ["ignition_grid", "fuel_grid", "elevation_grid"] # ["ignition_grid", "esc_fires_grid", "fuel_grid", "elevation_grid", "weather_grid", "wind_grid"]
-  fuel_feats_encoding: "one_hot" # ordinal, one_hot
-  normalize_fuel_feats_ordinal: True
-  valid_mask_threshold:  0.00
 
 logger:
   enabled: True

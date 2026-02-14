@@ -9,7 +9,7 @@ deterministic: True
 
 model:
   num_classes: 1
-  input_feature_list: ["spatial"]
+  input_feature_list: ["spatial", "tabular"]
   tabular_embed_dim: 64
   tabular_pooling: "max"
 
@@ -30,7 +30,7 @@ evaluation:
   checkpoint_filename: "best.pth" # option to load best or last
 
 data:
-  root_dir: "/network/projects/amlrt/nrcan_wildfires/full_data/yan_bp3/data_samples_approach_1"
+  root_dir: "/network/projects/amlrt/nrcan_wildfires/full_data/yan_bp3/data_samples_approach_1_weather"
   raw_data_dir: "/network/projects/amlrt/nrcan_wildfires/full_data/yan_bp3"
 
   train_split: "train_indices.csv"
@@ -52,7 +52,7 @@ data:
     - name: "weather"
       params:
         weather_samples_csv_name: "weather_table.csv"
-        feature_names_list: ["temp", "rh", "ws", "wd", "precip"]
+        feature_names_list: ["temp", "rh", "ws", "wd", "prec", "ffmc", "dmc", "dc", "isi", "bui", "fwi"]
         sampling_approach: "mode"
         num_samples_per_patch: 128
         transforms_list: []
