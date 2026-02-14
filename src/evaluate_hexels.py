@@ -69,7 +69,27 @@ def main() -> None:
 
     config.logger.enabled = False
 
-    trainer = Trainer(config)
+    print("\n[Evaluation] Loading test set...")
+    # NOTE: If we need the stats on a particular hexel then modify the test_indices.csv in the config file with
+    # meta_hex_{hex_id}.csv file
+    start_time = time.time()
+    test_loader = get_test_dataloader(config=config.data, modelling_approach=config.modelling_approach, seed=seed)
+
+    dataset = test_loader.dataset
+    sources = getattr(dataset, "sources", {})
+
+    spatial_channels = None
+    aux_input_dims = {}
+
+    for name, source in sources.items():
+        if name == "grid":
+            spatial_channels = source.input_dim()
+        else:
+            aux_input_dims[name] = source.input_dim()
+
+    print(f"Detected Data Dimensions: Spatial={spatial_channels} | Aux={aux_input_dims}")
+
+    trainer = Trainer(config, spatial_input_channels=spatial_channels, tabular_input_dims=aux_input_dims)
 
     # ---------- Load best checkpoint ----------
     # Try best.pth first, fall back to last.pth if needed
@@ -84,11 +104,6 @@ def main() -> None:
         print(f"[Checkpoint] Loaded epoch={model_ckpt.get('epoch', 'N/A')} " f"Checkpoint Metrics={model_ckpt.get('metric_value', 'N/A')}")
 
     # ---------- Evaluation ----------
-    print("\n[Evaluation] Running on test set...")
-    # NOTE: If we need the stats on a particular hexel then modify the test_indices.csv in the config file with
-    # meta_hex_{hex_id}.csv file
-    start_time = time.time()
-    test_loader = get_test_dataloader(config=config.data, modelling_approach=config.modelling_approach, seed=seed)
 
     source_map = {s.name: s for s in config.data.sources}
     grid_source = source_map.get("grid") if "grid" in source_map.keys() else None
