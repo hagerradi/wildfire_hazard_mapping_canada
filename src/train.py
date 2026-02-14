@@ -54,21 +54,21 @@ def main() -> None:
     sources = getattr(dataset, "sources", {})
 
     spatial_channels = None
-    tabular_input_dim = None
+    tabular_input_dims = {}
 
-    if "grid" in sources:
-        spatial_channels = sources["grid"].input_dim()
+    # Get dims. of all sources.
+    for name, source in sources.items():
+        # Base source: spatial grid.
+        if name == "grid":
+            spatial_channels = source.input_dim()
+        # The extra features (tabular).
+        else:
+            tabular_input_dims[name] = source.input_dim()
 
-    if "weather" in sources:
-        tabular_input_dim = sources["weather"].input_dim()
-
-    # verbose for debug to remove
-    print(f"Detected Data Dimensions:")
-    print(f"Spatial Channels: {spatial_channels}")
-    print(f"Tabular Input Dim: {tabular_input_dim}")
+    print(f"Detected Data Dimensions: Spatial={spatial_channels} | Tabular={tabular_input_dims}")
 
     # ---------- Training ----------
-    trainer = Trainer(config, spatial_input_channels=spatial_channels, tabular_input_dim=tabular_input_dim)
+    trainer = Trainer(config=config, spatial_input_channels=spatial_channels, tabular_input_dims=tabular_input_dims)
 
     trainer.run_training(
         train_loader=train_loader,
