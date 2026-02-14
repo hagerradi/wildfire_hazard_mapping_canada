@@ -1,8 +1,7 @@
 # base configurations for experiments
-from collections.abc import Callable
-from typing import Any, Literal
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class LoggerConfig(BaseModel):
@@ -73,7 +72,7 @@ class WeatherParams(BaseModel):
 
 
 class DataSourceConfig(BaseModel):
-    name: Literal["grid", "weather", "extra"]
+    name: Literal["grid", "weather"]
     params: GridParams | WeatherParams
 
 
