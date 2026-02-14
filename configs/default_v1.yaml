@@ -49,15 +49,6 @@ data:
         normalize_fuel_feats_ordinal: true
         transforms_list: []
         augmentation_prob: 0.0
-    - name: "weather"
-      params:
-        weather_samples_csv_name: "weather_table.csv"
-        feature_names_list: ["temp", "rh", "ws", "wd", "prec", "ffmc", "dmc", "dc", "isi", "bui", "fwi"]
-        sampling_approach: "mode"
-        num_samples_per_patch: 128
-        transforms_list: []
-        augmentation_prob: 0.0
-
 
 logger:
   enabled: True

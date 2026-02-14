@@ -46,7 +46,7 @@ data:
         feature_names_list: ["ignition_grid", "fuel_grid", "elevation_grid"]
         out_norm: "min_max"
         fuel_feats_encoding: "one_hot"
-        normalize_fuel_feats_ordinal: true
+        normalize_fuel_feats_ordinal: True
         transforms_list: []
         augmentation_prob: 0.0
 
