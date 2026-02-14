@@ -1,11 +1,8 @@
-import json
-import os
-
 import numpy as np
 
 from data_preparation.grid_loader.utils import fuel_ranking
 
-AVAILABLE_DATA_SOURCES = ["grid", "weather"]
+AVAILABLE_DATA_SOURCES = ["grid", "weather", "extra"]
 MAX_FUEL_GRID = float(max(fuel_ranking.values()))
 
 
