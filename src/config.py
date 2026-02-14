@@ -73,7 +73,7 @@ class WeatherParams(BaseModel):
 
 
 class DataSourceConfig(BaseModel):
-    name: Literal["grid", "weather"]
+    name: Literal["grid", "weather", "extra"]
     params: GridParams | WeatherParams
 
 

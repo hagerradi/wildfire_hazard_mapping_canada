@@ -21,6 +21,10 @@ def get_data_source_class(name: str):
         from src.datasets.sources import WeatherSource
 
         return WeatherSource
+    elif name == "extra":
+        from src.datasets.sources import WeatherSource
+
+        return WeatherSource
     else:
         raise ValueError(f"Unknown data source type: {name}. Available: {AVAILABLE_DATA_SOURCES}")
 
