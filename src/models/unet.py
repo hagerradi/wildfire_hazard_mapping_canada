@@ -52,7 +52,7 @@ class UNetBase(nn.Module, ABC):
         self.decoder = self.build_decoder()
 
     @abstractmethod
-    def forward(self, x: torch.Tensor, x_tabular: torch.Tensor | None = None) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, x_tabular: dict[str, torch.Tensor] | None = None) -> torch.Tensor:
         raise NotImplementedError
 
 
@@ -102,7 +102,7 @@ class BaselineUNet(UNetBase):
         )
         return decoder
 
-    def forward(self, x: torch.Tensor, x_tabular: torch.Tensor | None = None) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, x_tabular: dict[str, torch.Tensor] | None = None) -> torch.Tensor:
         x, skip_connections = self.encoder(x)
         x = self.bottleneck(x)
         x = self.decoder(x, skip_connections)
@@ -120,7 +120,7 @@ class MultiSourceUNet(UNetBase):
         use_skip_connections: bool = True,
         use_transpose_conv: bool = False,
         use_activation_after_upsampling: bool = False,
-        tabular_input_dim: int | None = None,
+        tabular_input_dims: dict[str, int] | None = None,
         tabular_embed_dim: int | None = None,
         tabular_feature_encoder_pooling: str | None = None,
     ):
@@ -133,7 +133,7 @@ class MultiSourceUNet(UNetBase):
         self.use_skip_connections = use_skip_connections
         self.use_transpose_conv = use_transpose_conv
         self.use_activation_after_upsampling = use_activation_after_upsampling
-        self.tabular_input_dim = tabular_input_dim
+        self.tabular_input_dims = tabular_input_dims if tabular_input_dims is not None else {}
         self.tabular_embed_dim = tabular_embed_dim
         self.tabular_feature_encoder_pooling = tabular_feature_encoder_pooling
         self._build_components()
@@ -141,33 +141,40 @@ class MultiSourceUNet(UNetBase):
 
     def build_encoder(self) -> nn.Module:
         encoders = nn.ModuleDict()
+
         features = self.input_feature_list if self.input_feature_list is not None else []
 
+        # Build base spatial grids encoder.
         if "spatial" in features:
             encoders["spatial"] = BaselineEncoder(in_channels=self.input_channels, hidden_features=self.hidden_features)
-        if "tabular" in features:
-            if self.tabular_input_dim is None:
-                raise ValueError("tabular_input_dim cannot be None when 'tabular' is in input_feature_list")
-            pooling = self.tabular_feature_encoder_pooling if self.tabular_feature_encoder_pooling is not None else "max"
-            encoders["tabular"] = TabularFeatureEncoder(input_dim=self.tabular_input_dim, pooling_type=pooling)
+
+        # Build encoders for each extra tabular feature type.
+        if self.tabular_input_dims:
+            if self.tabular_feature_encoder_pooling is None:
+                raise ValueError("Tabular feature encoder pooling cannot be None when using tabular features.")
+            for name, input_dim in self.tabular_input_dims.items():
+                encoders[name] = TabularFeatureEncoder(input_dim=input_dim, pooling_type=self.tabular_feature_encoder_pooling)
+
         return encoders
 
     def build_bottleneck(self) -> nn.Module:
-        features = self.input_feature_list if self.input_feature_list is not None else []
-
-        aux_dims: dict[str, int] = {}
-
-        if "tabular" in features:
-            if self.tabular_embed_dim is None:
-                raise ValueError("tabular_embed_dim cannot be None when using tabular features")
-            aux_dims["tabular"] = self.tabular_embed_dim
-
         if self.hidden_features is None:
-            raise ValueError("Hidden features cannot be None")
+            raise ValueError("Hidden features cannot be None.")
 
-        return MultiSourceBottleneck(in_channels=self.hidden_features[-1], out_channels=self.hidden_features[-1] * 2, aux_dims=aux_dims)
+        # Get the dims. of all extra tabular features.
+        tabular_dims: dict[str, int] = {}
+        if self.tabular_input_dims:
+            if self.tabular_embed_dim is None:
+                raise ValueError("'tabular_embed_dim' must be set if tabular features are used.")
+            for name in self.tabular_input_dims.keys():
+                tabular_dims[name] = self.tabular_embed_dim
+
+        return MultiSourceBottleneck(in_channels=self.hidden_features[-1], out_channels=self.hidden_features[-1] * 2, aux_dims=tabular_dims)
 
     def build_decoder(self) -> nn.Module:
+        if self.hidden_features is None:
+            raise ValueError("Hidden features cannot be None.")
+
         decoder = BaselineDecoder(
             hidden_features=self.hidden_features,
             use_skip_connections=self.use_skip_connections,
@@ -176,22 +183,34 @@ class MultiSourceUNet(UNetBase):
         )
         return decoder
 
-    def forward(self, x: torch.Tensor, x_tabular: torch.Tensor | None = None) -> torch.Tensor:
-        skip_connections = []
-        tabular_emb = None
+    def forward(self, x: torch.Tensor, x_tabular: dict[str, torch.Tensor] | None = None) -> torch.Tensor:
+        """
+        Args:
+            x: Spatial input (B, C, H, W) (torch.Tensor)
+            x_tabular: Dict. of auxiliary inputs {'weather': (B, N, D), ...} (dict[str, torch.Tensor] | None)
+        """
 
-        # 1. Spatial Path
+        skip_connections = []
+        tabular_embeddings = []
+
+        # Spatial encoder path.
         if "spatial" in self.encoder:  # type: ignore
             x, skip_connections = self.encoder["spatial"](x)  # type: ignore
 
-        # 2. Tabular Path
-        if "tabular" in self.encoder and x_tabular is not None:  # type: ignore
-            tabular_emb = self.encoder["tabular"](x_tabular)  # type: ignore
+        # Extra tabular encoders path.
+        if self.tabular_input_dims and x_tabular is not None:
+            for name in self.tabular_input_dims.keys():
+                if name in x_tabular:
+                    encoder_aux = self.encoder[name]  # type: ignore
+                    encoder_emb = encoder_aux(x_tabular[name])
+                    tabular_embeddings.append(encoder_emb)
 
-        # 3. Bottleneck
-        # Passes the spatial map and the (encoded or None) tabular features
-        x = self.bottleneck(x, tabular_emb)
+        # Bottleneck path: concat. all tabular embeds.
+        x_fused_tabular = None
+        if len(tabular_embeddings) > 0:
+            x_fused_tabular = torch.cat(tabular_embeddings, dim=1)
+        x = self.bottleneck(x, x_fused_tabular)
 
-        # 4. Decoder and Head
+        # Decoder and head.
         x = self.decoder(x, skip_connections)
         return self.out_conv(x)
