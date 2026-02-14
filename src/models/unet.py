@@ -152,8 +152,14 @@ class MultiSourceUNet(UNetBase):
         if self.tabular_input_dims:
             if self.tabular_feature_encoder_pooling is None:
                 raise ValueError("Tabular feature encoder pooling cannot be None when using tabular features.")
+            embed_dim = self.tabular_embed_dim if self.tabular_embed_dim else 64
+
             for name, input_dim in self.tabular_input_dims.items():
-                encoders[name] = TabularFeatureEncoder(input_dim=input_dim, pooling_type=self.tabular_feature_encoder_pooling)
+                encoders[name] = TabularFeatureEncoder(
+                    input_dim=input_dim,
+                    embed_dim=embed_dim,
+                    pooling_type=self.tabular_feature_encoder_pooling,
+                )
 
         return encoders
 
