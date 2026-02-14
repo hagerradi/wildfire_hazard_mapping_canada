@@ -17,10 +17,10 @@ from utils import AVAILABLE_METRICS, build_single_loss, set_device
 
 
 class Trainer:
-    def __init__(self, config: Config, spatial_input_channels: int | None = None, tabular_input_dim: int | None = None):
+    def __init__(self, config: Config, spatial_input_channels: int | None = None, tabular_input_dims: dict[str, int] | None = None):
         self.config = config
         self.spatial_input_channels = spatial_input_channels
-        self.tabular_input_dim = tabular_input_dim
+        self.tabular_input_dims = tabular_input_dims if tabular_input_dims is not None else {}
 
         # Set device
         self.device = set_device()
@@ -57,37 +57,39 @@ class Trainer:
         Define model, loss function and optimizer.
         """
 
-        self.in_channels = self.spatial_input_channels if self.spatial_input_channels is not None else self.config.model.input_channels
+        if self.spatial_input_channels is None:
+            raise ValueError("Spatial input channels were not provided.")
+
+        # Flag to indicate we are including tabular features
         self.use_tabular = "tabular" in self.config.model.input_feature_list
 
-        print(f"[Trainer] Auto-inferred Input Channels: {self.in_channels}")
-
+        # Multi-source path: spatial grids + tabular data.
         if self.use_tabular:
-            if self.tabular_input_dim is None:
-                raise ValueError("Config requests 'tabular' features, but no tabular dimension was detected from DataLoaders.")
+            if not self.tabular_input_dims:
+                raise ValueError("Config requests tabular features, but no tabular dim. were detected.")
 
             print(f"[Trainer] Mode: Multi-Source (Spatial + Tabular)")
-            print(f"Spatial Ch: {self.in_channels}, Tabular Dim: {self.tabular_input_dim}")
+            print(f"[Trainer] Spatial Channels: {self.spatial_input_channels}, Tabular Dim: {self.tabular_input_dims}")
 
             self.model = MultiSourceUNet(
-                input_channels=self.in_channels,
+                input_channels=self.spatial_input_channels,
                 num_classes=self.config.model.num_classes,
                 hidden_features=self.config.model.hidden_features,
                 input_feature_list=self.config.model.input_feature_list,
                 use_skip_connections=self.config.model.use_skip_connections,
                 use_transpose_conv=self.config.model.use_transpose_conv,
                 use_activation_after_upsampling=self.config.model.use_activation_after_upsampling,
-                tabular_input_dim=self.tabular_input_dim,
+                tabular_input_dims=self.tabular_input_dims,
                 tabular_embed_dim=self.config.model.tabular_embed_dim,
                 tabular_feature_encoder_pooling=self.config.model.tabular_pooling,
             )
+        # Single-source path: spatial grids only.
         else:
-            # --- PATH B: Baseline Model (Spatial Only) ---
             print(f"[Trainer] Mode: Baseline (Spatial Only)")
-            print(f"Spatial Ch: {self.in_channels}")
+            print(f"[Trainer] Spatial Channels: {self.spatial_input_channels}")
 
             self.model = BaselineUNet(
-                input_channels=self.in_channels,
+                input_channels=self.spatial_input_channels,
                 num_classes=self.config.model.num_classes,
                 hidden_features=self.config.model.hidden_features,
                 input_feature_list=self.config.model.input_feature_list,
@@ -137,21 +139,22 @@ class Trainer:
 
     def _step(self, batch: Any) -> tuple[torch.Tensor, torch.Tensor, dict[str, torch.Tensor] | None, torch.Tensor, torch.Tensor]:
         """
-        Default step. Expects batch -> (inputs, targets, masks).
-        Returns (predictions, loss, targets_on_device, masks_on_device).
+        Default step. Expects batch -> {'grid': (inputs, targets, masks), 'weather': ...}.
+        Returns (predictions, loss, loss_parts, targets_on_device, masks_on_device).
         """
+        # Get the spatial grid inputs, targets and masks.
+        if "grid" not in batch:
+            raise ValueError("Batch is missing required 'grid' data.")
+        inputs, targets, masks = [t.to(self.device) for t in batch["grid"]]
 
-        inputs, targets, masks = batch["grid"]
-        inputs = inputs.to(self.device)
-        targets = targets.to(self.device)
-        masks = masks.to(self.device)
+        # Unpack all potential tabular data
+        tabular_data = {}
+        for key, value in batch.items():
+            if key == "grid":
+                continue
+            tabular_data[key] = value.to(self.device)
 
-        x_tabular = None
-        if isinstance(batch, dict) and "weather" in batch:
-            x_tabular = batch["weather"]
-            x_tabular = x_tabular.to(self.device)
-
-        predictions = self.model(inputs, x_tabular)
+        predictions = self.model(inputs, tabular_data)
 
         loss_out = self.loss_fn(predictions, targets, masks)
 
@@ -162,9 +165,7 @@ class Trainer:
             total_loss = cast(torch.Tensor, loss_out)
             loss_parts = None
 
-        predictions = torch.sigmoid(predictions)
-
-        return predictions, total_loss, loss_parts, targets, masks
+        return torch.sigmoid(predictions), total_loss, loss_parts, targets, masks
 
     @staticmethod
     def _are_metrics_better(curr: list[float], best: list[float], modes: list[str]):
