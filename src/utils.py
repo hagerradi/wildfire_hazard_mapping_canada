@@ -72,8 +72,13 @@ def visualize_model_predictions(
     """
     all_inputs, all_targets, all_masks = [], [], []
 
+    # If more than one data source, we only need the grid for the viz.
     for batch in test_loader:
-        inputs, targets, masks = batch
+        if isinstance(batch, dict) and "grid" in batch:
+            inputs, targets, masks = batch["grid"]
+        else:
+            inputs, targets, masks = batch
+
         all_inputs.append(inputs.detach().cpu().numpy())
         all_targets.append(targets.detach().cpu().numpy())
         all_masks.append(masks.detach().cpu().numpy())
