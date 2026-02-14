@@ -220,6 +220,10 @@ def seed_everything(seed: int = 42, deterministic: bool = True):
             torch.backends.cudnn.deterministic = True
             torch.backends.cudnn.benchmark = False
 
+    # MacOS / MPS specific
+    if torch.backends.mps.is_available():
+        torch.mps.manual_seed(seed)
+
     # For PyTorch >= 1.8
     # Outside 'if cuda' because PyTorch has deterministic CPU algorithms too.
     if deterministic:
