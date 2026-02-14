@@ -51,7 +51,7 @@ data:
         augmentation_prob: 0.0
     - name: "weather"
       params:
-        weather_samples_csv_name: "weather_table.csv"
+        csv_name: "weather_table.csv"
         feature_names_list: ["temp", "rh", "ws", "wd", "prec", "ffmc", "dmc", "dc", "isi", "bui", "fwi"]
         sampling_approach: "mode"
         num_samples_per_patch: 128

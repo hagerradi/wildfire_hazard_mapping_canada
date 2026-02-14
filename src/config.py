@@ -1,6 +1,4 @@
 # base configurations for experiments
-from typing import Literal
-
 from pydantic import BaseModel
 
 
@@ -18,7 +16,8 @@ class ModelConfig(BaseModel):
     hidden_features: list[int] = [64, 128, 256, 512]
 
     # Controls if we use MultiSourceUNet or BaselineUNet
-    # Use ["spatial"] for base unet, ["spatial", "tabular"] for MultiSource unet
+    # Use ["spatial"] for base unet
+    # Extra tabular features are detected automatically from the dataset config.
     input_feature_list: list[str] = ["spatial"]
 
     # encoder/decoder
@@ -60,10 +59,10 @@ class GridParams(BaseModel):
     augmentation_prob: float
 
 
-class WeatherParams(BaseModel):
-    """Specific parameters for the WeatherSource."""
+class TabularParams(BaseModel):
+    """Specific parameters for any tabular source (e.g., weather)."""
 
-    weather_samples_csv_name: str = "weather_table.csv"
+    csv_name: str = "weather_table.csv"
     feature_names_list: list[str]
     sampling_approach: str = "mode"
     num_samples_per_patch: int = 128
@@ -72,8 +71,8 @@ class WeatherParams(BaseModel):
 
 
 class DataSourceConfig(BaseModel):
-    name: Literal["grid", "weather"]
-    params: GridParams | WeatherParams
+    name: str
+    params: GridParams | TabularParams
 
 
 class DataConfig(BaseModel):

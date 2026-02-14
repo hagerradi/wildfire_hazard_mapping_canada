@@ -1,10 +1,10 @@
 import json
 import os
-from collections.abc import Callable
 
 import numpy as np
 import pandas as pd
 
+from src.config import TabularParams
 from src.datasets.sources.base import DataSource
 
 
@@ -17,31 +17,26 @@ class WeatherSource(DataSource):
 
     def __init__(
         self,
-        weather_samples_csv_name: str,
         root_dir: str,
-        feature_names_list: list[str],
-        sampling_approach: str = "mode",
-        num_samples_per_patch: int = 128,
+        params: TabularParams,
         modelling_approach: str = "1",
-        transform: Callable | None = None,
     ):
         """
         Args:
-            weather_samples_csv_name (str): Name of the historical weather CSV file.
             root_dir (str): Directory with all the .npy files.
-            feature_names_list (list): List containing features we wish to include for model training.
-            sampling_approach (str): Name of the sampling approach to select weather samples. Options = ['mode'].
-            num_samples_per_patch (int): Number of weather samples to get for each patch grid.
+            params (TabularParams): a TabularParams config. object.
             modelling_approach (str): The approach used for modelling.
-            transform (callable, optional): Optional transform to be applied on a sample.
         """
-        self.weather_samples_csv_name = weather_samples_csv_name
         self.root_dir = root_dir
-        self.feature_names_list = feature_names_list
-        self.sampling_approach = sampling_approach
-        self.num_samples_per_patch = num_samples_per_patch
+        self.params = params
         self.modelling_approach = modelling_approach
-        self.df_weather = pd.read_csv(os.path.join(self.root_dir, self.weather_samples_csv_name))
+
+        self.csv_name = params.csv_name
+        self.feature_names_list = params.feature_names_list
+        self.sampling_approach = params.sampling_approach
+        self.num_samples_per_patch = params.num_samples_per_patch
+
+        self.df_weather = pd.read_csv(os.path.join(self.root_dir, self.csv_name))
         # 1. Extract weather zone channel index
         with open(os.path.join(self.root_dir, f"feature_channel_map_{self.modelling_approach}.json")) as f:
             channel_feature_map = json.load(f)
