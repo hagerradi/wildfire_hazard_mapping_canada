@@ -82,7 +82,11 @@ def main() -> None:
         best_ckpt = trainer.load_model(filename="best.pth")
     except FileNotFoundError:
         print("[Checkpoint] best.pth not found, falling back to last.pth...")
-        best_ckpt = trainer.load_model(filename="last.pth")
+        try:
+            best_ckpt = trainer.load_model(filename="last.pth")
+        except FileNotFoundError:
+            print("[Checkpoint] No checkpoint found (last.pth missing)...")
+            return
 
     if best_ckpt is not None:
         print(f"[Checkpoint] Loaded epoch={best_ckpt.get('epoch', 'N/A')} " f"Checkpoint Metrics={best_ckpt.get('metric_value', 'N/A')}")
