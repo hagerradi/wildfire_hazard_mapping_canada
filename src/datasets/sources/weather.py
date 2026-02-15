@@ -1,5 +1,6 @@
 import json
 import os
+from collections.abc import Callable
 
 import numpy as np
 import pandas as pd
@@ -20,6 +21,7 @@ class WeatherSource(DataSource):
         root_dir: str,
         params: TabularParams,
         modelling_approach: str = "1",
+        transform: Callable | None = None,
     ):
         """
         Args:
@@ -30,6 +32,7 @@ class WeatherSource(DataSource):
         self.root_dir = root_dir
         self.params = params
         self.modelling_approach = modelling_approach
+        self.transform = transform
 
         self.csv_name = params.csv_name
         self.feature_names_list = params.feature_names_list
