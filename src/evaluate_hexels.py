@@ -75,9 +75,9 @@ def main() -> None:
     start_time = time.time()
     test_loader = get_test_dataloader(config=config.data, modelling_approach=config.modelling_approach, seed=seed)
 
+    # Get all data sources from the test dataset
     dataset = test_loader.dataset
     sources = getattr(dataset, "sources", {})
-
     spatial_channels = None
     aux_input_dims = {}
 
