@@ -9,7 +9,7 @@ import pytest
 import torch
 import torchvision.transforms.functional as F
 
-from src.config import DataSourceConfig, GridParams
+from src.config import DataSourceConfig, GridParams, TabularParams
 from src.datasets.dataset import MultiSourceDataset
 from src.datasets.sources import GridSource, WeatherSource
 from src.datasets.transforms import setup_augmentations
@@ -82,18 +82,31 @@ def temp_data_dir():
 
 def test_multi_source_integration(temp_data_dir):
     tmpdir, train_csv, val_csv, test_csv, weather_csv, weather_feats = temp_data_dir
+
+    grid_params = GridParams(
+        feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],
+        out_norm="min_max",
+        fuel_feats_encoding="ordinal",
+        normalize_fuel_feats_ordinal=True,
+    )
+
     grid_source = GridSource(
         root_dir=tmpdir,
-        feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],
+        params=grid_params,
         modelling_approach="2",
-        fuel_feats_encoding="ordinal",
     )
-    weather_source = WeatherSource(
-        weather_samples_csv_name=weather_csv,
-        root_dir=tmpdir,
+
+    weather_params = TabularParams(
+        csv_name=weather_csv,
         feature_names_list=weather_feats,
-        modelling_approach="2",
+        sampling_approach="mode",
         num_samples_per_patch=2,
+    )
+
+    weather_source = WeatherSource(
+        root_dir=tmpdir,
+        params=weather_params,
+        modelling_approach="2",
     )
     ds = MultiSourceDataset(csv_name="train.csv", root_dir=tmpdir, sources={"grid": grid_source, "weather": weather_source})
     sample = ds[0]
@@ -109,13 +122,15 @@ def test_multi_source_integration(temp_data_dir):
 
 def test_grid_one_hot_encoding(temp_data_dir):
     tmpdir, train_csv, _, _, _, _ = temp_data_dir
+
+    grid_params = GridParams(feature_names_list=["fuel_grid"], fuel_feats_encoding="one_hot", normalize_fuel_feats_ordinal=True)
+
     grid_source = GridSource(
         root_dir=tmpdir,
-        feature_names_list=["fuel_grid"],
+        params=grid_params,
         modelling_approach="2",
-        fuel_feats_encoding="one_hot",
-        normalize_fuel_feats_ordinal=True,
     )
+
     ds = MultiSourceDataset(csv_name="train.csv", root_dir=tmpdir, sources={"grid": grid_source})
     sample = ds[0]
     x, y, mask = sample["grid"]
@@ -125,7 +140,13 @@ def test_grid_one_hot_encoding(temp_data_dir):
 
 def test_grid_feature_names_list(temp_data_dir):
     tmpdir, train_csv, _, _, _, _ = temp_data_dir
-    grid_source = GridSource(root_dir=tmpdir, feature_names_list=["fuel_grid"], modelling_approach="2", fuel_feats_encoding="ordinal")
+
+    grid_params = GridParams(
+        feature_names_list=["fuel_grid"],
+        fuel_feats_encoding="ordinal",
+    )
+
+    grid_source = GridSource(root_dir=tmpdir, params=grid_params, modelling_approach="2")
     ds = MultiSourceDataset(csv_name="train.csv", root_dir=tmpdir, sources={"grid": grid_source})
 
     sample = ds[0]
@@ -145,11 +166,17 @@ def test_mask_threshold(temp_data_dir):
 
 def test_grid_output_normalization_iters(temp_data_dir):
     tmpdir, train_csv, _, _, _, _ = temp_data_dir
+
+    grid_params = GridParams(
+        feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],
+        fuel_feats_encoding="one_hot",
+        out_norm="total_iters",
+    )
+
     grid_source = GridSource(
         root_dir=tmpdir,
-        feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],
+        params=grid_params,
         modelling_approach="2",
-        out_norm="total_iters",
     )
     ds = MultiSourceDataset(csv_name="train.csv", root_dir=tmpdir, sources={"grid": grid_source})
     sample = ds[0]
@@ -165,6 +192,16 @@ def test_grid_output_normalization_iters(temp_data_dir):
 
 def test_grid_transforms(temp_data_dir):
     tmpdir, train_csv, _, _, _, _ = temp_data_dir
+
+    base_params_dict = {
+        "feature_names_list": ["ignition_grid", "fuel_grid", "elevation_grid"],
+        "out_norm": "total_iters",
+        "fuel_feats_encoding": "ordinal",
+        "normalize_fuel_feats_ordinal": True,
+    }
+
+    params_orig = GridParams(**base_params_dict)
+
     # Get Original Data (No Transforms)
     ds_orig = MultiSourceDataset(
         csv_name="train.csv",
@@ -172,11 +209,8 @@ def test_grid_transforms(temp_data_dir):
         sources={
             "grid": GridSource(
                 root_dir=tmpdir,
-                feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],
+                params=params_orig,
                 modelling_approach="2",
-                out_norm="total_iters",
-                fuel_feats_encoding="ordinal",
-                normalize_fuel_feats_ordinal=True,
                 transform=None,  # No transforms here
             )
         },
@@ -186,24 +220,19 @@ def test_grid_transforms(temp_data_dir):
     # =============================================
     # Test 1: Mock Config for Augmentation (Flip)
     # =============================================
-    flip_config = DataSourceConfig(
-        name="grid",
-        params=GridParams(
-            feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"], transforms_list=["random_flip"], augmentation_prob=1.0
-        ),
-    )
+    params_flip = GridParams(**base_params_dict, transforms_list=["random_flip"], augmentation_prob=1.0)
+
+    flip_config = DataSourceConfig(name="grid", params=params_flip)
     transform_flip = setup_augmentations(flip_config)
+
     ds_flip = MultiSourceDataset(
         csv_name="train.csv",
         root_dir=tmpdir,
         sources={
             "grid": GridSource(
                 root_dir=tmpdir,
-                feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],
+                params=params_flip,
                 modelling_approach="2",
-                out_norm="total_iters",
-                fuel_feats_encoding="ordinal",
-                normalize_fuel_feats_ordinal=True,
                 transform=transform_flip,  # Apply Flip Transform
             )
         },
@@ -218,24 +247,18 @@ def test_grid_transforms(temp_data_dir):
     # =============================================
     # Test 2: Mock Config for Augmentation (Rotate)
     # =============================================
-    rot_config = DataSourceConfig(
-        name="grid",
-        params=GridParams(
-            feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"], transforms_list=["random_rotate"], augmentation_prob=1.0
-        ),
-    )
+    params_rot = GridParams(**base_params_dict, transforms_list=["random_rotate"], augmentation_prob=1.0)
+    rot_config = DataSourceConfig(name="grid", params=params_rot)
     transform_rot = setup_augmentations(rot_config)
+
     ds_rot = MultiSourceDataset(
         csv_name="train.csv",
         root_dir=tmpdir,
         sources={
             "grid": GridSource(
                 root_dir=tmpdir,
-                feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],
+                params=params_rot,
                 modelling_approach="2",
-                out_norm="total_iters",
-                fuel_feats_encoding="ordinal",
-                normalize_fuel_feats_ordinal=True,
                 transform=transform_rot,  # Apply Rotate Transform
             )
         },

@@ -1,5 +1,5 @@
 # base configurations for experiments
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class LoggerConfig(BaseModel):
@@ -55,8 +55,8 @@ class GridParams(BaseModel):
     out_norm: str = "min_max"
     fuel_feats_encoding: str = "one_hot"
     normalize_fuel_feats_ordinal: bool = True
-    transforms_list: list[str]
-    augmentation_prob: float
+    transforms_list: list[str] = Field(default_factory=list)
+    augmentation_prob: float = 0.0
 
 
 class TabularParams(BaseModel):
@@ -66,8 +66,8 @@ class TabularParams(BaseModel):
     feature_names_list: list[str]
     sampling_approach: str = "mode"
     num_samples_per_patch: int = 128
-    transforms_list: list[str]
-    augmentation_prob: float
+    transforms_list: list[str] = Field(default_factory=list)
+    augmentation_prob: float = 0.0
 
 
 class DataSourceConfig(BaseModel):
