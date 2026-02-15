@@ -221,16 +221,18 @@ class Trainer:
                     running_metrics[name] += value.item() * batch_size
                     if self.logger and self.global_step % self.log_every_n_step == 0:
                         self.logger.log_metrics({f"train_step_{name}": value.item()}, step=self.global_step)
-                        if loss_parts is not None:
-                            # log each loss part (raw/unweighted)
-                            self.logger.log_metrics(
-                                {f"train_step_loss_{k}": v.item() for k, v in loss_parts.items()},
-                                step=self.global_step,
-                            )
-                            # accumulate epoch averages
-                            if running_loss_parts is not None:
-                                for k, v in loss_parts.items():
-                                    running_loss_parts[k] += v.item() * batch_size
+
+                if loss_parts is not None:
+                    # log each loss part (raw/unweighted)
+                    if self.logger and self.global_step % self.log_every_n_step == 0:
+                        self.logger.log_metrics(
+                            {f"train_step_loss_{k}": v.item() for k, v in loss_parts.items()},
+                            step=self.global_step,
+                        )
+                    # accumulate epoch averages
+                    if running_loss_parts is not None:
+                        for k, v in loss_parts.items():
+                            running_loss_parts[k] += v.item() * batch_size
 
             self.global_step += 1
 
@@ -274,9 +276,10 @@ class Trainer:
                 for name, metric_fn in self.metric_functions.items():
                     value = metric_fn(predictions.detach(), targets, masks)
                     running_metrics[name] += value.item() * batch_size
-                    if loss_parts is not None and running_loss_parts is not None:
-                        for k, v in loss_parts.items():
-                            running_loss_parts[k] += v.item() * batch_size
+
+                if loss_parts is not None and running_loss_parts is not None:
+                    for k, v in loss_parts.items():
+                        running_loss_parts[k] += v.item() * batch_size
 
         avg_loss = running_loss / max(1, running_batch_count)
         results = {"loss": avg_loss}
