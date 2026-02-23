@@ -83,6 +83,7 @@ def main() -> None:
     test_loader = get_test_dataloader(
         config=config.data,
         modelling_approach=config.modelling_approach,
+        seed=seed,
     )
     test_metrics = trainer.test(test_loader)
     if isinstance(test_metrics, tuple):
