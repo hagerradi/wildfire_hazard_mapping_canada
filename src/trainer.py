@@ -79,7 +79,7 @@ class Trainer:
                 tabular_input_dims=self.tabular_input_dims,
                 tabular_hidden_dims=self.config.model.tabular_hidden_dims,
                 tabular_embed_dims=self.config.model.tabular_embed_dims,
-                tabular_poolings=self.config.model.tabular_poolings,
+                tabular_feature_encoder_poolings=self.config.model.tabular_poolings,
             )
         # Single-source path: spatial grids only.
         else:
