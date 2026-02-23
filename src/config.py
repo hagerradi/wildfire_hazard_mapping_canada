@@ -26,6 +26,7 @@ class ModelConfig(BaseModel):
     use_activation_after_upsampling: bool = False
 
     # specific to tabular model
+    tabular_hidden_dims: list[int] = [32, 64]
     tabular_embed_dim: int = 64
     tabular_pooling: str = "max"
 

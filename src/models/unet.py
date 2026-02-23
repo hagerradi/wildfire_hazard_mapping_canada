@@ -121,6 +121,7 @@ class MultiSourceUNet(UNetBase):
         use_transpose_conv: bool = False,
         use_activation_after_upsampling: bool = False,
         tabular_input_dims: dict[str, int] | None = None,
+        tabular_hidden_dims: list[int] | None = None,
         tabular_embed_dim: int | None = None,
         tabular_feature_encoder_pooling: str | None = None,
     ):
@@ -134,6 +135,7 @@ class MultiSourceUNet(UNetBase):
         self.use_transpose_conv = use_transpose_conv
         self.use_activation_after_upsampling = use_activation_after_upsampling
         self.tabular_input_dims = tabular_input_dims if tabular_input_dims is not None else {}
+        self.tabular_hidden_dims = tabular_hidden_dims
         self.tabular_embed_dim = tabular_embed_dim
         self.tabular_feature_encoder_pooling = tabular_feature_encoder_pooling
         self._build_components()
@@ -157,6 +159,7 @@ class MultiSourceUNet(UNetBase):
             for name, input_dim in self.tabular_input_dims.items():
                 encoders[name] = TabularFeatureEncoder(
                     input_dim=input_dim,
+                    hidden_dims=self.tabular_hidden_dims,
                     embed_dim=embed_dim,
                     pooling_type=self.tabular_feature_encoder_pooling,
                 )

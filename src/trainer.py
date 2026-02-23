@@ -80,6 +80,7 @@ class Trainer:
                 use_transpose_conv=self.config.model.use_transpose_conv,
                 use_activation_after_upsampling=self.config.model.use_activation_after_upsampling,
                 tabular_input_dims=self.tabular_input_dims,
+                tabular_hidden_dims=self.config.model.tabular_hidden_dims,
                 tabular_embed_dim=self.config.model.tabular_embed_dim,
                 tabular_feature_encoder_pooling=self.config.model.tabular_pooling,
             )
