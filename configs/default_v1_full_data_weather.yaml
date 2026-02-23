@@ -11,7 +11,7 @@ model:
   num_classes: 1
   input_feature_list: ["spatial", "tabular"]
   tabular_embed_dim: 64
-  tabular_pooling: "max"
+  tabular_pooling: "max" # max, mean, attention
 
 optimizer:
   name: "AdamW" # "SGD", "Adam", "AdamW"
