@@ -125,7 +125,7 @@ class TabularFeatureEncoder(nn.Module):
         x_feats = self.feature_extractor(x_flat)  # (B*N, last_dim)
         # Reshape back to (B, N, last_dim) for pooling
         x_feats = x_feats.view(B, N, -1)
-        # Collapse N dimension (e.g., summarize all weather stations into one vector)
+        # Collapse N dimension (e.g., summarize all weather samples into one vector)
         x_pooled = self.pooler(x_feats)  # (B, last_dim)
         # Final projection to match the bottleneck's expected auxiliary dimension
         return self.projector(x_pooled)  # (B, embed_dim)
