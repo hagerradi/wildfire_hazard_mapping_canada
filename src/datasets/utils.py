@@ -2,8 +2,13 @@ import numpy as np
 
 from data_preparation.grid_loader.utils import fuel_ranking
 
-AVAILABLE_DATA_SOURCES = ["grid", "weather"]
+AVAILABLE_DATA_SOURCES = ["grid", "weather", "fire_size"]
 MAX_FUEL_GRID = float(max(fuel_ranking.values()))
+FIRE_SIZE_MEANS = {
+    "SIZE_HA": 4957.7251818740315,
+    "LOG_SIZE_HA": 2.8056215169359846,
+    "NORM_LOG_SIZE_HA": 0.25440747336345915,
+}  # TODO: Delete once client clarifies best imputation result
 
 
 def get_data_source_class(name: str):
@@ -14,10 +19,10 @@ def get_data_source_class(name: str):
         from src.datasets.sources import GridSource
 
         return GridSource
-    elif name == "weather":
-        from src.datasets.sources import WeatherSource
+    elif name in ["weather", "fire_size"]:
+        from src.datasets.sources import TabularZoneSource
 
-        return WeatherSource
+        return TabularZoneSource
     else:
         raise ValueError(f"Unknown data source type: {name}. Available: {AVAILABLE_DATA_SOURCES}")
 

@@ -11,7 +11,7 @@ import torchvision.transforms.functional as F
 
 from src.config import DataSourceConfig, GridParams, TabularParams
 from src.datasets.dataset import MultiSourceDataset
-from src.datasets.sources import GridSource, WeatherSource
+from src.datasets.sources import GridSource, TabularZoneSource
 from src.datasets.transforms import setup_augmentations
 
 
@@ -99,11 +99,12 @@ def test_multi_source_integration(temp_data_dir):
     weather_params = TabularParams(
         csv_name=weather_csv,
         feature_names_list=weather_feats,
+        zone_id_col="wx_zone",
         sampling_approach="mode",
         num_samples_per_patch=2,
     )
 
-    weather_source = WeatherSource(
+    weather_source = TabularZoneSource(
         root_dir=tmpdir,
         params=weather_params,
         modelling_approach="2",

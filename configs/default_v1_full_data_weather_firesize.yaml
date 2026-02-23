@@ -13,12 +13,16 @@ model:
 
   tabular_hidden_dims:
     weather: [32, 64]
+    fire_size: [8, 16]
 
   tabular_embed_dims:
     weather: 64
+    fire_size: 16
 
   tabular_poolings:
     weather: "max" # max, mean, attention
+    fire_size: "max" # max, mean, attention
+
 
 optimizer:
   name: "AdamW" # "SGD", "Adam", "AdamW"
@@ -65,9 +69,18 @@ data:
         num_samples_per_patch: 128
         transforms_list: []
         augmentation_prob: 0.0
+    - name: "fire_size"
+      params:
+        csv_name: "df_fire_fru_processed.csv"
+        feature_names_list: ["NORM_LOG_SIZE_HA"]
+        zone_id_col: "GRIDCODE"
+        sampling_approach: "mode"
+        num_samples_per_patch: 128
+        transforms_list: []
+        augmentation_prob: 0.0
 
 logger:
-  enabled: False
+  enabled: True
   project_name: "nrcan-wildfireriskmapping"
   workspace: "mila-amlrt"
   experiment_name: "unet_full_data_spatial_weather"
