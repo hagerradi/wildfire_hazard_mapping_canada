@@ -27,7 +27,7 @@ class ModelConfig(BaseModel):
 
     # specific to tabular model
     tabular_hidden_dims: dict[str, list[int]] = {"weather": [32, 64]}
-    tabular_embed_dims: dict[str, int] = {"weather": 64}
+    tabular_embed_dims: dict[str, int] = {"weather": 128}
     tabular_poolings: dict[str, str] = {"weather": "max"}
 
 
@@ -77,7 +77,7 @@ class TabularParams(BaseModel):
     csv_name: str = "weather_table.csv"
     feature_names_list: list[str]
     sampling_approach: str = "mode"
-    num_samples_per_patch: int = 128
+    num_samples_per_patch: int = 256
     transforms_list: list[str] = Field(default_factory=list)
     augmentation_prob: float = 0.0
 

@@ -43,7 +43,7 @@ data:
   val_split: "val_indices.csv"
   test_split: "test_indices.csv"
 
-  batch_size: 256
+  batch_size: 64
   num_workers: 2
 
   input_sources:

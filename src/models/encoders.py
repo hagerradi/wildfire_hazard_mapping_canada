@@ -87,7 +87,7 @@ class TabularFeatureEncoder(nn.Module):
         self.hidden_dims = hidden_dims if hidden_dims is not None else [32, 64]
         self.embed_dim = embed_dim
 
-        # 1. Dynamic fature extractor (to handle any number of layers)
+        # 1. Dynamic feature extractor (to handle any number of layers)
         layers: list[nn.Module] = []
         in_ch = input_dim
         for h_dim in self.hidden_dims:
@@ -99,12 +99,12 @@ class TabularFeatureEncoder(nn.Module):
         self.feature_extractor = nn.Sequential(*layers)
 
         # Get last layer size to pass to pooler
-        last_dim = self.hidden_dims[-1] if len(self.hidden_dims) > 0 else input_dim
+        last_hidden_dim = self.hidden_dims[-1] if len(self.hidden_dims) > 0 else input_dim
 
         # 2. Select Pooler
         self.pooling_type = pooling_type.lower()
         if self.pooling_type == "attention":
-            self.pooler = AttentionPooling(input_dim=last_dim)  # type: ignore
+            self.pooler = AttentionPooling(input_dim=last_hidden_dim)  # type: ignore
         elif self.pooling_type == "max":
             self.pooler = MaxPooling()  # type: ignore
         elif self.pooling_type == "mean":
@@ -113,7 +113,9 @@ class TabularFeatureEncoder(nn.Module):
             raise ValueError(f"Unknown pooling type: {pooling_type}")
 
         # 3. Projector to final embedding dimension
-        self.projector = nn.Sequential(nn.Linear(last_dim, last_dim), nn.LeakyReLU(inplace=True), nn.Linear(last_dim, self.embed_dim))
+        self.projector = nn.Sequential(
+            nn.Linear(last_hidden_dim, last_hidden_dim), nn.LeakyReLU(inplace=True), nn.Linear(last_hidden_dim, self.embed_dim)
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # x shape: (Batch, N_observations, Dimensions)
