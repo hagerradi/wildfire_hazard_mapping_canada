@@ -48,7 +48,7 @@ data:
   val_split: "val_indices.csv"
   test_split: "test_indices.csv"
 
-  batch_size: 256
+  batch_size: 64
   num_workers: 2
 
   input_sources:
@@ -66,7 +66,7 @@ data:
         feature_names_list: ["temp", "rh", "prec", "ffmc", "dmc", "dc", "isi", "bui"] # other options: "wd", "ws", "fwi"
         zone_id_col: "wx_zone"
         sampling_approach: "mode"
-        num_samples_per_patch: 128
+        num_samples_per_patch: 256
         transforms_list: []
         augmentation_prob: 0.0
     - name: "fire_size"
@@ -83,7 +83,10 @@ logger:
   enabled: True
   project_name: "nrcan-wildfireriskmapping"
   workspace: "mila-amlrt"
-  experiment_name: "unet_full_data_spatial_weather_firesize"
+  experiment_name: "evaluation:
+  best_ckpt_metrics: ["spearman"] # loss, ssim, mae, etc
+  best_ckpt_metrics_mode: ["max"] # max, or min
+  checkpoint_filename: "best.pth" # option to load best or last"
   tags: ["baseline", "full_data", "modelling_approach=1", "fuel_one_hot_encoding", "KL-loss", "3inputfeatures", "weather-tabular"]
   # log loss and metrics on comet every n steps
   log_every_n_step: 5
