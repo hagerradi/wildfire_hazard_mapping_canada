@@ -5,6 +5,8 @@ from torch.utils.data import DataLoader
 
 from src.config import Config
 
+AVAILABLE_SCHEDULERS = ["onecycle", "cosine_warmup", "plateau", "multistep"]
+
 
 def build_scheduler(config: Config, optimizer: optim.Optimizer, train_loader: DataLoader) -> tuple[Any, str | None]:
     """
@@ -55,4 +57,4 @@ def build_scheduler(config: Config, optimizer: optim.Optimizer, train_loader: Da
         return optim.lr_scheduler.MultiStepLR(optimizer, milestones=config.scheduler.milestones, gamma=config.scheduler.factor), "epoch"
 
     else:
-        raise ValueError(f"Unknown scheduler: {name}")
+        raise ValueError(f"Unknown scheduler: '{name}'. Available options are: {AVAILABLE_SCHEDULERS} or null.")

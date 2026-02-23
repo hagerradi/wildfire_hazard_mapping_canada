@@ -46,7 +46,7 @@ class SchedulerConfig(BaseModel):
     max_lr: float = 1e-3  # for onecycle
     patience: int = 10  # for plateau
     factor: float = 0.1  # for plateau and multistep
-    milestones: list[int] = [30, 60, 90]  # for multistep
+    milestones: list[int] = [30, 40]  # for multistep
 
 
 class TrainingConfig(BaseModel):
