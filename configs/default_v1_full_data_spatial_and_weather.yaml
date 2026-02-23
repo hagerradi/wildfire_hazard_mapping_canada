@@ -67,7 +67,7 @@ data:
         augmentation_prob: 0.0
 
 logger:
-  enabled: False
+  enabled: True
   project_name: "nrcan-wildfireriskmapping"
   workspace: "mila-amlrt"
   experiment_name: "unet_full_data_spatial_weather"

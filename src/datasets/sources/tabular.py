@@ -9,6 +9,7 @@ from src.config import TabularParams
 from src.datasets.sources.base import DataSource
 from src.datasets.utils import FIRE_SIZE_MEANS
 
+
 class TabularZoneSource(DataSource):
     """
     Retrieves samples by mapping a zone ID from a spatial grid patch
@@ -40,7 +41,6 @@ class TabularZoneSource(DataSource):
         self.sampling_approach = params.sampling_approach
         self.num_samples_per_patch = params.num_samples_per_patch
 
-
         self.df = pd.read_csv(os.path.join(self.root_dir, self.csv_name))
         # 1. Extract weather zone channel index
         with open(os.path.join(self.root_dir, f"feature_channel_map_{self.modelling_approach}.json")) as f:
@@ -67,9 +67,13 @@ class TabularZoneSource(DataSource):
             values, counts = np.unique(zone_arr, return_counts=True)
             mode_zone = int(values[np.argmax(counts)])
             candidates = self.lut.get(mode_zone)
-            if candidates is None: # Only happens in fire size distribution csv
-                value = FIRE_SIZE_MEANS.get(self.feature_names_list[0]) # TODO: Using mean imputation for now, will change once confirmed with client
-                sample_features = np.full(shape=(self.num_samples_per_patch, len(self.feature_names_list)), fill_value=value, dtype=np.float32)
+            if candidates is None:  # Only happens in fire size distribution csv
+                value = FIRE_SIZE_MEANS.get(
+                    self.feature_names_list[0]
+                )  # TODO: Using mean imputation for now, will change once confirmed with client
+                sample_features = np.full(
+                    shape=(self.num_samples_per_patch, len(self.feature_names_list)), fill_value=value, dtype=np.float32
+                )
             else:
                 if len(candidates) >= self.num_samples_per_patch:
                     sample_indices = np.random.choice(len(candidates), size=self.num_samples_per_patch, replace=False)
