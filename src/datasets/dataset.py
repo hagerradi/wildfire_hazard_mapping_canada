@@ -34,7 +34,7 @@ class MultiSourceDataset(Dataset):
             root_dir (str): Directory with all the .npy files.
             filename_col (str): Column name in CSV containing the filenames.
             val_mask_threshold (float): The threshold for how much valid data should be present in a data sample
-            sources (dict[str, DataSource]): A dictionary mapping output keys
+            input_sources (dict[str, DataSource]): A dictionary mapping output keys
             (example: 'grid', 'weather') to their respective data sources (example: GridSource, WeatherSource)
         """
 
@@ -86,7 +86,7 @@ def build_dataset(config: DataConfig, csv_name: str, modelling_approach: str = "
     # Build sources
     sources: dict[str, DataSource] = {}
 
-    for source_conf in config.sources:
+    for source_conf in config.input_sources:
         if source_conf.name not in AVAILABLE_DATA_SOURCES:
             raise ValueError(f"Invalid source name '{source_conf.name} in config. " f"Supported sources are: {AVAILABLE_DATA_SOURCES}")
 

@@ -105,7 +105,7 @@ def main() -> None:
 
     # ---------- Evaluation ----------
 
-    source_map = {s.name: s for s in config.data.sources}
+    source_map = {s.name: s for s in config.data.input_sources}
     grid_source = source_map.get("grid") if "grid" in source_map.keys() else None
     grid_features = None
     out_norm = "min_max"  # default fallback, prevent mypy crash

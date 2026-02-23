@@ -87,7 +87,7 @@ class DataConfig(BaseModel):
     filename_col: str = "filename"
     valid_mask_threshold: float = 0.0
 
-    sources: list[DataSourceConfig]
+    input_sources: list[DataSourceConfig]
 
 
 class Config(BaseModel):
