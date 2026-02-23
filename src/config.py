@@ -26,9 +26,9 @@ class ModelConfig(BaseModel):
     use_activation_after_upsampling: bool = False
 
     # specific to tabular model
-    tabular_hidden_dims: list[int] = [32, 64]
-    tabular_embed_dim: int = 64
-    tabular_pooling: str = "max"
+    tabular_hidden_dims: dict[str, list[int]] = {"weather": [32, 64]}
+    tabular_embed_dims: dict[str, int] = {"weather": 64}
+    tabular_poolings: dict[str, str] = {"weather": "max"}
 
 
 class OptimizerConfig(BaseModel):
