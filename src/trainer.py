@@ -57,9 +57,6 @@ class Trainer:
         Define model, loss function and optimizer.
         """
 
-        if self.spatial_input_channels is None:
-            raise ValueError("Spatial input channels were not provided.")
-
         # Flag to indicate we are including tabular features
         self.use_tabular = "tabular" in self.config.model.input_feature_list
 
