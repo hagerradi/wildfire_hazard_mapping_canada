@@ -9,6 +9,7 @@ import yaml
 
 from src.config import Config
 from src.datasets.dataset import get_test_dataloader, get_train_val_dataloader
+from src.datasets.utils import get_dataset_dimensions
 from src.trainer import Trainer
 from src.utils import seed_everything
 
@@ -50,25 +51,11 @@ def main() -> None:
     # ---------- Data ----------
     train_loader, val_loader = get_train_val_dataloader(config=config.data, modelling_approach=config.modelling_approach, seed=seed)
 
-    dataset = train_loader.dataset
-    sources = getattr(dataset, "sources", {})
-
-    spatial_channels = None
-    tabular_input_dims = {}
-
-    # Get dims. of all sources.
-    for name, source in sources.items():
-        # Base source: spatial grid.
-        if name == "grid":
-            spatial_channels = source.input_dim()
-        # The extra features (tabular).
-        else:
-            tabular_input_dims[name] = source.input_dim()
-
-    print(f"Detected Data Dimensions: Spatial={spatial_channels} | Tabular={tabular_input_dims}")
+    spatial_channels, aux_input_dims = get_dataset_dimensions(train_loader.dataset)
+    print(f"Detected Data Dimensions: Spatial={spatial_channels} | Tabular={aux_input_dims}")
 
     # ---------- Training ----------
-    trainer = Trainer(config=config, spatial_input_channels=spatial_channels, tabular_input_dims=tabular_input_dims)
+    trainer = Trainer(config=config, spatial_input_channels=spatial_channels, tabular_input_dims=aux_input_dims)
 
     trainer.run_training(
         train_loader=train_loader,

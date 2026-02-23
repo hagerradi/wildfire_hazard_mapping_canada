@@ -19,6 +19,7 @@ from src.config import Config, GridParams
 from src.datasets.dataset import get_test_dataloader
 from src.datasets.postprocessing.utils import get_predicted_hexel, save_predicted_hexels
 from src.datasets.postprocessing.visualize_predictions import visualize_burn_prob_grid
+from src.datasets.utils import get_dataset_dimensions
 from src.trainer import Trainer
 from src.utils import seed_everything, visualize_model_predictions
 
@@ -76,17 +77,7 @@ def main() -> None:
     test_loader = get_test_dataloader(config=config.data, modelling_approach=config.modelling_approach, seed=seed)
 
     # Get all data sources from the test dataset
-    dataset = test_loader.dataset
-    sources = getattr(dataset, "sources", {})
-    spatial_channels = None
-    aux_input_dims = {}
-
-    for name, source in sources.items():
-        if name == "grid":
-            spatial_channels = source.input_dim()
-        else:
-            aux_input_dims[name] = source.input_dim()
-
+    spatial_channels, aux_input_dims = get_dataset_dimensions(test_loader.dataset)
     print(f"Detected Data Dimensions: Spatial={spatial_channels} | Aux={aux_input_dims}")
 
     trainer = Trainer(config, spatial_input_channels=spatial_channels, tabular_input_dims=aux_input_dims)
