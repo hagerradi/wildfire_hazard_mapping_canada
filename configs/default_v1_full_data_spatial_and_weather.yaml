@@ -15,7 +15,7 @@ model:
     weather: [32, 64]
 
   tabular_embed_dims:
-    weather: 64
+    weather: 128
 
   tabular_poolings:
     weather: "max" # max, mean, attention
@@ -44,7 +44,7 @@ data:
   val_split: "val_indices.csv"
   test_split: "test_indices.csv"
 
-  batch_size: 256
+  batch_size: 64
   num_workers: 2
 
   input_sources:
@@ -59,9 +59,9 @@ data:
     - name: "weather"
       params:
         csv_name: "weather_table.csv"
-        feature_names_list: ["temp", "rh", "ws", "wd", "prec", "ffmc", "dmc", "dc", "isi", "bui", "fwi"]
+        feature_names_list: ["temp", "rh", "prec", "ffmc", "dmc", "dc", "isi", "bui"] # other options: "wd", "ws", "fwi"
         sampling_approach: "mode"
-        num_samples_per_patch: 128
+        num_samples_per_patch: 256
         transforms_list: []
         augmentation_prob: 0.0
 
