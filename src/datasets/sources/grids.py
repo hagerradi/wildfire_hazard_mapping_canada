@@ -6,6 +6,7 @@ import numpy as np
 import torch
 
 from data_preparation.grid_loader.utils import BURN_COUNT_MAX, BURN_COUNT_MIN, fuel_ranking, get_range_burn_prob
+from src.config import GridParams
 from src.datasets.sources.base import DataSource
 from src.datasets.utils import fill_nan_channel_mean_numpy, one_hot_encode, output_burn_prob_norm
 
@@ -18,10 +19,7 @@ class GridSource(DataSource):
     def __init__(
         self,
         root_dir: str,
-        feature_names_list: list[str],
-        out_norm: str = "min_max",
-        fuel_feats_encoding: str = "one_hot",
-        normalize_fuel_feats_ordinal: bool | None = True,
+        params: GridParams,
         modelling_approach: str = "1",
         transform: Callable | None = None,
     ):
@@ -38,12 +36,15 @@ class GridSource(DataSource):
         """
 
         self.root_dir = root_dir
-        self.out_norm = out_norm
-        self.feature_names_list = feature_names_list
-        self.fuel_feats_encoding = fuel_feats_encoding
-        self.normalize_fuel_feats_ordinal = normalize_fuel_feats_ordinal
+        self.params = params
         self.modelling_approach = modelling_approach
         self.transform = transform
+
+        self.feature_names_list = params.feature_names_list
+        self.out_norm = params.out_norm
+        self.fuel_feats_encoding = params.fuel_feats_encoding
+        self.normalize_fuel_feats_ordinal = params.normalize_fuel_feats_ordinal
+
         self.norm_col_map = {"total_iters": "total_unique_iters", "season_cause_iters": "season_cause_unique_iters"}
         self.max_fuel_grid = float(max(fuel_ranking.values()))
         self.min_fuel_grid = float(min(fuel_ranking.values()))

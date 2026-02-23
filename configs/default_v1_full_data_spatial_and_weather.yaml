@@ -1,5 +1,5 @@
 # Where to save checkpoints
-save_dir: "experiments/unet_run_001_approach_1"
+save_dir: "experiments/unet_full_data_spatial_weather"
 
 # approaches 1 or 2
 modelling_approach: "1"
@@ -9,7 +9,16 @@ deterministic: True
 
 model:
   num_classes: 1
-  input_feature_list: ["spatial"]
+  input_feature_list: ["spatial", "tabular"]
+
+  tabular_hidden_dims:
+    weather: [32, 64]
+
+  tabular_embed_dims:
+    weather: 128
+
+  tabular_poolings:
+    weather: "max" # max, mean, attention
 
 optimizer:
   name: "AdamW" # "SGD", "Adam", "AdamW"
@@ -18,7 +27,7 @@ optimizer:
   # loss_weights: {"bce": 0.8, "kl": 0.2} # use if loss is a list
 
 training:
-  max_epochs: 10
+  max_epochs: 50
   # Logging frequency in epochs
   log_every_n_epoch: 1
 
@@ -28,8 +37,8 @@ evaluation:
   checkpoint_filename: "best.pth" # option to load best or last
 
 data:
-  root_dir: "../yan_bp3/data_samples_approach_1"
-  raw_data_dir: "../yan_bp3"
+  root_dir: "/network/projects/amlrt/nrcan_wildfires/full_data/yan_bp3/data_samples_approach_1_weather"
+  raw_data_dir: "/network/projects/amlrt/nrcan_wildfires/full_data/yan_bp3"
 
   train_split: "train_indices.csv"
   val_split: "val_indices.csv"
@@ -47,13 +56,21 @@ data:
         normalize_fuel_feats_ordinal: True
         transforms_list: []
         augmentation_prob: 0.0
+    - name: "weather"
+      params:
+        csv_name: "weather_table.csv"
+        feature_names_list: ["temp", "rh", "prec", "ffmc", "dmc", "dc", "isi", "bui"] # other options: "wd", "ws", "fwi"
+        sampling_approach: "mode"
+        num_samples_per_patch: 256
+        transforms_list: []
+        augmentation_prob: 0.0
 
 logger:
   enabled: True
   project_name: "nrcan-wildfireriskmapping"
   workspace: "mila-amlrt"
-  experiment_name: "unet_run_001_approach_1"
-  tags: ["baseline", "first-exp", "modelling_approach=1", "fuel_one_hot_encoding", "KL-loss", "3inputfeatures"]
+  experiment_name: "unet_full_data_spatial_weather"
+  tags: ["baseline", "full_data", "modelling_approach=1", "fuel_one_hot_encoding", "KL-loss", "3inputfeatures", "weather-tabular"]
   # log loss and metrics on comet every n steps
   log_every_n_step: 5
 

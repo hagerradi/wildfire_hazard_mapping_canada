@@ -19,6 +19,7 @@ from src.config import Config, GridParams
 from src.datasets.dataset import get_test_dataloader
 from src.datasets.postprocessing.utils import get_predicted_hexel, save_predicted_hexels
 from src.datasets.postprocessing.visualize_predictions import visualize_burn_prob_grid
+from src.datasets.utils import get_dataset_dimensions
 from src.trainer import Trainer
 from src.utils import seed_everything, visualize_model_predictions
 
@@ -69,7 +70,17 @@ def main() -> None:
 
     config.logger.enabled = False
 
-    trainer = Trainer(config)
+    print("\n[Evaluation] Loading test set...")
+    # NOTE: If we need the stats on a particular hexel then modify the test_indices.csv in the config file with
+    # meta_hex_{hex_id}.csv file
+    start_time = time.time()
+    test_loader = get_test_dataloader(config=config.data, modelling_approach=config.modelling_approach, seed=seed)
+
+    # Get all data sources from the test dataset
+    spatial_channels, aux_input_dims = get_dataset_dimensions(test_loader.dataset)
+    print(f"Detected Data Dimensions: Spatial={spatial_channels} | Aux={aux_input_dims}")
+
+    trainer = Trainer(config, spatial_input_channels=spatial_channels, tabular_input_dims=aux_input_dims)
 
     # ---------- Load best checkpoint ----------
     # Try best.pth first, fall back to last.pth if needed
@@ -84,13 +95,8 @@ def main() -> None:
         print(f"[Checkpoint] Loaded epoch={model_ckpt.get('epoch', 'N/A')} " f"Checkpoint Metrics={model_ckpt.get('metric_value', 'N/A')}")
 
     # ---------- Evaluation ----------
-    print("\n[Evaluation] Running on test set...")
-    # NOTE: If we need the stats on a particular hexel then modify the test_indices.csv in the config file with
-    # meta_hex_{hex_id}.csv file
-    start_time = time.time()
-    test_loader = get_test_dataloader(config=config.data, modelling_approach=config.modelling_approach, seed=seed)
 
-    source_map = {s.name: s for s in config.data.sources}
+    source_map = {s.name: s for s in config.data.input_sources}
     grid_source = source_map.get("grid") if "grid" in source_map.keys() else None
     grid_features = None
     out_norm = "min_max"  # default fallback, prevent mypy crash

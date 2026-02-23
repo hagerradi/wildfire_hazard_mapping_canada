@@ -5,11 +5,11 @@ import pandas as pd
 import torch
 from torch.utils.data import DataLoader, Dataset
 
-from src.config import DataConfig, DataSourceConfig
-from src.datasets.sources import DataSource, GridSource, WeatherSource
+from src.config import DataConfig
+from src.datasets.sources import DataSource
 from src.datasets.transforms import get_transforms
 from src.datasets.utils import AVAILABLE_DATA_SOURCES, get_data_source_class
-from src.utils import seed_everything, seed_worker
+from src.utils import seed_worker
 
 
 class MultiSourceDataset(Dataset):
@@ -34,7 +34,7 @@ class MultiSourceDataset(Dataset):
             root_dir (str): Directory with all the .npy files.
             filename_col (str): Column name in CSV containing the filenames.
             val_mask_threshold (float): The threshold for how much valid data should be present in a data sample
-            sources (dict[str, DataSource]): A dictionary mapping output keys
+            input_sources (dict[str, DataSource]): A dictionary mapping output keys
             (example: 'grid', 'weather') to their respective data sources (example: GridSource, WeatherSource)
         """
 
@@ -85,24 +85,20 @@ def build_dataset(config: DataConfig, csv_name: str, modelling_approach: str = "
     """
     # Build sources
     sources: dict[str, DataSource] = {}
-    for source_conf in config.sources:
+
+    for source_conf in config.input_sources:
         if source_conf.name not in AVAILABLE_DATA_SOURCES:
             raise ValueError(f"Invalid source name '{source_conf.name} in config. " f"Supported sources are: {AVAILABLE_DATA_SOURCES}")
-        # Inject global parameters
-        params = source_conf.params.model_dump()
-        params["root_dir"] = config.root_dir
-        params["modelling_approach"] = modelling_approach
+
         # Setup transforms
         is_train = "train" in csv_name.lower()
         transform = get_transforms(source_conf) if is_train else None
 
-        # Clean up keys before unpacking
-        params.pop("transforms_list", None)
-        params.pop("augmentation_prob", None)
-
         # Instantiate each data source class
         source_class = get_data_source_class(source_conf.name)
-        sources[source_conf.name] = source_class(**params, transform=transform)
+        sources[source_conf.name] = source_class(
+            root_dir=config.root_dir, params=source_conf.params, modelling_approach=modelling_approach, transform=transform
+        )
 
     dataset = MultiSourceDataset(
         csv_name=csv_name,
@@ -128,10 +124,16 @@ def get_train_val_dataloader(config: DataConfig, modelling_approach: str = "1", 
     train_dataset = build_dataset(config, csv_name=train_split)
     val_dataset = build_dataset(config, csv_name=val_split)
     train_dataloader = DataLoader(
-        train_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=True, worker_init_fn=seed_worker, generator=g
+        train_dataset,
+        batch_size=batch_size,
+        num_workers=num_workers,
+        shuffle=True,
+        worker_init_fn=seed_worker,
+        generator=g,
+        pin_memory=True,
     )
     val_dataloader = DataLoader(
-        val_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=False, worker_init_fn=seed_worker, generator=g
+        val_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=False, worker_init_fn=seed_worker, generator=g, pin_memory=True
     )
     return train_dataloader, val_dataloader
 
@@ -148,6 +150,12 @@ def get_test_dataloader(config: DataConfig, modelling_approach: str = "1", seed:
     test_dataset = build_dataset(config, csv_name=test_split)
 
     test_dataloader = DataLoader(
-        test_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=False, worker_init_fn=seed_worker, generator=g
+        test_dataset,
+        batch_size=batch_size,
+        num_workers=num_workers,
+        shuffle=False,
+        worker_init_fn=seed_worker,
+        generator=g,
+        pin_memory=True,
     )
     return test_dataloader

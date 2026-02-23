@@ -1,6 +1,3 @@
-import json
-import os
-
 import numpy as np
 
 from data_preparation.grid_loader.utils import fuel_ranking
@@ -23,6 +20,24 @@ def get_data_source_class(name: str):
         return WeatherSource
     else:
         raise ValueError(f"Unknown data source type: {name}. Available: {AVAILABLE_DATA_SOURCES}")
+
+
+def get_dataset_dimensions(dataset) -> tuple[int | None, dict[str, int]]:
+    """
+    Extracts spatial and tabular dimensions from a MultiSourceDataset.
+    """
+    sources = getattr(dataset, "sources", {})
+
+    spatial_channels = None
+    aux_input_dims = {}
+
+    for name, source in sources.items():
+        if name == "grid":
+            spatial_channels = source.input_dim()
+        else:
+            aux_input_dims[name] = source.input_dim()
+
+    return spatial_channels, aux_input_dims
 
 
 def fill_nan_channel_mean_numpy(arr: np.ndarray) -> np.ndarray:

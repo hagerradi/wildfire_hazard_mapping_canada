@@ -1,5 +1,5 @@
 # Where to save checkpoints
-save_dir: "experiments/unet_full_data"
+save_dir: "experiments/unet_full_data_spatial"
 
 # approaches 1 or 2
 modelling_approach: "1"
@@ -9,6 +9,7 @@ deterministic: True
 
 model:
   num_classes: 1
+  input_feature_list: ["spatial"]
 
 optimizer:
   name: "AdamW" # "SGD", "Adam", "AdamW"
@@ -27,31 +28,31 @@ evaluation:
   checkpoint_filename: "best.pth" # option to load best or last
 
 data:
-  root_dir: "/network/projects/amlrt/nrcan_wildfires/full_data/yan_bp3/data_samples_approach_1"
+  root_dir: "/network/projects/amlrt/nrcan_wildfires/full_data/yan_bp3/data_samples_approach_1_weather"
   raw_data_dir: "/network/projects/amlrt/nrcan_wildfires/full_data/yan_bp3"
 
   train_split: "train_indices.csv"
   val_split: "val_indices.csv"
   test_split: "test_indices.csv"
 
-  transforms_list: [] # options: "random_flip", "random_rotate"
-  augmentation_prob: 0.0 # float between 0 and 1
-
-  batch_size: 256
+  batch_size: 64
   num_workers: 2
 
-  output_normalization: "min_max" #log
-
-  feature_names_list: ["ignition_grid", "fuel_grid", "elevation_grid"] # ["ignition_grid", "esc_fires_grid", "fuel_grid", "elevation_grid", "weather_grid", "wind_grid"]
-  fuel_feats_encoding: "one_hot" # ordinal, one_hot
-  normalize_fuel_feats_ordinal: True
-  valid_mask_threshold:  0.00
+  input_sources:
+    - name: "grid"
+      params:
+        feature_names_list: ["ignition_grid", "fuel_grid", "elevation_grid"]
+        out_norm: "min_max"
+        fuel_feats_encoding: "one_hot"
+        normalize_fuel_feats_ordinal: True
+        transforms_list: []
+        augmentation_prob: 0.0
 
 logger:
   enabled: True
   project_name: "nrcan-wildfireriskmapping"
   workspace: "mila-amlrt"
-  experiment_name: "unet_full_data"
+  experiment_name: "unet_full_data_spatial"
   tags: ["baseline", "full_data", "modelling_approach=1", "fuel_one_hot_encoding", "KL-loss", "3inputfeatures"]
   # log loss and metrics on comet every n steps
   log_every_n_step: 5

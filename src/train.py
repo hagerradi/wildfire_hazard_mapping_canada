@@ -9,6 +9,7 @@ import yaml
 
 from src.config import Config
 from src.datasets.dataset import get_test_dataloader, get_train_val_dataloader
+from src.datasets.utils import get_dataset_dimensions
 from src.trainer import Trainer
 from src.utils import seed_everything
 
@@ -50,13 +51,16 @@ def main() -> None:
     # ---------- Data ----------
     train_loader, val_loader = get_train_val_dataloader(config=config.data, modelling_approach=config.modelling_approach, seed=seed)
 
+    spatial_channels, aux_input_dims = get_dataset_dimensions(train_loader.dataset)
+    print(f"Detected Data Dimensions: Spatial={spatial_channels} | Tabular={aux_input_dims}")
+
     # ---------- Training ----------
-    trainer = Trainer(config)
+    trainer = Trainer(config=config, spatial_input_channels=spatial_channels, tabular_input_dims=aux_input_dims)
+
     trainer.run_training(
         train_loader=train_loader,
         val_loader=val_loader,
     )
-
     # ---------- Load best checkpoint ----------
     # Try best.pth first, fall back to last.pth if needed
     best_ckpt = None
@@ -65,7 +69,11 @@ def main() -> None:
         best_ckpt = trainer.load_model(filename="best.pth")
     except FileNotFoundError:
         print("[Checkpoint] best.pth not found, falling back to last.pth...")
-        best_ckpt = trainer.load_model(filename="last.pth")
+        try:
+            best_ckpt = trainer.load_model(filename="last.pth")
+        except FileNotFoundError:
+            print("[Checkpoint] No checkpoint found (last.pth missing)...")
+            return
 
     if best_ckpt is not None:
         print(f"[Checkpoint] Loaded epoch={best_ckpt.get('epoch', 'N/A')} " f"Checkpoint Metrics={best_ckpt.get('metric_value', 'N/A')}")
@@ -75,6 +83,7 @@ def main() -> None:
     test_loader = get_test_dataloader(
         config=config.data,
         modelling_approach=config.modelling_approach,
+        seed=seed,
     )
     test_metrics = trainer.test(test_loader)
     if isinstance(test_metrics, tuple):

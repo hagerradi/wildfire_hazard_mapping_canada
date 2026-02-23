@@ -11,27 +11,25 @@ from tqdm import tqdm
 from src.config import Config
 from src.logger import CometLogger
 from src.losses import WeightedLoss
-from src.metrics import compute_bias, compute_mae, compute_mse, compute_spearman, compute_ssim
-from src.models.unet import BaselineUNet
+from src.models.unet import BaselineUNet, MultiSourceUNet
 from src.models.utils import get_nbr_model_parameters
-from utils import build_single_loss
+from utils import AVAILABLE_METRICS, build_single_loss, set_device
 
 
 class Trainer:
-    def __init__(
-        self,
-        config: Config,
-    ):
+    def __init__(self, config: Config, spatial_input_channels: int | None = None, tabular_input_dims: dict[str, int] | None = None):
         self.config = config
+        self.spatial_input_channels = spatial_input_channels
+        self.tabular_input_dims = tabular_input_dims if tabular_input_dims is not None else {}
 
-        self.device = (
-            "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() and torch.backends.mps.is_built() else "cpu"
-        )
+        # Set device
+        self.device = set_device()
         print(f"\n[Device] Using: {self.device}")
 
         self.save_dir = self.config.save_dir
         os.makedirs(self.save_dir, exist_ok=True)
 
+        # Comet Logger
         self.logger = None
         # Only initialize logger if not in test-only mode
         if self.config.logger.enabled:
@@ -44,7 +42,9 @@ class Trainer:
             self.log_every_n_step = self.config.logger.log_every_n_step
             # log all the params.
             self.logger.log_params(self.config.model_dump())
+
         self.setup()
+
         # metrics for best checkpoint saving
         self.best_ckpt_metrics = list(self.config.evaluation.best_ckpt_metrics)
         self.best_ckpt_modes = list(self.config.evaluation.best_ckpt_metrics_mode)
@@ -54,27 +54,57 @@ class Trainer:
 
     def setup(self):
         """
-        define model, loss function and optimizer.
+        Define model, loss function and optimizer.
         """
-        # Automatically infer input channels based on data config
-        self.input_channels = compute_number_input_channels(
-            feature_names_list=self.config.data.feature_names_list,
-            fuel_feats_encoding=self.config.data.fuel_feats_encoding,
-            root_dir=self.config.data.root_dir,
-            modelling_approach=self.config.modelling_approach,
-        )
-        print(f"[Trainer] Auto-inferred Input Channels: {self.input_channels}")
 
-        self.model = BaselineUNet(input_channels=self.input_channels, num_classes=self.config.model.num_classes)
+        # Flag to indicate we are including tabular features
+        self.use_tabular = "tabular" in self.config.model.input_feature_list
+
+        # Multi-source path: spatial grids + tabular data.
+        if self.use_tabular:
+            if not self.tabular_input_dims:
+                raise ValueError("Config requests tabular features, but no tabular dim. were detected.")
+
+            print(f"[Trainer] Mode: Multi-Source (Spatial + Tabular)")
+            print(f"[Trainer] Spatial Channels: {self.spatial_input_channels}, Tabular Dim: {self.tabular_input_dims}")
+
+            self.model = MultiSourceUNet(
+                input_channels=self.spatial_input_channels,
+                num_classes=self.config.model.num_classes,
+                hidden_features=self.config.model.hidden_features,
+                input_feature_list=self.config.model.input_feature_list,
+                use_skip_connections=self.config.model.use_skip_connections,
+                use_transpose_conv=self.config.model.use_transpose_conv,
+                use_activation_after_upsampling=self.config.model.use_activation_after_upsampling,
+                tabular_input_dims=self.tabular_input_dims,
+                tabular_hidden_dims=self.config.model.tabular_hidden_dims,
+                tabular_embed_dims=self.config.model.tabular_embed_dims,
+                tabular_feature_encoder_poolings=self.config.model.tabular_poolings,
+            )
+        # Single-source path: spatial grids only.
+        else:
+            print(f"[Trainer] Mode: Baseline (Spatial Only)")
+            print(f"[Trainer] Spatial Channels: {self.spatial_input_channels}")
+
+            self.model = BaselineUNet(
+                input_channels=self.spatial_input_channels,
+                num_classes=self.config.model.num_classes,
+                hidden_features=self.config.model.hidden_features,
+                input_feature_list=self.config.model.input_feature_list,
+                use_skip_connections=self.config.model.use_skip_connections,
+                use_transpose_conv=self.config.model.use_transpose_conv,
+                use_activation_after_upsampling=self.config.model.use_activation_after_upsampling,
+            )
+
         self.model.to(self.device)
 
-        # Get model nbr of params and log them into Logger
+        # Get and log number of model params.
         total_params, trainable_params = get_nbr_model_parameters(self.model)
         print(f"Model Params: Total={total_params:,} | Trainable={trainable_params:,}")
         if self.logger:
             self.logger.log_params({"model_total_params": total_params, "model_trainable_params": trainable_params})
 
-        # setup loss
+        # Setup loss
         loss_config = self.config.optimizer.loss
         if isinstance(loss_config, str):  # loss is a string
             self.loss_fn = build_single_loss(loss_config)
@@ -84,7 +114,7 @@ class Trainer:
             losses = {n: build_single_loss(n) for n in loss_names}
             self.loss_fn = WeightedLoss(losses=losses, weights=weights, normalize_weights=True)
 
-        # setup optimizer
+        # Setup optimizer
         opt_name = self.config.optimizer.name
         # TODO: add other parameters
         opt_params = {
@@ -96,34 +126,33 @@ class Trainer:
 
         self.global_step = 0
 
-        # get metrics to compute
-        available_metrics = {
-            "mse": compute_mse,
-            "mae": compute_mae,
-            "spearman": compute_spearman,
-            "ssim": compute_ssim,
-            "bias": compute_bias,
-        }
+        # Validate and load metrics from config.
+        self._validate_and_load_metrics()
 
-        self.metric_functions = {}
-
-        for name in self.config.metrics:
-            if name in available_metrics:
-                self.metric_functions[name] = available_metrics[name]
-            else:
-                raise ValueError(f"Metric '{name}' in config. is not implemented." f"Available options: {list(available_metrics.keys())}")
+    def _validate_and_load_metrics(self) -> None:
+        """Helper to validate and load metrics to be computed."""
+        if not set(self.config.metrics).issubset(AVAILABLE_METRICS):
+            raise ValueError(f"Invalid metrics found." f"Available options: {list(AVAILABLE_METRICS)}")
+        self.metric_functions = {k: AVAILABLE_METRICS[k] for k in self.config.metrics}
 
     def _step(self, batch: Any) -> tuple[torch.Tensor, torch.Tensor, dict[str, torch.Tensor] | None, torch.Tensor, torch.Tensor]:
         """
-        Default step. Expects batch -> (inputs, targets, masks).
-        Returns (predictions, loss, targets_on_device, masks_on_device).
+        Default step. Expects batch -> {'grid': (inputs, targets, masks), 'weather': ...}.
+        Returns (predictions, loss, loss_parts, targets_on_device, masks_on_device).
         """
-        inputs, targets, masks = batch
-        inputs = inputs.to(self.device)
-        targets = targets.to(self.device)
-        masks = masks.to(self.device)
+        # Get the spatial grid inputs, targets and masks.
+        if "grid" not in batch:
+            raise ValueError("Batch is missing required 'grid' data.")
+        inputs, targets, masks = [t.to(self.device) for t in batch["grid"]]
 
-        predictions = self.model(inputs)
+        # Unpack all potential tabular data
+        tabular_data = {}
+        for key, value in batch.items():
+            if key == "grid":
+                continue
+            tabular_data[key] = value.to(self.device)
+
+        predictions = self.model(inputs, tabular_data)
 
         loss_out = self.loss_fn(predictions, targets, masks)
 
@@ -134,9 +163,7 @@ class Trainer:
             total_loss = cast(torch.Tensor, loss_out)
             loss_parts = None
 
-        predictions = torch.sigmoid(predictions)
-
-        return predictions, total_loss, loss_parts, targets, masks
+        return torch.sigmoid(predictions), total_loss, loss_parts, targets, masks
 
     @staticmethod
     def _are_metrics_better(curr: list[float], best: list[float], modes: list[str]):
@@ -192,16 +219,18 @@ class Trainer:
                     running_metrics[name] += value.item() * batch_size
                     if self.logger and self.global_step % self.log_every_n_step == 0:
                         self.logger.log_metrics({f"train_step_{name}": value.item()}, step=self.global_step)
-                        if loss_parts is not None:
-                            # log each loss part (raw/unweighted)
-                            self.logger.log_metrics(
-                                {f"train_step_loss_{k}": v.item() for k, v in loss_parts.items()},
-                                step=self.global_step,
-                            )
-                            # accumulate epoch averages
-                            if running_loss_parts is not None:
-                                for k, v in loss_parts.items():
-                                    running_loss_parts[k] += v.item() * batch_size
+
+                if loss_parts is not None:
+                    # log each loss part (raw/unweighted)
+                    if self.logger and self.global_step % self.log_every_n_step == 0:
+                        self.logger.log_metrics(
+                            {f"train_step_loss_{k}": v.item() for k, v in loss_parts.items()},
+                            step=self.global_step,
+                        )
+                    # accumulate epoch averages
+                    if running_loss_parts is not None:
+                        for k, v in loss_parts.items():
+                            running_loss_parts[k] += v.item() * batch_size
 
             self.global_step += 1
 
@@ -245,9 +274,10 @@ class Trainer:
                 for name, metric_fn in self.metric_functions.items():
                     value = metric_fn(predictions.detach(), targets, masks)
                     running_metrics[name] += value.item() * batch_size
-                    if loss_parts is not None and running_loss_parts is not None:
-                        for k, v in loss_parts.items():
-                            running_loss_parts[k] += v.item() * batch_size
+
+                if loss_parts is not None and running_loss_parts is not None:
+                    for k, v in loss_parts.items():
+                        running_loss_parts[k] += v.item() * batch_size
 
         avg_loss = running_loss / max(1, running_batch_count)
         results = {"loss": avg_loss}

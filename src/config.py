@@ -1,7 +1,4 @@
 # base configurations for experiments
-from collections.abc import Callable
-from typing import Any, Literal
-
 from pydantic import BaseModel, Field
 
 
@@ -15,7 +12,23 @@ class LoggerConfig(BaseModel):
 
 
 class ModelConfig(BaseModel):
-    num_classes: int
+    num_classes: int = 1
+    hidden_features: list[int] = [64, 128, 256, 512]
+
+    # Controls if we use MultiSourceUNet or BaselineUNet
+    # Use ["spatial"] for base unet
+    # Extra tabular features are detected automatically from the dataset config.
+    input_feature_list: list[str] = ["spatial"]
+
+    # encoder/decoder
+    use_skip_connections: bool = True
+    use_transpose_conv: bool = False
+    use_activation_after_upsampling: bool = False
+
+    # specific to tabular model
+    tabular_hidden_dims: dict[str, list[int]] = {"weather": [32, 64]}
+    tabular_embed_dims: dict[str, int] = {"weather": 128}
+    tabular_poolings: dict[str, str] = {"weather": "max"}
 
 
 class OptimizerConfig(BaseModel):
@@ -43,24 +56,24 @@ class GridParams(BaseModel):
     out_norm: str = "min_max"
     fuel_feats_encoding: str = "one_hot"
     normalize_fuel_feats_ordinal: bool = True
-    transforms_list: list[str]
-    augmentation_prob: float
+    transforms_list: list[str] = Field(default_factory=list)
+    augmentation_prob: float = 0.0
 
 
-class WeatherParams(BaseModel):
-    """Specific parameters for the WeatherSource."""
+class TabularParams(BaseModel):
+    """Specific parameters for any tabular source (e.g., weather)."""
 
-    weather_samples_csv_name: str = "weather_table.csv"
+    csv_name: str = "weather_table.csv"
     feature_names_list: list[str]
     sampling_approach: str = "mode"
-    num_samples_per_patch: int = 128
-    transforms_list: list[str]
-    augmentation_prob: float
+    num_samples_per_patch: int = 256
+    transforms_list: list[str] = Field(default_factory=list)
+    augmentation_prob: float = 0.0
 
 
 class DataSourceConfig(BaseModel):
-    name: Literal["grid", "weather"]
-    params: GridParams | WeatherParams
+    name: str
+    params: GridParams | TabularParams
 
 
 class DataConfig(BaseModel):
@@ -75,7 +88,7 @@ class DataConfig(BaseModel):
     filename_col: str = "filename"
     valid_mask_threshold: float = 0.0
 
-    sources: list[DataSourceConfig]
+    input_sources: list[DataSourceConfig]
 
 
 class Config(BaseModel):

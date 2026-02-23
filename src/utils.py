@@ -7,6 +7,15 @@ from matplotlib import pyplot as plt
 from torch.utils.data import DataLoader
 
 from losses import BCELoss, BernoulliKLLoss, DiceLoss, FocalLoss, MAELoss, MSELoss
+from src.metrics import compute_bias, compute_mae, compute_mse, compute_spearman, compute_ssim
+
+AVAILABLE_METRICS = {
+    "mse": compute_mse,
+    "mae": compute_mae,
+    "spearman": compute_spearman,
+    "ssim": compute_ssim,
+    "bias": compute_bias,
+}
 
 
 def build_single_loss(name: str) -> torch.nn.Module:
@@ -63,8 +72,13 @@ def visualize_model_predictions(
     """
     all_inputs, all_targets, all_masks = [], [], []
 
+    # If more than one data source, we only need the grid for the viz.
     for batch in test_loader:
-        inputs, targets, masks = batch
+        if isinstance(batch, dict) and "grid" in batch:
+            inputs, targets, masks = batch["grid"]
+        else:
+            inputs, targets, masks = batch
+
         all_inputs.append(inputs.detach().cpu().numpy())
         all_targets.append(targets.detach().cpu().numpy())
         all_masks.append(masks.detach().cpu().numpy())
@@ -236,3 +250,15 @@ def seed_worker(worker_id: int):
     np.random.seed(worker_seed)
     random.seed(worker_seed)
     torch.manual_seed(worker_seed)
+
+
+def set_device() -> str:
+    """Utils. to set up device."""
+    if torch.cuda.is_available():
+        device = "cuda"
+    elif torch.backends.mps.is_available() and torch.backends.mps.is_built():
+        device = "mps"
+    else:
+        device = "cpu"
+
+    return device
