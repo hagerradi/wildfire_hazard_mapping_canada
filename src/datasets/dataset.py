@@ -90,17 +90,9 @@ def build_dataset(config: DataConfig, csv_name: str, modelling_approach: str = "
         if source_conf.name not in AVAILABLE_DATA_SOURCES:
             raise ValueError(f"Invalid source name '{source_conf.name} in config. " f"Supported sources are: {AVAILABLE_DATA_SOURCES}")
 
-        # Inject global parameters
-        params = source_conf.params.model_dump()
-        params["root_dir"] = config.root_dir
-        params["modelling_approach"] = modelling_approach
         # Setup transforms
         is_train = "train" in csv_name.lower()
         transform = get_transforms(source_conf) if is_train else None
-
-        # Clean up keys before unpacking
-        params.pop("transforms_list", None)
-        params.pop("augmentation_prob", None)
 
         # Instantiate each data source class
         source_class = get_data_source_class(source_conf.name)
