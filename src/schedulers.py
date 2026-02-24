@@ -5,10 +5,10 @@ from torch.utils.data import DataLoader
 
 from src.config import Config
 
-AVAILABLE_SCHEDULERS = ["onecycle", "cosine_warmup", "plateau", "multistep"]
+AVAILABLE_LR_SCHEDULERS = ["onecycle", "cosine_warmup", "plateau", "multistep"]
 
 
-def build_scheduler(config: Config, optimizer: optim.Optimizer, train_loader: DataLoader) -> tuple[Any, str | None]:
+def build_lr_scheduler(config: Config, optimizer: optim.Optimizer, train_loader: DataLoader) -> tuple[Any, str | None]:
     """
     Factory function to build a learning rate scheduler.
 
@@ -59,4 +59,4 @@ def build_scheduler(config: Config, optimizer: optim.Optimizer, train_loader: Da
         ), "epoch"
 
     else:
-        raise ValueError(f"Unknown scheduler: '{name}'. Available options are: {AVAILABLE_SCHEDULERS} or null.")
+        raise ValueError(f"Unknown scheduler: '{name}'. Available options are: {AVAILABLE_LR_SCHEDULERS} or null.")

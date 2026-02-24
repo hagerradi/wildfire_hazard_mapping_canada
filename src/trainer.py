@@ -14,7 +14,7 @@ from src.logger import CometLogger
 from src.losses import WeightedLoss
 from src.models.unet import BaselineUNet, MultiSourceUNet
 from src.models.utils import get_nbr_model_parameters
-from src.schedulers import build_scheduler
+from src.schedulers import build_lr_scheduler
 from utils import AVAILABLE_METRICS, build_single_loss, set_device
 
 
@@ -320,7 +320,7 @@ class Trainer:
         log_every_n_epoch = self.config.training.log_every_n_epoch
 
         # get scheduler and its type
-        lr_scheduler, lr_scheduler_type = build_scheduler(self.config, self.optimizer, train_loader)
+        lr_scheduler, lr_scheduler_type = build_lr_scheduler(self.config, self.optimizer, train_loader)
 
         for epoch in range(1, num_epochs + 1):
             start = time.time()
