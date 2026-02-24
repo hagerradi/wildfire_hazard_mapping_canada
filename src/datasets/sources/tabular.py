@@ -63,26 +63,25 @@ class TabularSource(DataSource):
         mask = ~np.isnan(zone_arr)
         zone_arr = zone_arr[mask]
         sample_features = None
+        values, counts = np.unique(zone_arr, return_counts=True)
+
+        # 1. Select candidates depending on sampling approach
         if self.sampling_approach == "mode":
-            values, counts = np.unique(zone_arr, return_counts=True)
             mode_zone = int(values[np.argmax(counts)])
             candidates = self.lut.get(mode_zone)
-            if candidates is None:  # Only happens in fire size distribution csv
-                value = FIRE_SIZE_MEANS.get(
-                    self.feature_names_list[0]
-                )  # TODO: Using mean imputation for now, will change once confirmed with client
-                sample_features = np.full(
-                    shape=(self.num_samples_per_patch, len(self.feature_names_list)), fill_value=value, dtype=np.float32
-                )
-            else:
-                if len(candidates) >= self.num_samples_per_patch:
-                    sample_indices = np.random.choice(len(candidates), size=self.num_samples_per_patch, replace=False)
-                    sample_features = candidates[sample_indices]
-                else:
-                    sample_indices = np.random.choice(len(candidates), size=self.num_samples_per_patch, replace=True)
-                    sample_features = candidates[sample_indices]
         else:
             raise ValueError("Please provide a correct sampling approach. Valid approaches: ['mode'].")
+
+        # 2. Perform actual sampling
+        if candidates is None:  # Only happens in fire size distribution csv
+            value = FIRE_SIZE_MEANS.get(
+                self.feature_names_list[0]
+            )  # TODO: Using mean imputation for now, will change once confirmed with client
+            sample_features = np.full(shape=(self.num_samples_per_patch, len(self.feature_names_list)), fill_value=value, dtype=np.float32)
+        else:
+            replace = len(candidates) < self.num_samples_per_patch
+            sample_indices = np.random.choice(len(candidates), size=self.num_samples_per_patch, replace=replace)
+            sample_features = candidates[sample_indices]
 
         return sample_features
 
