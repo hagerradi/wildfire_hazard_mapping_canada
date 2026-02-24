@@ -55,9 +55,9 @@ class TrainingConfig(BaseModel):
 
 
 class EvaluationConfig(BaseModel):
-    best_ckpt_metrics: list[str] = ["spearman", "ssim"]  # metric to choose best checkpoint
-    best_ckpt_metrics_mode: list[str] = ["max", "max"]  # max, or min
-    checkpoint_filename: str = "last.pth"
+    best_ckpt_metrics: list[str] = ["spearman"]  # metric to choose best checkpoint
+    best_ckpt_metrics_mode: list[str] = ["max"]  # max, or min
+    checkpoint_filename: str = "best.pth"
 
 
 class GridParams(BaseModel):
@@ -110,7 +110,7 @@ class Config(BaseModel):
     modelling_approach: str = "2"
     model: ModelConfig
     optimizer: OptimizerConfig
-    scheduler: SchedulerConfig
+    lr_scheduler: SchedulerConfig
     training: TrainingConfig
     evaluation: EvaluationConfig
     data: DataConfig

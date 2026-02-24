@@ -5,6 +5,7 @@ from typing import Any, cast
 import numpy as np
 import torch
 import torch.optim as optim
+from torch.optim.lr_scheduler import LRScheduler, ReduceLROnPlateau
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
@@ -187,7 +188,10 @@ class Trainer:
                 raise ValueError(f"Unknown mode: {mode}")
         return improved  # Only True if at least one metric improved, none worse
 
-    def train_epoch(self, loader: DataLoader, scheduler: Any = None, scheduler_type: str | None = None) -> dict[str, float]:
+    # Supports any LRScheduler object and metric-based ReduceLROnPlateau schedulers
+    def train_epoch(
+        self, loader: DataLoader, lr_scheduler: LRScheduler | ReduceLROnPlateau | None = None, lr_scheduler_type: str | None = None
+    ) -> dict[str, float]:
         self.model.train()
         running_loss = 0.0
         running_batch_count = 0
@@ -205,8 +209,8 @@ class Trainer:
             self.optimizer.step()
 
             # use scheduler if its type is batch-level
-            if scheduler is not None and scheduler_type == "batch":
-                scheduler.step()
+            if lr_scheduler is not None and lr_scheduler_type == "batch":
+                lr_scheduler.step()
 
             batch_size = targets.size(0) if hasattr(targets, "size") else 1
             running_loss += loss.item() * batch_size
@@ -316,11 +320,11 @@ class Trainer:
         log_every_n_epoch = self.config.training.log_every_n_epoch
 
         # get scheduler and its type
-        scheduler, scheduler_type = build_scheduler(self.config, self.optimizer, train_loader)
+        lr_scheduler, lr_scheduler_type = build_scheduler(self.config, self.optimizer, train_loader)
 
         for epoch in range(1, num_epochs + 1):
             start = time.time()
-            train_res = self.train_epoch(train_loader, scheduler=scheduler, scheduler_type=scheduler_type)
+            train_res = self.train_epoch(train_loader, lr_scheduler=lr_scheduler, lr_scheduler_type=lr_scheduler_type)
             elapsed = time.time() - start
 
             val_result = self.validate(val_loader) if val_loader is not None else None
@@ -328,13 +332,13 @@ class Trainer:
                 val_result = val_result[0]
 
             # for epoch level schedulers
-            if scheduler is not None:
-                if scheduler_type == "epoch":
-                    scheduler.step()
-                elif scheduler_type == "epoch_metric":
+            if lr_scheduler is not None:
+                if lr_scheduler_type == "epoch":
+                    lr_scheduler.step()
+                elif lr_scheduler_type == "epoch_metric":
                     # Plateau needs a metric to watch. Default to val_loss, fallback to train_loss
                     watch_metric = val_result["loss"] if val_result else train_res["loss"]
-                    scheduler.step(watch_metric)
+                    lr_scheduler.step(watch_metric)
 
             # log metrics and loss
             if epoch % log_every_n_epoch == 0:

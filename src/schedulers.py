@@ -20,10 +20,10 @@ def build_scheduler(config: Config, optimizer: optim.Optimizer, train_loader: Da
     Returns: (scheduler_instance, step_frequency_type): tuple with scheduler object and type.
     """
     # base setup without scheduler
-    if not config.scheduler.name:
+    if not config.lr_scheduler.name:
         return None, None
 
-    name = config.scheduler.name.lower()
+    name = config.lr_scheduler.name.lower()
     epochs = config.training.max_epochs
     steps_per_epoch = len(train_loader)
     total_steps = epochs * steps_per_epoch
@@ -32,13 +32,13 @@ def build_scheduler(config: Config, optimizer: optim.Optimizer, train_loader: Da
     if name == "onecycle":
         return optim.lr_scheduler.OneCycleLR(
             optimizer,
-            max_lr=config.scheduler.max_lr,
+            max_lr=config.lr_scheduler.max_lr,
             total_steps=total_steps,
         ), "batch"
 
     # cosine warmup
     elif name == "cosine_warmup":
-        warmup_steps = max(1, config.scheduler.warmup_epochs * steps_per_epoch)
+        warmup_steps = max(1, config.lr_scheduler.warmup_epochs * steps_per_epoch)
         warmup_scheduler = optim.lr_scheduler.LinearLR(optimizer, start_factor=0.01, end_factor=1.0, total_iters=warmup_steps)
         cosine_scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=(total_steps - warmup_steps))
 
@@ -49,12 +49,14 @@ def build_scheduler(config: Config, optimizer: optim.Optimizer, train_loader: Da
     # plateau
     elif name == "plateau":
         return optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, mode="min", factor=config.scheduler.factor, patience=config.scheduler.patience
+            optimizer, mode="min", factor=config.lr_scheduler.factor, patience=config.lr_scheduler.patience
         ), "epoch_metric"
 
     # multistep
     elif name == "multistep":
-        return optim.lr_scheduler.MultiStepLR(optimizer, milestones=config.scheduler.milestones, gamma=config.scheduler.factor), "epoch"
+        return optim.lr_scheduler.MultiStepLR(
+            optimizer, milestones=config.lr_scheduler.milestones, gamma=config.lr_scheduler.factor
+        ), "epoch"
 
     else:
         raise ValueError(f"Unknown scheduler: '{name}'. Available options are: {AVAILABLE_SCHEDULERS} or null.")
