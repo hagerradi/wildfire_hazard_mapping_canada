@@ -20,9 +20,9 @@ def get_data_source_class(name: str):
 
         return GridSource
     elif name in ["weather", "fire_size"]:
-        from src.datasets.sources import TabularZoneSource
+        from src.datasets.sources import TabularSource
 
-        return TabularZoneSource
+        return TabularSource
     else:
         raise ValueError(f"Unknown data source type: {name}. Available: {AVAILABLE_DATA_SOURCES}")
 

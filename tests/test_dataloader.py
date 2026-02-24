@@ -11,7 +11,7 @@ import torchvision.transforms.functional as F
 
 from src.config import DataSourceConfig, GridParams, TabularParams
 from src.datasets.dataset import MultiSourceDataset
-from src.datasets.sources import GridSource, TabularZoneSource
+from src.datasets.sources import GridSource, TabularSource
 from src.datasets.transforms import setup_augmentations
 
 
@@ -107,7 +107,7 @@ def test_multi_source_integration(temp_data_dir):
     weather_params = TabularParams(
         csv_name=weather_csv,
         feature_names_list=weather_feats,
-        zone_id_col="wx_zone",
+        fire_weather_zone_id_col="wx_zone",
         sampling_approach="mode",
         num_samples_per_patch=2,
     )
@@ -115,18 +115,18 @@ def test_multi_source_integration(temp_data_dir):
     fire_size_params = TabularParams(
         csv_name=fire_size_csv,
         feature_names_list=fire_size_feats,
-        zone_id_col="grid_code",
+        fire_weather_zone_id_col="grid_code",
         sampling_approach="mode",
         num_samples_per_patch=2,
     )
 
-    weather_source = TabularZoneSource(
+    weather_source = TabularSource(
         root_dir=tmpdir,
         params=weather_params,
         modelling_approach="2",
     )
 
-    fire_size_source = TabularZoneSource(root_dir=tmpdir, params=fire_size_params, modelling_approach="2")
+    fire_size_source = TabularSource(root_dir=tmpdir, params=fire_size_params, modelling_approach="2")
 
     ds = MultiSourceDataset(
         csv_name="train.csv", root_dir=tmpdir, sources={"grid": grid_source, "weather": weather_source, "fire_size": fire_size_source}

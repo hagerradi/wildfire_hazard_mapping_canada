@@ -71,7 +71,7 @@ data:
       params:
         csv_name: "df_fire_fru_processed.csv"
         feature_names_list: ["NORM_LOG_SIZE_HA"]
-        zone_id_col: "GRIDCODE"
+        fire_weather_zone_id_col: "GRIDCODE"
         sampling_approach: "mode"
         num_samples_per_patch: 128
         transforms_list: []

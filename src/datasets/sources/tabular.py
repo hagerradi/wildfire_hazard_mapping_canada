@@ -10,7 +10,7 @@ from src.datasets.sources.base import DataSource
 from src.datasets.utils import FIRE_SIZE_MEANS
 
 
-class TabularZoneSource(DataSource):
+class TabularSource(DataSource):
     """
     Retrieves samples by mapping a zone ID from a spatial grid patch
     to a lookup table of tabular data (loaded from CSV).
@@ -37,7 +37,7 @@ class TabularZoneSource(DataSource):
 
         self.csv_name = params.csv_name
         self.feature_names_list = params.feature_names_list
-        self.zone_id_col = params.zone_id_col
+        self.fire_weather_zone_id_col = params.fire_weather_zone_id_col
         self.sampling_approach = params.sampling_approach
         self.num_samples_per_patch = params.num_samples_per_patch
 
@@ -48,7 +48,7 @@ class TabularZoneSource(DataSource):
             self.zone_channel = channel_feature_map["weather_grid"][0]
         # 2. Create weather lookup table for faster sampling
         self.lut = {}
-        for zone, group in self.df.groupby(self.zone_id_col):
+        for zone, group in self.df.groupby(self.fire_weather_zone_id_col):
             feats = group[self.feature_names_list].values.astype(np.float32)
             self.lut[int(zone)] = feats
 

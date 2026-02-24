@@ -60,7 +60,7 @@ data:
       params:
         csv_name: "weather_table.csv"
         feature_names_list: ["temp", "rh", "prec", "ffmc", "dmc", "dc", "isi", "bui"] # other options: "wd", "ws", "fwi"
-        zone_id_col: "wx_zone"
+        fire_weather_zone_id_col: "wx_zone"
         sampling_approach: "mode"
         num_samples_per_patch: 256
         transforms_list: []
