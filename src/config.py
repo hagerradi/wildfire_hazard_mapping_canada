@@ -66,7 +66,7 @@ class TabularParams(BaseModel):
     csv_name: str = "weather_table.csv"
     feature_names_list: list[str]
     fire_weather_zone_id_col: str = "wx_zone"
-    sampling_approach: str = "mode"
+    sampling_approach: str = "mode"  # mode or weighted
     num_samples_per_patch: int = 256
     transforms_list: list[str] = Field(default_factory=list)
     augmentation_prob: float = 0.0
