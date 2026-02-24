@@ -16,13 +16,12 @@ model:
     fire_size: [8, 16]
 
   tabular_embed_dims:
-    weather: 64
+    weather: 128
     fire_size: 16
 
   tabular_poolings:
     weather: "max" # max, mean, attention
     fire_size: "max" # max, mean, attention
-
 
 optimizer:
   name: "AdamW" # "SGD", "Adam", "AdamW"
@@ -64,7 +63,6 @@ data:
       params:
         csv_name: "weather_table.csv"
         feature_names_list: ["temp", "rh", "prec", "ffmc", "dmc", "dc", "isi", "bui"] # other options: "wd", "ws", "fwi"
-        zone_id_col: "wx_zone"
         sampling_approach: "mode"
         num_samples_per_patch: 256
         transforms_list: []
@@ -84,7 +82,7 @@ logger:
   project_name: "nrcan-wildfireriskmapping"
   workspace: "mila-amlrt"
   experiment_name: "unet_full_data_spatial_weather_firesize"
-  tags: ["baseline", "full_data", "modelling_approach=1", "fuel_one_hot_encoding", "KL-loss", "3inputfeatures", "weather-tabular"]
+  tags: ["baseline", "full_data", "modelling_approach=1", "fuel_one_hot_encoding", "KL-loss", "3inputfeatures", "weather-tabular", "firesize-tabular"]
   # log loss and metrics on comet every n steps
   log_every_n_step: 5
 

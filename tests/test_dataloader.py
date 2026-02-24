@@ -74,14 +74,22 @@ def temp_data_dir():
         weather_csv = "weather_table.csv"
         weather_df.to_csv(os.path.join(tmpdir, weather_csv), index=False)
 
-        yield tmpdir, train_csv, val_csv, test_csv, weather_csv, weather_feats
+        # Create dummy weather table csv
+        fire_size_feats = ["size"]
+        data = {feat: np.random.rand(5) for feat in fire_size_feats}
+        data["grid_code"] = [100, 100, 100, 200, 200]  # 3 samples for zone 100
+        fire_size_df = pd.DataFrame(data)
+        fire_size_csv = "fire_size_table.csv"
+        fire_size_df.to_csv(os.path.join(tmpdir, fire_size_csv), index=False)
+
+        yield tmpdir, train_csv, val_csv, test_csv, weather_csv, weather_feats, fire_size_csv, fire_size_feats
 
     finally:
         shutil.rmtree(tmpdir)
 
 
 def test_multi_source_integration(temp_data_dir):
-    tmpdir, train_csv, val_csv, test_csv, weather_csv, weather_feats = temp_data_dir
+    tmpdir, train_csv, val_csv, test_csv, weather_csv, weather_feats, fire_size_csv, fire_size_feats = temp_data_dir
 
     grid_params = GridParams(
         feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],
@@ -104,25 +112,41 @@ def test_multi_source_integration(temp_data_dir):
         num_samples_per_patch=2,
     )
 
+    fire_size_params = TabularParams(
+        csv_name=fire_size_csv,
+        feature_names_list=fire_size_feats,
+        zone_id_col="grid_code",
+        sampling_approach="mode",
+        num_samples_per_patch=2,
+    )
+
     weather_source = TabularZoneSource(
         root_dir=tmpdir,
         params=weather_params,
         modelling_approach="2",
     )
-    ds = MultiSourceDataset(csv_name="train.csv", root_dir=tmpdir, sources={"grid": grid_source, "weather": weather_source})
+
+    fire_size_source = TabularZoneSource(root_dir=tmpdir, params=fire_size_params, modelling_approach="2")
+
+    ds = MultiSourceDataset(
+        csv_name="train.csv", root_dir=tmpdir, sources={"grid": grid_source, "weather": weather_source, "fire_size": fire_size_source}
+    )
     sample = ds[0]
 
     assert "grid" in sample.keys()
     assert "weather" in sample.keys()
+    assert "fire_size" in sample.keys()
     input_arr, target, mask = sample["grid"]
     assert isinstance(input_arr, torch.Tensor)
     assert input_arr.shape[0] == 3
     weather = sample["weather"]
     assert weather.shape == (2, len(weather_feats))
+    fire_size = sample["fire_size"]
+    assert fire_size.shape == (2, len(fire_size_feats))
 
 
 def test_grid_one_hot_encoding(temp_data_dir):
-    tmpdir, train_csv, _, _, _, _ = temp_data_dir
+    tmpdir, train_csv, _, _, _, _, _, _ = temp_data_dir
 
     grid_params = GridParams(feature_names_list=["fuel_grid"], fuel_feats_encoding="one_hot", normalize_fuel_feats_ordinal=True)
 
@@ -140,7 +164,7 @@ def test_grid_one_hot_encoding(temp_data_dir):
 
 
 def test_grid_feature_names_list(temp_data_dir):
-    tmpdir, train_csv, _, _, _, _ = temp_data_dir
+    tmpdir, train_csv, _, _, _, _, _, _ = temp_data_dir
 
     grid_params = GridParams(
         feature_names_list=["fuel_grid"],
@@ -158,7 +182,7 @@ def test_grid_feature_names_list(temp_data_dir):
 
 
 def test_mask_threshold(temp_data_dir):
-    tmpdir, train_csv, _, _, _, _ = temp_data_dir
+    tmpdir, train_csv, _, _, _, _, _, _ = temp_data_dir
     # Set threshold above 1.0 so no samples are valid
     ds = MultiSourceDataset(csv_name="train.csv", root_dir=tmpdir, valid_mask_threshold=1.0)
 
@@ -166,7 +190,7 @@ def test_mask_threshold(temp_data_dir):
 
 
 def test_grid_output_normalization_iters(temp_data_dir):
-    tmpdir, train_csv, _, _, _, _ = temp_data_dir
+    tmpdir, train_csv, _, _, _, _, _, _ = temp_data_dir
 
     grid_params = GridParams(
         feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],
@@ -192,7 +216,7 @@ def test_grid_output_normalization_iters(temp_data_dir):
 
 
 def test_grid_transforms(temp_data_dir):
-    tmpdir, train_csv, _, _, _, _ = temp_data_dir
+    tmpdir, train_csv, _, _, _, _, _, _ = temp_data_dir
 
     base_params_dict = {
         "feature_names_list": ["ignition_grid", "fuel_grid", "elevation_grid"],
