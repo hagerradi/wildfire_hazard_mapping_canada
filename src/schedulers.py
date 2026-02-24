@@ -4,8 +4,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 
 from src.config import Config
-
-AVAILABLE_LR_SCHEDULERS = ["onecycle", "cosine_warmup", "plateau", "multistep"]
+from src.utils import AVAILABLE_LR_SCHEDULERS
 
 
 def build_lr_scheduler(config: Config, optimizer: optim.Optimizer, train_loader: DataLoader) -> tuple[Any, str | None]:
