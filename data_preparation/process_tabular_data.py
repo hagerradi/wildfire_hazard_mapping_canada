@@ -13,10 +13,10 @@ from data_preparation.utils import aggregate_csv_by_pattern, find_file_path, pro
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Compile raw weather CSVs into a single lookup table and processing fire size distribution table."
+       description="Compile raw weather CSVs into a single lookup table and processing fire size distribution table."
     )
     parser.add_argument("--root_dir", type=str, required=True, help="Path to raw data root directory")
-    parser.add_argument("--save_dir", type=str, required=True, help="Path to save directory)")
+    parser.add_argument("--save_dir", type=str, required=True, help="Path to save directory")
     parser.add_argument(
         "--weather_output_file",
         type=str,
