@@ -1,5 +1,6 @@
 import os
 import random
+from functools import partial
 
 import numpy as np
 import torch
@@ -7,7 +8,7 @@ from matplotlib import pyplot as plt
 from torch.utils.data import DataLoader
 
 from losses import BCELoss, BernoulliKLLoss, DiceLoss, FocalLoss, MAELoss, MSELoss
-from src.metrics import compute_bias, compute_mae, compute_mse, compute_spearman, compute_ssim
+from src.metrics import compute_bias, compute_mae, compute_mse, compute_spearman, compute_ssim, compute_top_perc_iou
 
 AVAILABLE_METRICS = {
     "mse": compute_mse,
@@ -15,6 +16,10 @@ AVAILABLE_METRICS = {
     "spearman": compute_spearman,
     "ssim": compute_ssim,
     "bias": compute_bias,
+    "iou_top25": partial(compute_top_perc_iou, percentile=0.75),
+    "iou_top10": partial(compute_top_perc_iou, percentile=0.90),
+    "iou_top05": partial(compute_top_perc_iou, percentile=0.95),
+    "iou_top01": partial(compute_top_perc_iou, percentile=0.99),
 }
 
 

@@ -95,3 +95,57 @@ def compute_bias(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor)
 
     denom = m.sum().clamp_min(1.0)  # avoid divide-by-zero
     return ((preds - targets) * m).sum() / denom
+
+
+def compute_top_perc_iou(
+    preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None, percentile: float = 0.90, eps: float = 1e-8
+):
+    """
+    Computes the Intersection over Union (IoU) of the top percentile.
+    """
+    batch_size = preds.size(0)
+    flat_preds = preds.reshape(batch_size, -1)
+    flat_targets = targets.reshape(batch_size, -1)
+
+    ious = []
+
+    if mask is None:
+        for i in range(batch_size):
+            p = flat_preds[i]
+            t = flat_targets[i]
+
+            p_thresh = torch.quantile(p.float(), percentile)
+            t_thresh = torch.quantile(t.float(), percentile)
+
+            # binarization
+            p_bin = p >= p_thresh
+            t_bin = t >= t_thresh
+
+            intersection = (p_bin & t_bin).sum().float()
+            union = (p_bin | t_bin).sum().float()
+
+            ious.append(intersection / (union + eps))
+    else:
+        valid_mask = mask.bool().reshape(batch_size, -1)
+        for i in range(batch_size):
+            sample_valid_mask = valid_mask[i]
+
+            if sample_valid_mask.sum() == 0:
+                ious.append(torch.tensor(float("nan"), device=preds.device))
+                continue
+
+            p_valid = flat_preds[i][sample_valid_mask]
+            t_valid = flat_targets[i][sample_valid_mask]
+
+            p_thresh = torch.quantile(p_valid.float(), percentile)
+            t_thresh = torch.quantile(t_valid.float(), percentile)
+
+            p_bin = p_valid >= p_thresh
+            t_bin = t_valid >= t_thresh
+
+            intersection = (p_bin & t_bin).sum().float()
+            union = (p_bin | t_bin).sum().float()
+
+            ious.append(intersection / (union + eps))
+
+    return torch.nanmean(torch.stack(ious))
