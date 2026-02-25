@@ -38,15 +38,26 @@ class OptimizerConfig(BaseModel):
     loss_weights: dict[str, float] = {}
 
 
+class SchedulerConfig(BaseModel):
+    name: str | None = None  # "cosine_warmup", "plateau", "onecycle", "multistep" (or null)
+
+    # params specific to each scheduler
+    warmup_epochs: int = 5  # for cosine_warmup
+    max_lr: float = 1e-3  # for onecycle
+    patience: int = 10  # for plateau
+    factor: float = 0.1  # for plateau and multistep
+    milestones: list[int] = [30, 40]  # for multistep
+
+
 class TrainingConfig(BaseModel):
     max_epochs: int = 50
     log_every_n_epoch: int = 1
 
 
 class EvaluationConfig(BaseModel):
-    best_ckpt_metrics: list[str] = ["spearman", "ssim"]  # metric to choose best checkpoint
-    best_ckpt_metrics_mode: list[str] = ["max", "max"]  # max, or min
-    checkpoint_filename: str = "last.pth"
+    best_ckpt_metrics: list[str] = ["spearman"]  # metric to choose best checkpoint
+    best_ckpt_metrics_mode: list[str] = ["max"]  # max, or min
+    checkpoint_filename: str = "best.pth"
 
 
 class GridParams(BaseModel):
@@ -101,6 +112,7 @@ class Config(BaseModel):
     modelling_approach: str = "2"
     model: ModelConfig
     optimizer: OptimizerConfig
+    lr_scheduler: SchedulerConfig
     training: TrainingConfig
     evaluation: EvaluationConfig
     data: DataConfig
