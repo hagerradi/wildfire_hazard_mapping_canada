@@ -12,6 +12,7 @@ from data_preparation.paths import OUTPUT_BURN_PROB_PATH
 
 feature_names = ["ignition_grid", "esc_fires_grid", "fuel_grid", "elevation_grid", "weather_grid", "wind_grid", "out_grid"]
 WEATHER_FEATURE_COLS = ["temp", "rh", "ws", "wd", "prec", "ffmc", "dmc", "dc", "isi", "bui", "fwi"]
+FIRE_SIZE_FEATURE_COLS = ["GRIDCODE", "SIZE_HA"]
 HEX_ID_NA = ["52", "53", "04", "25", "47", "48"]
 
 feature_count_map = {
@@ -23,6 +24,14 @@ feature_count_map = {
     "elevation_grid": 1,
     "out_burn_prob": 1,
 }
+
+def process_fire_size_df(df_fire_size: pd.DataFrame) -> pd.DataFrame:
+    df_fire_size = df_fire_size[FIRE_SIZE_FEATURE_COLS] # Remove unnamed column
+    df_fire_size['LOG_SIZE_HA'] = np.log10(df_fire_size['SIZE_HA'] + 1)
+    min_val = df_fire_size['LOG_SIZE_HA'].min()
+    max_val = df_fire_size['LOG_SIZE_HA'].max()
+    df_fire_size['NORM_LOG_SIZE_HA'] = (df_fire_size['LOG_SIZE_HA'] - min_val) / (max_val - min_val)
+    return df_fire_size
 
 
 def aggregate_csv_by_pattern(root_dir: Path, pattern: str, load_function: Callable | None = None) -> pd.DataFrame:
