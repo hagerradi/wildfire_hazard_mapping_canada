@@ -61,10 +61,11 @@ class GridParams(BaseModel):
 
 
 class TabularParams(BaseModel):
-    """Specific parameters for any tabular source (e.g., weather)."""
+    """Specific parameters for any tabular source relying on mapped weather zone id"""
 
     csv_name: str = "weather_table.csv"
     feature_names_list: list[str]
+    fire_weather_zone_id_col: str = "wx_zone"
     sampling_approach: str = "mode"
     num_samples_per_patch: int = 256
     transforms_list: list[str] = Field(default_factory=list)
