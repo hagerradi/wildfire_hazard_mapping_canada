@@ -25,11 +25,13 @@ def parse_args() -> argparse.Namespace:
         default="configs/default_v1.yaml",
         help="Path to YAML config file.",
     )
+    # logging is enabled by default, unless you pass --no_log_test_predicted_hexels
     parser.add_argument(
-        "--log_test_predicted_hexels",
-        type=bool,
+        "--no_log_test_predicted_hexels",
+        dest="log_test_predicted_hexels",
+        action="store_false",
         default=True,
-        help="Boolean flag to save predicted hexels to comet",
+        help="Disable saving predicted hexels to comet (default: True)",
     )
     return parser.parse_args()
 
