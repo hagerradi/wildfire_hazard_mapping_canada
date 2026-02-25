@@ -59,7 +59,7 @@ def main():
     print(f"Starting fire size distribution processing...")
     df_fire_size = pd.read_csv(fire_size_read_path)
     df_fire_size_processed = process_fire_size_df(df_fire_size)
-    df_fire_size_processed.to_csv(fire_size_save_path)
+    df_fire_size_processed.to_csv(fire_size_save_path, index=False)
     print(f"Successfully saved to {fire_size_save_path}")
 
 
