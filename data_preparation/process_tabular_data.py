@@ -20,7 +20,7 @@ def main():
     parser.add_argument(
         "--weather_output_file",
         type=str,
-        help="File name (ends in .csv) to be used to save the aggregated and procssed weather table",
+        help="File name (ends in .csv) to be used to save the aggregated and processed weather table",
         default="weather_table.csv",
     )
     parser.add_argument(
