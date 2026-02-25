@@ -8,9 +8,9 @@ import os
 import numpy as np
 import yaml
 
-from datasets.postprocessing.utils import reconstruct_and_visualize_hexels
 from src.config import Config, GridParams
 from src.datasets.dataset import get_test_dataloader, get_train_val_dataloader
+from src.datasets.postprocessing.utils import reconstruct_and_visualize_hexels
 from src.datasets.utils import get_dataset_dimensions
 from src.trainer import Trainer
 from src.utils import seed_everything

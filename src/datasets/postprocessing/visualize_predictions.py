@@ -4,11 +4,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.colors import TwoSlopeNorm
 
-from logger import CometLogger
+from src.logger import CometLogger
 
 
 def visualize_burn_prob_grids(
-    gt_grid: np.ndarray, pred_grid: np.ndarray, hex_id: str, save_dir: str, experiment_logger: CometLogger = None
+    gt_grid: np.ndarray, pred_grid: np.ndarray, hex_id: str, save_dir: str, experiment_logger: CometLogger | None = None
 ):
     """
     Visualizes Ground Truth, Prediction, and Difference (GT - Prediction), side-by-side.

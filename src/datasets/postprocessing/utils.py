@@ -5,14 +5,14 @@ import pandas as pd
 import rasterio
 from rasterio.profiles import Profile
 
-from config import Config
 from data_preparation.grid_loader.output import load_output_burn_grid
 from data_preparation.grid_loader.utils import denormalize_burn_count, denormalize_burn_prob, get_range_burn_count, get_range_burn_prob
 from data_preparation.paths import ELEVATION_GRID_PATH
 from data_preparation.utils import find_simulation_output_file
-from datasets.postprocessing.visualize_predictions import visualize_burn_prob_grids
-from logger import CometLogger
+from src.config import Config
 from src.datasets.postprocessing.stitch_hexel import stitch_windows
+from src.datasets.postprocessing.visualize_predictions import visualize_burn_prob_grids
+from src.logger import CometLogger
 
 
 def save_predicted_hexels(predicted_hexel: np.ndarray, hexel_profile: Profile, hex_id: str, save_dir: str):
@@ -147,7 +147,7 @@ def reconstruct_and_visualize_hexels(
     except (FileNotFoundError, AttributeError):
         raise ValueError("Test df file does not exist.")  # noqa: B904
 
-    # seperate hexels by their IDs
+    # separate hexels by their IDs
     test_df = test_df[test_df["valid_ratio"] > valid_mask_threshold].reset_index(drop=True)  # type: ignore
     all_hex_ids = list(test_df["hex_id"].unique())
 
