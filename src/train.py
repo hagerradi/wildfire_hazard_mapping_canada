@@ -8,11 +8,12 @@ import os
 import numpy as np
 import yaml
 
+from datasets.postprocessing.utils import reconstruct_and_visualize_hexels
 from src.config import Config, GridParams
 from src.datasets.dataset import get_test_dataloader, get_train_val_dataloader
 from src.datasets.utils import get_dataset_dimensions
 from src.trainer import Trainer
-from src.utils import seed_everything, visualize_predicted_hexels
+from src.utils import seed_everything
 
 
 def parse_args() -> argparse.Namespace:
@@ -102,7 +103,7 @@ def main() -> None:
             out_norm = grid_source.params.out_norm
 
         if isinstance(test_predictions, np.ndarray):  # for mypy
-            visualize_predicted_hexels(
+            reconstruct_and_visualize_hexels(
                 test_predictions=test_predictions, config=config, out_norm=out_norm, experiment_logger=trainer.logger
             )
 
