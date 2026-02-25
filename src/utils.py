@@ -17,6 +17,8 @@ AVAILABLE_METRICS = {
     "bias": compute_bias,
 }
 
+AVAILABLE_LR_SCHEDULERS = ["onecycle", "cosine_warmup", "plateau", "multistep"]
+
 
 def build_single_loss(name: str) -> torch.nn.Module:
     name = str(name).lower()
