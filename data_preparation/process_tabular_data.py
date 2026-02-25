@@ -60,7 +60,7 @@ def main():
     df_fire_size = pd.read_csv(fire_size_read_path)
     df_fire_size_processed = process_fire_size_df(df_fire_size)
     df_fire_size_processed.to_csv(fire_size_save_path)
-    print(f"Successfully save to {fire_size_save_path}")
+    print(f"Successfully saved to {fire_size_save_path}")
 
 
 if __name__ == "__main__":
