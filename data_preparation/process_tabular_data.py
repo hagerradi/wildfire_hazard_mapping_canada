@@ -4,12 +4,7 @@ and processing the fire size distribution table.
 """
 
 import argparse
-import os
-import sys
 from pathlib import Path
-from typing import Callable, Optional
-
-import numpy as np
 import pandas as pd
 
 from data_preparation.feature_processing.weather import load_weather_list, preprocess_weather_list
