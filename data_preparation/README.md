@@ -29,12 +29,31 @@ Step 3: Create training, validation and test splits.
 python -m data_preparation.split_data --data_dir="../yan_bp3/data_samples_approach_1" --val_hex_id 02 23 33 18 46 --test_hex_id 01 12 39 16 49
 ```
 
-Step 4: Create the weather aggregated table used for sampling.
+Step 4: Create tabular files (weather + fire-size)
 
+To produce the sequential weather table and the fire-size distribution table used by the model. Both tables are mapped to patches via the fire weather zone ID, so your grids must include that ID.
+
+Currently, step 2 uses default settings which projects the mean and variance onto the grids. To ensure grids include the fire weather zone ID by re-running the grid step with `--weather_sampling="weather_zone_id"`
+
+```bash
+python -m data_preparation.process_hexels_into_grids \
+	--root_dir="../yan_bp3" \
+	--modelling_approach=1 \
+	--output_type="count" \
+	--win_h=128 --win_w=128 \
+	--overlap_ratio=0.2 \
+	--weather_sampling="weather_zone_id"
 ```
-python build_aggregated_weather_table.py --root_dir="../yan_bp3" --file_path="data_samples_approach_1/weather_table.csv"
+
+To build the tabular files, run the following:
+
+```bash
+python -m data_preparation.process_tabular_data \
+	--root_dir="../yan_bp3" \
+	--save_dir="data_samples_approach_1" \
+	--weather_output_file="weather_table.csv" \
+	--fire_size_input_file="df_fire_fru.csv" \
+	--fire_size_output_file="df_fire_fru_processed.csv"
 ```
 
-Note: If you perform modelling approach 2, change the `--file_path` to `data_samples_approach_2/weather_table.csv` to save in the same place as the sampling data.
-
-Note: You can specify `--save_dir=<INSERT PATH>` if you wish to save elsewhere of `--root_dir`
+Notes: If you used modelling approach 2, set `--save_dir` to `data_samples_approach_2`. The `process_tabular_data` script will look for the fire-size file in `--save_dir` first, then in `--root_dir`; ensure `df_fire_fru.csv` is present in one of those places.
