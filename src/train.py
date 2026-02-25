@@ -5,13 +5,14 @@ End-to-end script for running training and evaluation
 import argparse
 import os
 
+import numpy as np
 import yaml
 
-from src.config import Config
+from src.config import Config, GridParams
 from src.datasets.dataset import get_test_dataloader, get_train_val_dataloader
 from src.datasets.utils import get_dataset_dimensions
 from src.trainer import Trainer
-from src.utils import seed_everything
+from src.utils import seed_everything, visualize_predicted_hexels
 
 
 def parse_args() -> argparse.Namespace:
@@ -22,6 +23,12 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default="configs/default_v1.yaml",
         help="Path to YAML config file.",
+    )
+    parser.add_argument(
+        "--log_test_predicted_hexels",
+        type=bool,
+        default=True,
+        help="Boolean flag to save predicted hexels to comet",
     )
     return parser.parse_args()
 
@@ -85,17 +92,27 @@ def main() -> None:
         modelling_approach=config.modelling_approach,
         seed=seed,
     )
-    test_metrics = trainer.test(test_loader)
-    if isinstance(test_metrics, tuple):
-        test_metrics = test_metrics[0]
+    test_metrics, test_predictions = trainer.test(test_loader, return_predictions=True)
+
+    if args.log_test_predicted_hexels:
+        source_map = {s.name: s for s in config.data.input_sources}
+        grid_source = source_map.get("grid") if "grid" in source_map else None
+        out_norm = "min_max"  # default fallback, prevent mypy crash
+        if grid_source and isinstance(grid_source.params, GridParams):
+            out_norm = grid_source.params.out_norm
+
+        if isinstance(test_predictions, np.ndarray):  # for mypy
+            visualize_predicted_hexels(
+                test_predictions=test_predictions, config=config, out_norm=out_norm, experiment_logger=trainer.logger
+            )
 
     print("\n[Test metrics]")
-    for k, v in test_metrics.items():
-        print(f"  {k}: {v:.6f}")
-
-    # Log test results to comet, at the end
-    if trainer.logger:
-        trainer.logger.log_metrics({f"test_{k}": v for k, v in test_metrics.items()})
+    if isinstance(test_metrics, dict):
+        for k, v in test_metrics.items():
+            print(f"  {k}: {v:.6f}")
+        # Log test results to comet, at the end
+        if trainer.logger:
+            trainer.logger.log_metrics({f"test_{k}": v for k, v in test_metrics.items()})
 
 
 if __name__ == "__main__":

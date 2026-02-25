@@ -65,7 +65,7 @@ class Trainer:
             if not self.tabular_input_dims:
                 raise ValueError("Config requests tabular features, but no tabular dim. were detected.")
 
-            print(f"[Trainer] Mode: Multi-Source (Spatial + Tabular)")
+            print("[Trainer] Mode: Multi-Source (Spatial + Tabular)")
             print(f"[Trainer] Spatial Channels: {self.spatial_input_channels}, Tabular Dim: {self.tabular_input_dims}")
 
             self.model = MultiSourceUNet(
@@ -83,7 +83,7 @@ class Trainer:
             )
         # Single-source path: spatial grids only.
         else:
-            print(f"[Trainer] Mode: Baseline (Spatial Only)")
+            print("[Trainer] Mode: Baseline (Spatial Only)")
             print(f"[Trainer] Spatial Channels: {self.spatial_input_channels}")
 
             self.model = BaselineUNet(
