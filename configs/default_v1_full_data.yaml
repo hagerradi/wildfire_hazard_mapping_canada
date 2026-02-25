@@ -17,6 +17,14 @@ optimizer:
   loss: "kl" # or ["bce", "kl"], str for single loss or list for multiple weighted losses
   # loss_weights: {"bce": 0.8, "kl": 0.2} # use if loss is a list
 
+lr_scheduler:
+  name: "cosine_warmup" # options: "cosine_warmup", "plateau", "onecycle", "multistep" (or null)
+  warmup_epochs: 5 # if using cosine_warmup
+  # max_lr: 1.0e-3 # if using onecycle
+  # patience: 5 # if using plateau
+  # factor: 0.1 # if using plateau or multistep
+  # milestones: [30, 40] # if using multistep
+
 training:
   max_epochs: 50
   # Logging frequency in epochs
