@@ -2,19 +2,11 @@ import os
 import random
 
 import numpy as np
-import pandas as pd
 import torch
 from matplotlib import pyplot as plt
 from torch.utils.data import DataLoader
 
-from config import Config
-from data_preparation.grid_loader.output import load_output_burn_grid
-from data_preparation.grid_loader.utils import get_range_burn_count, get_range_burn_prob
-from data_preparation.utils import find_simulation_output_file
-from logger import CometLogger
 from losses import BCELoss, BernoulliKLLoss, DiceLoss, FocalLoss, MAELoss, MSELoss
-from src.datasets.postprocessing.utils import get_predicted_hexel, save_predicted_hexels
-from src.datasets.postprocessing.visualize_predictions import visualize_burn_prob_grids
 from src.metrics import compute_bias, compute_mae, compute_mse, compute_spearman, compute_ssim
 
 AVAILABLE_METRICS = {
@@ -200,75 +192,6 @@ def visualize_model_predictions(
 
     plt.tight_layout()
     plt.show()
-
-
-def visualize_predicted_hexels(
-    test_predictions: np.ndarray, config: Config, out_norm: str, experiment_logger: CometLogger | None = None
-) -> None:
-    """
-    A util function to re-construct predicted hexels out of test predictions, and visualize side-by-side with the Groundtruth
-    """
-    data_dir = config.data.root_dir
-    raw_data_dir = config.data.raw_data_dir
-    modelling_approach = config.modelling_approach
-    valid_mask_threshold = config.data.valid_mask_threshold
-    output_type, season, cause = "prob", None, None
-    if modelling_approach == "1":
-        max_target_val, min_target_val = get_range_burn_prob(root_dir=raw_data_dir)
-    else:
-        max_target_val, min_target_val = get_range_burn_count(root_dir=raw_data_dir)
-
-    if isinstance(test_predictions, str):
-        # Handle the error or raise an exception
-        raise TypeError(f"Expected ndarray, but got string: {test_predictions}")
-
-    try:
-        test_df = pd.read_csv(os.path.join(data_dir, config.data.test_split))
-    except (FileNotFoundError, AttributeError):
-        raise ValueError("Test df file does not exist.")  # noqa: B904
-
-    # seperate hexels by their IDs
-    test_df = test_df[test_df["valid_ratio"] > valid_mask_threshold].reset_index(drop=True)  # type: ignore
-    all_hex_ids = list(test_df["hex_id"].unique())
-
-    # loop over test hexels
-    for hex_id in all_hex_ids:
-        print(f"======Working with hex{hex_id}========")
-        one_hexel_df = test_df[test_df["hex_id"] == hex_id]
-        hexel_indices = test_df[test_df["hex_id"] == hex_id].index.tolist()
-        if len(str(hex_id)) != 2:
-            hex_id = "0" + str(hex_id)
-
-        hex_test_predictions = test_predictions[hexel_indices]
-        reconstructed_hexel_denorm, gt_elevation_grid_profile = get_predicted_hexel(
-            base_dir=data_dir,
-            raw_data_dir=raw_data_dir,
-            test_df=one_hexel_df,
-            predictions=hex_test_predictions,
-            min_target_val=min_target_val,
-            max_target_val=max_target_val,
-            hex_id=hex_id,
-            modelling_approach=modelling_approach,
-            out_norm=out_norm,
-            stitch_mode="mean",
-            win_h=128,
-            win_w=128,
-        )
-        save_predicted_hexels(reconstructed_hexel_denorm, gt_elevation_grid_profile, hex_id, config.save_dir)
-        # Save the hex as plt plot
-        hex_dir = os.path.join(raw_data_dir, f"hex{hex_id}")
-        fpath = find_simulation_output_file(hex_dir, hex_id, output_type, season=season, cause=cause)
-        grid_gt = load_output_burn_grid(fpath)
-
-        visualize_burn_prob_grids(
-            gt_grid=grid_gt,
-            pred_grid=reconstructed_hexel_denorm,
-            hex_id=hex_id,
-            save_dir=config.save_dir,
-            experiment_logger=experiment_logger,
-        )
-
-        print(f"=======Saved subplot for hex{hex_id}==============")
 
 
 def seed_everything(seed: int = 42, deterministic: bool = True):
