@@ -25,6 +25,7 @@ feature_count_map = {
     "out_burn_prob": 1,
 }
 
+
 def find_file_path(filename: str, *search_dirs: Path) -> Path:
     """Searches for a file in multiple directories and returns the path if found."""
     for d in search_dirs:
@@ -33,12 +34,13 @@ def find_file_path(filename: str, *search_dirs: Path) -> Path:
             return p
     raise FileNotFoundError(f"Could not find {filename} in {', '.join(str(d) for d in search_dirs)}")
 
+
 def process_fire_size_df(df_fire_size: pd.DataFrame) -> pd.DataFrame:
-    df_fire_size = df_fire_size[FIRE_SIZE_FEATURE_COLS] # Remove unnamed column
-    df_fire_size['LOG_SIZE_HA'] = np.log10(df_fire_size['SIZE_HA'] + 1)
-    min_val = df_fire_size['LOG_SIZE_HA'].min()
-    max_val = df_fire_size['LOG_SIZE_HA'].max()
-    df_fire_size['NORM_LOG_SIZE_HA'] = (df_fire_size['LOG_SIZE_HA'] - min_val) / (max_val - min_val)
+    df_fire_size = df_fire_size[FIRE_SIZE_FEATURE_COLS]  # Remove unnamed column
+    df_fire_size["LOG_SIZE_HA"] = np.log10(df_fire_size["SIZE_HA"] + 1)
+    min_val = df_fire_size["LOG_SIZE_HA"].min()
+    max_val = df_fire_size["LOG_SIZE_HA"].max()
+    df_fire_size["NORM_LOG_SIZE_HA"] = (df_fire_size["LOG_SIZE_HA"] - min_val) / (max_val - min_val)
     return df_fire_size
 
 
