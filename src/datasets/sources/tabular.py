@@ -92,7 +92,7 @@ class TabularSource(DataSource):
         if candidates is None:  # Only happens in fire size distribution csv
             value = FIRE_SIZE_MEANS.get(
                 self.feature_names_list[0]
-            )  # TODO: Using mean imputation for now, will change once confirmed with client
+            )  # TODO: Using mean imputation for now, will change once confirmed with experts
             sample_features = np.full(shape=(self.num_samples_per_patch, len(self.feature_names_list)), fill_value=value, dtype=np.float32)
         else:
             replace = len(candidates) < self.num_samples_per_patch
