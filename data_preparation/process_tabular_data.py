@@ -5,6 +5,7 @@ and processing the fire size distribution table.
 
 import argparse
 from pathlib import Path
+
 import pandas as pd
 
 from data_preparation.feature_processing.weather import load_weather_list, preprocess_weather_list
@@ -13,7 +14,7 @@ from data_preparation.utils import aggregate_csv_by_pattern, find_file_path, pro
 
 def main():
     parser = argparse.ArgumentParser(
-       description="Compile raw weather CSVs into a single lookup table and processing fire size distribution table."
+        description="Compile raw weather CSVs into a single lookup table and processing fire size distribution table."
     )
     parser.add_argument("--root_dir", type=str, required=True, help="Path to raw data root directory")
     parser.add_argument("--save_dir", type=str, required=True, help="Path to save directory")
