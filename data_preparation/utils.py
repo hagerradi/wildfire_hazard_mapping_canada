@@ -36,6 +36,14 @@ def find_file_path(filename: str, *search_dirs: Path) -> Path:
 
 
 def process_fire_size_df(df_fire_size: pd.DataFrame) -> pd.DataFrame:
+    # Validate that required columns are present before selecting them
+    missing_cols = [col for col in FIRE_SIZE_FEATURE_COLS if col not in df_fire_size.columns]
+    if missing_cols:
+        raise ValueError(
+            f"Missing required column(s) in fire size DataFrame: {missing_cols}. "
+            f"Expected columns: {FIRE_SIZE_FEATURE_COLS}. "
+            f"Available columns: {list(df_fire_size.columns)}"
+        )
     df_fire_size = df_fire_size[FIRE_SIZE_FEATURE_COLS]  # Remove unnamed column
     df_fire_size["LOG_SIZE_HA"] = np.log10(df_fire_size["SIZE_HA"] + 1)
     min_val = df_fire_size["LOG_SIZE_HA"].min()
