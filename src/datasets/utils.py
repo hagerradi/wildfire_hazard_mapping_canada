@@ -2,7 +2,7 @@ import numpy as np
 
 from data_preparation.grid_loader.utils import fuel_ranking
 
-AVAILABLE_DATA_SOURCES = ["grid", "weather", "fire_size"]
+AVAILABLE_DATA_SOURCES = ["grid", "weather", "fire_size", "wind"]
 MAX_FUEL_GRID = float(max(fuel_ranking.values()))
 FIRE_SIZE_MEANS = {
     "SIZE_HA": 4957.7251818740315,
@@ -15,7 +15,7 @@ def get_data_source_class(name: str):
     """
     Returns the source class dynamically to avoid circular imports.
     """
-    if name == "grid":
+    if name in ["grid", "wind"]:
         from src.datasets.sources import GridSource
 
         return GridSource
