@@ -14,6 +14,7 @@ model:
   tabular_hidden_dims:
     weather: [32, 64]
     fire_size: [8, 16]
+    wind: [32,64]
 
   tabular_embed_dims:
     weather: 128

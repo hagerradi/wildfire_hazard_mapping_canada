@@ -134,25 +134,24 @@ class TabularFeatureEncoder(nn.Module):
 
 
 class WindFeatureEncoder(nn.Module):
-    def __init__(self, in_channels=16, out_channels=64):
+    def __init__(self, in_channels: int = 16, hidden_dims: list[int] | None = None):
         super().__init__()
         # We use 1x1 convolutions first to let the model "mix" the 8 directions
         # and decide which directions are important before downsampling.
         # 1. Mixer: Keep it simple. 1x1 to select/weight the directions.
-        self.direction_mixer = nn.Sequential(nn.Conv2d(in_channels, 16, kernel_size=1), nn.ReLU(inplace=True))
+        self.direction_mixer = nn.Sequential(nn.Conv2d(in_channels, in_channels, kernel_size=1), nn.ReLU(inplace=True))
 
         # 2. Aggressive but Lean Downsampling
         # We increase stride or use a slightly larger kernel to drop layers.
-        self.downsampler = nn.Sequential(
-            # 128x128 -> 32x32 (Stride 4)
-            nn.Conv2d(16, 32, kernel_size=4, stride=4, padding=0),
-            nn.BatchNorm2d(32),
-            nn.ReLU(inplace=True),
-            # 32x32 -> 8x8 (Stride 4)
-            nn.Conv2d(32, out_channels, kernel_size=4, stride=4, padding=0),
-            nn.BatchNorm2d(out_channels),
-            nn.ReLU(inplace=True),
-        )
+        layers: list[nn.Module] = []
+        self.hidden_dims = hidden_dims if hidden_dims is not None else [32, 64]
+        in_ch = in_channels
+        for h_dim in self.hidden_dims:
+            layers.append(nn.Conv2d(in_ch, h_dim, kernel_size=4, stride=4, padding=0))
+            layers.append(nn.BatchNorm1d(h_dim))
+            layers.append(nn.ReLU(inplace=True))
+            in_ch = h_dim
+        self.downsampler = nn.Sequential(*layers)
 
     def forward(self, x):
         # x is (B, 16, H_input, W_input)
