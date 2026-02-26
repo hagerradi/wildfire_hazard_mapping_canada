@@ -101,7 +101,7 @@ def compute_top_perc_iou(
     preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None, percentile: float = 0.90, eps: float = 1e-8
 ):
     """
-    Computes the Intersection over Union (IoU) of the top percentile.
+    Computes the Intersection over Union (IoU) on binarized top percentile maps.
     """
     batch_size = preds.size(0)
     flat_preds = preds.reshape(batch_size, -1)
