@@ -148,7 +148,7 @@ class WindFeatureEncoder(nn.Module):
         in_ch = in_channels
         for h_dim in self.hidden_dims:
             layers.append(nn.Conv2d(in_ch, h_dim, kernel_size=4, stride=4, padding=0))
-            layers.append(nn.BatchNorm1d(h_dim))
+            layers.append(nn.BatchNorm2d(h_dim))
             layers.append(nn.ReLU(inplace=True))
             in_ch = h_dim
         self.downsampler = nn.Sequential(*layers)
