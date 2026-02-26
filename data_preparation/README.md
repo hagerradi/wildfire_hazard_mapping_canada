@@ -50,8 +50,8 @@ To build the tabular files, run the following:
 ```bash
 python -m data_preparation.process_tabular_data \
 	--root_dir="../yan_bp3" \
-	--save_dir="data_samples_approach_1" \
-	--weather_output_file="weather_table.csv" \
+	--save_dir="../yan_bp3/data_samples_approach_1" \
+	--weather_output_file="weather_table_processed.csv" \
 	--fire_size_input_file="df_fire_fru.csv" \
 	--fire_size_output_file="df_fire_fru_processed.csv"
 ```

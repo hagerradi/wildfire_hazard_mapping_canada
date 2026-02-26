@@ -52,7 +52,7 @@ def process_fire_size_df(df_fire_size: pd.DataFrame) -> pd.DataFrame:
         # Avoid division by zero when all LOG_SIZE_HA values are identical
         df_fire_size["NORM_LOG_SIZE_HA"] = 0.0
     else:
-        df_fire_size["NORM_LOG_SIZE_HA"] = (df_fire_size["LOG_SIZE_HA"] - min_val) / (max_val - min_val)
+        df_fire_size["NORM_LOG_SIZE_HA"] = (df_fire_size["LOG_SIZE_HA"] - min_val) / ((max_val - min_val) + 1e-5)
     return df_fire_size
 
 
