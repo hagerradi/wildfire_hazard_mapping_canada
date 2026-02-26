@@ -66,7 +66,7 @@ data:
         augmentation_prob: 0.0
     - name: "weather"
       params:
-        csv_name: "weather_table.csv"
+        csv_name: "weather_table_processed.csv"
         feature_names_list: ["temp", "rh", "prec", "ffmc", "dmc", "dc", "isi", "bui"] # other options: "wd", "ws", "fwi"
         fire_weather_zone_id_col: "wx_zone"
         sampling_approach: "mode" # "mode" or "weighted"
