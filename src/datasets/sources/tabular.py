@@ -66,11 +66,27 @@ class TabularSource(DataSource):
         values, counts = np.unique(zone_arr, return_counts=True)
 
         # 1. Select candidates depending on sampling approach
-        if self.sampling_approach == "mode":
+        if self.sampling_approach == "mode":  # Selects the candidates from the most common zone in the patch
             mode_zone = int(values[np.argmax(counts)])
             candidates = self.lut.get(mode_zone)
-        else:
-            raise ValueError("Please provide a correct sampling approach. Valid approaches: ['mode'].")
+            weights = None
+        elif (
+            self.sampling_approach == "weighted"
+        ):  # Selects candidates from all zones in the patch, but weights them according to their frequency in the patch
+            all_candidates = []
+            probs = []
+            for val, count in zip(values, counts):
+                zone_cands = self.lut.get(int(val))
+                if zone_cands is not None:
+                    all_candidates.append(zone_cands)
+                    probs.append(np.full(len(zone_cands), count / len(zone_cands)))
+            if not all_candidates:
+                candidates = None
+                weights = None
+            else:
+                candidates = np.concatenate(all_candidates)
+                weights = np.concatenate(probs)
+                weights /= weights.sum()
 
         # 2. Perform actual sampling
         if candidates is None:  # Only happens in fire size distribution csv
@@ -80,7 +96,7 @@ class TabularSource(DataSource):
             sample_features = np.full(shape=(self.num_samples_per_patch, len(self.feature_names_list)), fill_value=value, dtype=np.float32)
         else:
             replace = len(candidates) < self.num_samples_per_patch
-            sample_indices = np.random.choice(len(candidates), size=self.num_samples_per_patch, replace=replace)
+            sample_indices = np.random.choice(len(candidates), size=self.num_samples_per_patch, replace=replace, p=weights)
             sample_features = candidates[sample_indices]
 
         return sample_features
