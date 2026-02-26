@@ -16,10 +16,11 @@ AVAILABLE_METRICS = {
     "spearman": compute_spearman,
     "ssim": compute_ssim,
     "bias": compute_bias,
-    "iou_top25": partial(compute_top_perc_iou, percentile=0.75),
     "iou_top10": partial(compute_top_perc_iou, percentile=0.90),
     "iou_top05": partial(compute_top_perc_iou, percentile=0.95),
+    "iou_top02": partial(compute_top_perc_iou, percentile=0.98),
     "iou_top01": partial(compute_top_perc_iou, percentile=0.99),
+    "iou_top005": partial(compute_top_perc_iou, percentile=0.995),
 }
 
 
@@ -267,3 +268,47 @@ def set_device() -> str:
         device = "cpu"
 
     return device
+
+
+import torch
+
+
+def get_binary_percentile_maps(
+    preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None, percentile: float = 0.90
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """
+    Returns the spatial 2D binary maps representing the top percentile hotspots for plotting purposes.
+    """
+    batch_size = preds.size(0)
+
+    preds_bin_map = torch.zeros_like(preds, dtype=torch.bool)
+    targets_bin_map = torch.zeros_like(targets, dtype=torch.bool)
+
+    flat_preds = preds.reshape(batch_size, -1)
+    flat_targets = targets.reshape(batch_size, -1)
+
+    if mask is None:
+        for i in range(batch_size):
+            p_thresh = torch.quantile(flat_preds[i].float(), percentile)
+            t_thresh = torch.quantile(flat_targets[i].float(), percentile)
+
+            preds_bin_map[i] = preds[i] >= p_thresh
+            targets_bin_map[i] = targets[i] >= t_thresh
+    else:
+        valid_mask = mask.bool().reshape(batch_size, -1)
+        for i in range(batch_size):
+            sample_valid_mask = valid_mask[i]
+
+            # Skip if patch has no valid data
+            if sample_valid_mask.sum() == 0:
+                continue
+
+            # Find threshold using ONLY valid pixels
+            p_thresh = torch.quantile(flat_preds[i][sample_valid_mask].float(), percentile)
+            t_thresh = torch.quantile(flat_targets[i][sample_valid_mask].float(), percentile)
+
+            # Apply threshold to the 2D spatial map, but force masked areas to stay False
+            preds_bin_map[i] = (preds[i] >= p_thresh) & mask[i].bool()
+            targets_bin_map[i] = (targets[i] >= t_thresh) & mask[i].bool()
+
+    return preds_bin_map, targets_bin_map
