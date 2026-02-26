@@ -112,7 +112,7 @@ class Config(BaseModel):
     modelling_approach: str = "2"
     model: ModelConfig
     optimizer: OptimizerConfig
-    lr_scheduler: SchedulerConfig
+    lr_scheduler: SchedulerConfig = Field(default_factory=SchedulerConfig)
     training: TrainingConfig
     evaluation: EvaluationConfig
     data: DataConfig

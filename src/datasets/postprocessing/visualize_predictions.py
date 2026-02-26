@@ -18,8 +18,10 @@ def visualize_burn_prob_grids(
     os.makedirs(out_dir, exist_ok=True)
     out_path = os.path.join(out_dir, f"hexel_{hex_id}_predicted.png")
 
-    valid_mask = np.isfinite(gt_grid)
-    diff_grid = np.where(valid_mask, gt_grid - pred_grid, np.nan)
+    valid_mask = np.isfinite(gt_grid) & np.isfinite(pred_grid)
+    gt_grid = np.where(valid_mask, gt_grid, np.nan)
+    pred_grid = np.where(valid_mask, pred_grid, np.nan)
+    diff_grid = np.where(valid_mask, pred_grid - gt_grid, np.nan)
     # Shared scale for GT and Prediction
     shared_vmin = np.nanmin([np.nanmin(gt_grid), np.nanmin(pred_grid)])
     shared_vmax = np.nanmax([np.nanmax(gt_grid), np.nanmax(pred_grid)])
@@ -32,27 +34,27 @@ def visualize_burn_prob_grids(
     fig, axes = plt.subplots(1, 3, figsize=(16, 6), constrained_layout=True)
     fig.suptitle(f"Burn Probability Prediction — Hex {hex_id}", fontsize=16)
 
-    # --- Ground Truth ---
-    im1 = axes[0].imshow(
-        gt_grid,
-        cmap="viridis",
-        origin="upper",
-        vmin=shared_vmin,
-        vmax=shared_vmax,
-    )
-    axes[0].set_title("Ground Truth")
-    axes[0].set_xlabel("Easting (m)")
-    axes[0].set_ylabel("Northing (m)")
-
     # --- Prediction ---
-    im2 = axes[1].imshow(
+    im2 = axes[0].imshow(
         pred_grid,
         cmap="viridis",
         origin="upper",
         vmin=shared_vmin,
         vmax=shared_vmax,
     )
-    axes[1].set_title("Prediction")
+    axes[0].set_title("Prediction")
+    axes[0].set_xlabel("Easting (m)")
+    axes[0].set_ylabel("Northing (m)")
+
+    # --- Ground Truth ---
+    im1 = axes[1].imshow(
+        gt_grid,
+        cmap="viridis",
+        origin="upper",
+        vmin=shared_vmin,
+        vmax=shared_vmax,
+    )
+    axes[1].set_title("Ground Truth")
     axes[1].set_xlabel("Easting (m)")
     axes[1].set_ylabel("Northing (m)")
 
@@ -63,7 +65,7 @@ def visualize_burn_prob_grids(
         origin="upper",
         norm=diff_norm,
     )
-    axes[2].set_title("Difference (GT - Prediction)")
+    axes[2].set_title("Difference (Prediction - GT)")
     axes[2].set_xlabel("Easting (m)")
     axes[2].set_ylabel("Northing (m)")
 

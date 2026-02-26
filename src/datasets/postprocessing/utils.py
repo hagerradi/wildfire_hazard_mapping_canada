@@ -64,7 +64,7 @@ def get_predicted_hexel(
     min_target_val: float,
     max_target_val: float,
     hex_id: str,
-    modelling_approach: str = "2",
+    modelling_approach: str = "1",
     out_norm: str = "min_max",
     stitch_mode: str = "mean",
     win_h: int = 128,
@@ -78,6 +78,9 @@ def get_predicted_hexel(
         with rasterio.open(os.path.join(os.path.join(raw_data_dir, "hex" + str(hex_id)), ELEVATION_GRID_PATH)) as src:
             gt_elevation_grid = src.read(1, masked=True)
             gt_elevation_grid_profile = src.profile.copy()
+
+    # clip predictions between 0 and 1 in case of outliers
+    predictions = np.clip(predictions, 0, 1)
 
     if modelling_approach == "1":
         reconstructed_hexel = get_stitched_windows(
@@ -95,7 +98,7 @@ def get_predicted_hexel(
         )
         gt_elevation_grid_profile.update(dtype="float32", compress="lzw", nodata=-9999)  # type: ignore
     else:
-        unique_season_cause = list(set(zip(test_df["season"], test_df["cause"])))
+        unique_season_cause = list(set(zip(test_df["season"], test_df["cause"], strict=False)))
         season_cause_hexels = []
         for season, cause in unique_season_cause:
             filtered_season_cause_df = test_df[(test_df["season"] == season) & (test_df["cause"] == cause)]
@@ -117,6 +120,8 @@ def get_predicted_hexel(
         # merge the counts
         reconstructed_hexel_denorm = np.sum(np.stack(season_cause_hexels), axis=0)
         reconstructed_hexel_denorm = np.rint(reconstructed_hexel_denorm).astype("int32")
+        # clip values to the true range, in case of outliers
+        reconstructed_hexel_denorm = np.clip(reconstructed_hexel_denorm, min_target_val, max_target_val)
         gt_elevation_grid_profile.update(dtype="int32", compress="lzw", nodata=-9999)  # type: ignore
 
     return reconstructed_hexel_denorm, gt_elevation_grid_profile
