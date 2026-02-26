@@ -66,11 +66,13 @@ class TabularSource(DataSource):
         values, counts = np.unique(zone_arr, return_counts=True)
 
         # 1. Select candidates depending on sampling approach
-        if self.sampling_approach == "mode":
+        if self.sampling_approach == "mode":  # Selects the candidates from the most common zone in the patch
             mode_zone = int(values[np.argmax(counts)])
             candidates = self.lut.get(mode_zone)
             weights = None
-        elif self.sampling_approach == "weighted":
+        elif (
+            self.sampling_approach == "weighted"
+        ):  # Selects candidates from all zones in the patch, but weights them according to their frequency in the patch
             all_candidates = []
             probs = []
             for val, count in zip(values, counts):
@@ -85,8 +87,6 @@ class TabularSource(DataSource):
                 candidates = np.concatenate(all_candidates)
                 weights = np.concatenate(probs)
                 weights /= weights.sum()
-        else:
-            raise ValueError("Please provide a correct sampling approach. Valid approaches: ['mode', 'weighted'].")
 
         # 2. Perform actual sampling
         if candidates is None:  # Only happens in fire size distribution csv
