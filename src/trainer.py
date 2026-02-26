@@ -304,25 +304,20 @@ class Trainer:
         """Runs one batch, plots the raw vs binary percentile maps, and logs to CometML."""
         self.model.eval()
 
-        # 1. Grab exactly one batch from the validation loader
         batch = next(iter(loader))
 
-        # 2. Unpack and run forward pass (exactly like _step)
         inputs, targets, masks = [t.to(self.device) for t in batch["grid"]]
         tabular_data = {k: v.to(self.device) for k, v in batch.items() if k != "grid"}
         predictions = torch.sigmoid(self.model(inputs, tabular_data))
 
-        # 3. Get the binary masks using the helper function
         p_bin, t_bin = get_binary_percentile_maps(predictions, targets, masks, percentile=percentile)
 
-        # 4. Extract the very first sample in the batch for plotting
         idx = 0
         pred_raw = predictions[idx, 0].cpu().numpy()
         target_raw = targets[idx, 0].cpu().numpy()
         pred_b = p_bin[idx, 0].cpu().numpy()
         target_b = t_bin[idx, 0].cpu().numpy()
 
-        # 5. Create the Matplotlib figure
         fig, axes = plt.subplots(2, 2, figsize=(10, 10))
         axes[0, 0].imshow(target_raw, cmap="magma")
         axes[0, 0].set_title("Ground Truth (Raw)")
@@ -334,11 +329,9 @@ class Trainer:
         axes[1, 1].set_title(f"Prediction (Top {int((1-percentile)*100)}%)")
         plt.tight_layout()
 
-        # 6. Log it directly to CometML!
         if self.logger and hasattr(self.logger, "experiment"):
-            self.logger.experiment.log_figure(figure_name=f"Top_Hotspots_Epoch_{epoch}", figure=fig, step=epoch)
+            self.logger.experiment.log_figure(figure_name=f"Top_perc_epoch_{epoch}", figure=fig, step=epoch)
 
-        # 7. Close the figure to prevent memory leaks
         plt.close(fig)
 
     def run_training(
