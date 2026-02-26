@@ -26,7 +26,7 @@ class MultiSourceBottleneck(nn.Module):
         # Tile: (B, D) -> (B, D, 1, 1) -> (B, D, H, W)
         x_tab_tiled = x_tabular.view(B, -1, 1, 1).expand(-1, -1, H, W)
         # Concatenate along the channel dimension (dim=1)
-        if x_wind:
+        if x_wind is not None:
             x_fused = torch.cat([x, x_tab_tiled, x_wind], dim=1)
         else:
             x_fused = torch.cat([x, x_tab_tiled], dim=1)
