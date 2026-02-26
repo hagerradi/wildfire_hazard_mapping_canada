@@ -5,7 +5,7 @@ import torch.nn as nn
 
 from src.models.bottlenecks import MultiSourceBottleneck
 from src.models.decoders import BaselineDecoder
-from src.models.encoders import BaselineEncoder, TabularFeatureEncoder
+from src.models.encoders import BaselineEncoder, TabularFeatureEncoder, WindFeatureEncoder
 from src.models.utils import double_conv_block
 
 
@@ -153,6 +153,9 @@ class MultiSourceUNet(UNetBase):
         # Build encoders for each extra tabular feature type.
         if self.tabular_input_dims:
             for name, input_dim in self.tabular_input_dims.items():
+                if name == "wind":
+                    encoders[name] = WindFeatureEncoder(in_channels=input_dim, hidden_dims=self.tabular_hidden_dims.get(name, [32, 64]))
+                    continue
                 # get the architectural values for each different tabular encoder
                 hidden_dims = self.tabular_hidden_dims.get(name, [32, 64])
                 embed_dim = self.tabular_embed_dims.get(name, 64)
@@ -206,18 +209,22 @@ class MultiSourceUNet(UNetBase):
             x, skip_connections = self.encoder["spatial"](x)  # type: ignore
 
         # Extra tabular encoders path.
+        x_wind = None
         if self.tabular_input_dims and x_tabular is not None:
             for name in self.tabular_input_dims.keys():
                 if name in x_tabular:
                     encoder_aux = self.encoder[name]  # type: ignore
                     encoder_emb = encoder_aux(x_tabular[name])
+                    if name == "wind":
+                        x_wind = encoder_emb
+                        continue
                     tabular_embeddings.append(encoder_emb)
 
         # Bottleneck path: concat. all tabular embeds.
         x_fused_tabular = None
         if len(tabular_embeddings) > 0:
             x_fused_tabular = torch.cat(tabular_embeddings, dim=1)
-        x = self.bottleneck(x, x_fused_tabular)
+        x = self.bottleneck(x, x_fused_tabular, x_wind)
 
         # Decoder and head.
         x = self.decoder(x, skip_connections)

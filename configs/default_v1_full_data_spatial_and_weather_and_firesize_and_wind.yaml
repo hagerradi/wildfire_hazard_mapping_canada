@@ -19,6 +19,7 @@ model:
   tabular_embed_dims:
     weather: 128
     fire_size: 16
+    wind: 64
 
   tabular_poolings:
     weather: "max" # max, mean, attention
