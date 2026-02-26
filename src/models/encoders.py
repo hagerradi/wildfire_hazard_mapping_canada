@@ -131,3 +131,30 @@ class TabularFeatureEncoder(nn.Module):
         x_pooled = self.pooler(x_feats)  # (B, last_dim)
         # Final projection to match the bottleneck's expected auxiliary dimension
         return self.projector(x_pooled)  # (B, embed_dim)
+
+
+class WindFeatureEncoder(nn.Module):
+    def __init__(self, in_channels=16, out_channels=64):
+        super().__init__()
+        # We use 1x1 convolutions first to let the model "mix" the 8 directions
+        # and decide which directions are important before downsampling.
+        # 1. Mixer: Keep it simple. 1x1 to select/weight the directions.
+        self.direction_mixer = nn.Sequential(nn.Conv2d(in_channels, 16, kernel_size=1), nn.ReLU(inplace=True))
+
+        # 2. Aggressive but Lean Downsampling
+        # We increase stride or use a slightly larger kernel to drop layers.
+        self.downsampler = nn.Sequential(
+            # 128x128 -> 32x32 (Stride 4)
+            nn.Conv2d(16, 32, kernel_size=4, stride=4, padding=0),
+            nn.BatchNorm2d(32),
+            nn.ReLU(inplace=True),
+            # 32x32 -> 8x8 (Stride 4)
+            nn.Conv2d(32, out_channels, kernel_size=4, stride=4, padding=0),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True),
+        )
+
+    def forward(self, x):
+        # x is (B, 16, H_input, W_input)
+        x = self.direction_mixer(x)
+        return self.downsampler(x)  # (B, 64, H_bn, W_bn)
