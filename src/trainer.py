@@ -2,7 +2,6 @@ import os
 import time
 from typing import Any, cast
 
-import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.optim as optim
@@ -16,7 +15,7 @@ from src.losses import WeightedLoss
 from src.models.unet import BaselineUNet, MultiSourceUNet
 from src.models.utils import get_nbr_model_parameters
 from src.schedulers import build_lr_scheduler
-from utils import AVAILABLE_METRICS, build_single_loss, get_binary_percentile_maps, set_device
+from utils import AVAILABLE_METRICS, build_single_loss, set_device
 
 
 class Trainer:
@@ -312,41 +311,6 @@ class Trainer:
     def test(self, loader: DataLoader, return_predictions: bool = False) -> dict[str, float] | tuple[dict[str, float], np.ndarray]:
         return self.validate(loader, return_predictions=return_predictions)
 
-    @torch.no_grad()
-    def _log_percentile_visualization(self, loader: DataLoader, epoch: int, percentile: float = 0.95):
-        """Runs one batch, plots the raw vs binary percentile maps, and logs to CometML."""
-        self.model.eval()
-
-        batch = next(iter(loader))
-
-        inputs, targets, masks = [t.to(self.device) for t in batch["grid"]]
-        tabular_data = {k: v.to(self.device) for k, v in batch.items() if k != "grid"}
-        predictions = torch.sigmoid(self.model(inputs, tabular_data))
-
-        p_bin, t_bin = get_binary_percentile_maps(predictions, targets, masks, percentile=percentile)
-
-        idx = 0
-        pred_raw = predictions[idx, 0].cpu().numpy()
-        target_raw = targets[idx, 0].cpu().numpy()
-        pred_b = p_bin[idx, 0].cpu().numpy()
-        target_b = t_bin[idx, 0].cpu().numpy()
-
-        fig, axes = plt.subplots(2, 2, figsize=(10, 10))
-        axes[0, 0].imshow(target_raw, cmap="magma")
-        axes[0, 0].set_title("Ground Truth (Raw)")
-        axes[0, 1].imshow(pred_raw, cmap="magma")
-        axes[0, 1].set_title(f"Prediction (Raw)")
-        axes[1, 0].imshow(target_b, cmap="Reds")
-        axes[1, 0].set_title(f"Ground Truth (Top {int((1-percentile)*100)}%)")
-        axes[1, 1].imshow(pred_b, cmap="Reds")
-        axes[1, 1].set_title(f"Prediction (Top {int((1-percentile)*100)}%)")
-        plt.tight_layout()
-
-        if self.logger and hasattr(self.logger, "experiment"):
-            self.logger.experiment.log_figure(figure_name=f"Top_perc_epoch_{epoch}", figure=fig, step=epoch)
-
-        plt.close(fig)
-
     def run_training(
         self,
         train_loader: DataLoader,
@@ -393,8 +357,6 @@ class Trainer:
 
                 if self.logger:
                     self.logger.log_metrics(metrics_to_log, epoch=epoch)
-                    if val_loader is not None:
-                        self._log_percentile_visualization(val_loader, epoch=epoch, percentile=0.95)
 
             # Save best checkpoint based on multi-metrics
             if val_result:
