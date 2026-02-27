@@ -318,30 +318,49 @@ def get_hexel_binary_maps(pred_grid: np.ndarray, gt_grid: np.ndarray, percentile
     return pred_bin, gt_bin
 
 
-def visualize_hexel_iou(gt_grid, pred_grid, gt_bin, pred_bin, hex_id, save_dir, percentile):
-    """Saves a 2x2 plot comparing the raw hexel predictions to the binary hotspots."""
-    fig, axes = plt.subplots(2, 2, figsize=(12, 12))
+def visualize_hexel_iou(
+    gt_grid: np.ndarray, pred_grid: np.ndarray, gt_bin: np.ndarray, pred_bin: np.ndarray, hex_id: str, save_dir: str, percentile: float
+):
+    """
+    Visualizes Ground Truth and Predicted burn prob grids alongside their binary Top-K hotspots.
+    Matches the styling of visualize_burn_prob_grid.
+    """
+    top_pct = round((1.0 - percentile) * 100.0, 2)
+    top_pct_str = f"{top_pct:g}"
 
-    # Raw Continuous Maps
-    axes[0, 0].imshow(gt_grid, cmap="magma")
-    axes[0, 0].set_title(f"Hexel {hex_id}: Ground Truth (Raw)")
-    axes[0, 0].axis("off")
+    out_dir = os.path.join(save_dir, "predicted_hexels_plot")
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = os.path.join(out_dir, f"hexel_{hex_id}_top_{top_pct_str}perc_iou.png")
 
-    axes[0, 1].imshow(pred_grid, cmap="magma")
-    axes[0, 1].set_title(f"Hexel {hex_id}: Prediction (Raw)")
-    axes[0, 1].axis("off")
+    inferred_vmax = np.nanmax(gt_grid)
 
-    # Binary Top % Maps
-    top_perc_label = f"Top {int((1-percentile)*100)}% Hotspots"
-    axes[1, 0].imshow(gt_bin, cmap="Reds")
-    axes[1, 0].set_title(f"Ground Truth ({top_perc_label})")
-    axes[1, 0].axis("off")
+    fig, axes = plt.subplots(2, 2, figsize=(14, 12))
+    fig.suptitle(f"Top {top_pct_str}% Burn Probability Hotspots - Hex {hex_id}", fontsize=16)
 
-    axes[1, 1].imshow(pred_bin, cmap="Reds")
-    axes[1, 1].set_title(f"Prediction ({top_perc_label})")
-    axes[1, 1].axis("off")
+    _ = axes[0, 0].imshow(gt_grid, cmap="viridis", origin="upper", vmax=inferred_vmax)
+    axes[0, 0].set_title("Ground Truth (Continuous)")
+    axes[0, 0].set_xlabel("Easting (m)")
+    axes[0, 0].set_ylabel("Northing (m)")
 
-    plt.tight_layout()
-    save_path = os.path.join(save_dir, f"hex{hex_id}_top_{int((1-percentile)*100)}perc_iou.png")
-    plt.savefig(save_path, dpi=150, bbox_inches="tight")
+    im2 = axes[0, 1].imshow(pred_grid, cmap="viridis", origin="upper", vmax=inferred_vmax)
+    axes[0, 1].set_title("Prediction (Continuous)")
+    axes[0, 1].set_xlabel("Easting (m)")
+    axes[0, 1].set_ylabel("Northing (m)")
+
+    fig.colorbar(im2, ax=axes[0, :].ravel().tolist(), label="Burn Probability", shrink=0.8)
+
+    gt_bin_viz = np.where(np.isnan(gt_grid), np.nan, gt_bin.astype(float))
+    pred_bin_viz = np.where(np.isnan(pred_grid), np.nan, pred_bin.astype(float))
+
+    _ = axes[1, 0].imshow(gt_bin_viz, cmap="Reds", origin="upper", vmin=0, vmax=1)
+    axes[1, 0].set_title(f"Ground Truth (Top {top_pct_str}%)")
+    axes[1, 0].set_xlabel("Easting (m)")
+    axes[1, 0].set_ylabel("Northing (m)")
+
+    _ = axes[1, 1].imshow(pred_bin_viz, cmap="Reds", origin="upper", vmin=0, vmax=1)
+    axes[1, 1].set_title(f"Prediction (Top {top_pct_str}%)")
+    axes[1, 1].set_xlabel("Easting (m)")
+    axes[1, 1].set_ylabel("Northing (m)")
+
+    plt.savefig(out_path, dpi=300, bbox_inches="tight")
     plt.close(fig)
