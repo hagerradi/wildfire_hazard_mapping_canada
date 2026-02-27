@@ -12,6 +12,7 @@ from data_preparation.paths import OUTPUT_BURN_PROB_PATH
 
 feature_names = ["ignition_grid", "esc_fires_grid", "fuel_grid", "elevation_grid", "weather_grid", "wind_grid", "out_grid"]
 WEATHER_FEATURE_COLS = ["temp", "rh", "ws", "wd", "prec", "ffmc", "dmc", "dc", "isi", "bui", "fwi"]
+FIRE_SIZE_FEATURE_COLS = ["GRIDCODE", "SIZE_HA"]
 HEX_ID_NA = ["52", "53", "04", "25", "47", "48"]
 
 feature_count_map = {
@@ -23,6 +24,36 @@ feature_count_map = {
     "elevation_grid": 1,
     "out_burn_prob": 1,
 }
+
+
+def find_file_path(filename: str, *search_dirs: Path) -> Path:
+    """Searches for a file in multiple directories and returns the path if found."""
+    for d in search_dirs:
+        p = Path(d) / filename
+        if p.exists():
+            return p
+    raise FileNotFoundError(f"Could not find {filename} in {', '.join(str(d) for d in search_dirs)}")
+
+
+def process_fire_size_df(df_fire_size: pd.DataFrame) -> pd.DataFrame:
+    # Validate that required columns are present before selecting them
+    missing_cols = [col for col in FIRE_SIZE_FEATURE_COLS if col not in df_fire_size.columns]
+    if missing_cols:
+        raise ValueError(
+            f"Missing required column(s) in fire size DataFrame: {missing_cols}. "
+            f"Expected columns: {FIRE_SIZE_FEATURE_COLS}. "
+            f"Available columns: {list(df_fire_size.columns)}"
+        )
+    df_fire_size = df_fire_size[FIRE_SIZE_FEATURE_COLS]  # Remove unnamed column
+    df_fire_size["LOG_SIZE_HA"] = np.log10(df_fire_size["SIZE_HA"] + 1)
+    min_val = df_fire_size["LOG_SIZE_HA"].min()
+    max_val = df_fire_size["LOG_SIZE_HA"].max()
+    if max_val == min_val:
+        # Avoid division by zero when all LOG_SIZE_HA values are identical
+        df_fire_size["NORM_LOG_SIZE_HA"] = 0.0
+    else:
+        df_fire_size["NORM_LOG_SIZE_HA"] = (df_fire_size["LOG_SIZE_HA"] - min_val) / ((max_val - min_val) + 1e-5)
+    return df_fire_size
 
 
 def aggregate_csv_by_pattern(root_dir: Path, pattern: str, load_function: Callable | None = None) -> pd.DataFrame:

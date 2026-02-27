@@ -11,7 +11,7 @@ import torchvision.transforms.functional as F
 
 from src.config import DataSourceConfig, GridParams, TabularParams
 from src.datasets.dataset import MultiSourceDataset
-from src.datasets.sources import GridSource, WeatherSource
+from src.datasets.sources import GridSource, TabularSource
 from src.datasets.transforms import setup_augmentations
 
 
@@ -74,14 +74,22 @@ def temp_data_dir():
         weather_csv = "weather_table.csv"
         weather_df.to_csv(os.path.join(tmpdir, weather_csv), index=False)
 
-        yield tmpdir, train_csv, val_csv, test_csv, weather_csv, weather_feats
+        # Create dummy fire size table csv
+        fire_size_feats = ["size"]
+        data = {"size": np.full(5, 100.0)}  # Dummy size values
+        data["grid_code"] = [100, 100, 100, 200, 200]  # 3 samples for zone 100
+        fire_size_df = pd.DataFrame(data)
+        fire_size_csv = "fire_size_table.csv"
+        fire_size_df.to_csv(os.path.join(tmpdir, fire_size_csv), index=False)
+
+        yield tmpdir, train_csv, val_csv, test_csv, weather_csv, weather_feats, fire_size_csv, fire_size_feats
 
     finally:
         shutil.rmtree(tmpdir)
 
 
 def test_multi_source_integration(temp_data_dir):
-    tmpdir, train_csv, val_csv, test_csv, weather_csv, weather_feats = temp_data_dir
+    tmpdir, train_csv, val_csv, test_csv, weather_csv, weather_feats, fire_size_csv, fire_size_feats = temp_data_dir
 
     grid_params = GridParams(
         feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],
@@ -99,29 +107,46 @@ def test_multi_source_integration(temp_data_dir):
     weather_params = TabularParams(
         csv_name=weather_csv,
         feature_names_list=weather_feats,
+        fire_weather_zone_id_col="wx_zone",
         sampling_approach="mode",
         num_samples_per_patch=2,
     )
 
-    weather_source = WeatherSource(
+    fire_size_params = TabularParams(
+        csv_name=fire_size_csv,
+        feature_names_list=fire_size_feats,
+        fire_weather_zone_id_col="grid_code",
+        sampling_approach="mode",
+        num_samples_per_patch=2,
+    )
+
+    weather_source = TabularSource(
         root_dir=tmpdir,
         params=weather_params,
         modelling_approach="2",
     )
-    ds = MultiSourceDataset(csv_name="train.csv", root_dir=tmpdir, sources={"grid": grid_source, "weather": weather_source})
+
+    fire_size_source = TabularSource(root_dir=tmpdir, params=fire_size_params, modelling_approach="2")
+
+    ds = MultiSourceDataset(
+        csv_name="train.csv", root_dir=tmpdir, sources={"grid": grid_source, "weather": weather_source, "fire_size": fire_size_source}
+    )
     sample = ds[0]
 
     assert "grid" in sample.keys()
     assert "weather" in sample.keys()
+    assert "fire_size" in sample.keys()
     input_arr, target, mask = sample["grid"]
     assert isinstance(input_arr, torch.Tensor)
     assert input_arr.shape[0] == 3
     weather = sample["weather"]
     assert weather.shape == (2, len(weather_feats))
+    fire_size = sample["fire_size"]
+    assert fire_size.shape == (2, len(fire_size_feats))
 
 
 def test_grid_one_hot_encoding(temp_data_dir):
-    tmpdir, train_csv, _, _, _, _ = temp_data_dir
+    tmpdir, train_csv, _, _, _, _, _, _ = temp_data_dir
 
     grid_params = GridParams(feature_names_list=["fuel_grid"], fuel_feats_encoding="one_hot", normalize_fuel_feats_ordinal=True)
 
@@ -139,7 +164,7 @@ def test_grid_one_hot_encoding(temp_data_dir):
 
 
 def test_grid_feature_names_list(temp_data_dir):
-    tmpdir, train_csv, _, _, _, _ = temp_data_dir
+    tmpdir, train_csv, _, _, _, _, _, _ = temp_data_dir
 
     grid_params = GridParams(
         feature_names_list=["fuel_grid"],
@@ -157,7 +182,7 @@ def test_grid_feature_names_list(temp_data_dir):
 
 
 def test_mask_threshold(temp_data_dir):
-    tmpdir, train_csv, _, _, _, _ = temp_data_dir
+    tmpdir, train_csv, _, _, _, _, _, _ = temp_data_dir
     # Set threshold above 1.0 so no samples are valid
     ds = MultiSourceDataset(csv_name="train.csv", root_dir=tmpdir, valid_mask_threshold=1.0)
 
@@ -165,7 +190,7 @@ def test_mask_threshold(temp_data_dir):
 
 
 def test_grid_output_normalization_iters(temp_data_dir):
-    tmpdir, train_csv, _, _, _, _ = temp_data_dir
+    tmpdir, train_csv, _, _, _, _, _, _ = temp_data_dir
 
     grid_params = GridParams(
         feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],
@@ -191,7 +216,7 @@ def test_grid_output_normalization_iters(temp_data_dir):
 
 
 def test_grid_transforms(temp_data_dir):
-    tmpdir, train_csv, _, _, _, _ = temp_data_dir
+    tmpdir, train_csv, _, _, _, _, _, _ = temp_data_dir
 
     base_params_dict = {
         "feature_names_list": ["ignition_grid", "fuel_grid", "elevation_grid"],
@@ -272,3 +297,51 @@ def test_grid_transforms(temp_data_dir):
     is_270 = torch.equal(y_rot, torch.rot90(y_orig, 3, dims=[1, 2]))
 
     assert is_90 or is_180 or is_270
+
+
+def test_tabular_weighted_sampling(temp_data_dir):
+    tmpdir, train_csv, _, _, _, _, fire_size_csv, fire_size_feats = temp_data_dir
+
+    fire_size_params = TabularParams(
+        csv_name=fire_size_csv,
+        feature_names_list=fire_size_feats,
+        fire_weather_zone_id_col="grid_code",
+        sampling_approach="weighted",
+        num_samples_per_patch=2,
+    )
+
+    fire_size_source = TabularSource(root_dir=tmpdir, params=fire_size_params, modelling_approach="2")
+
+    # Build a small patch where the zone channel has 4 occurrences of 100 and 1 of 200
+    data = np.full((32, 32, 36), np.nan, dtype=np.float32)
+    zone_channel = 4  # matches the fixture's feature_channel_map
+    coords = [(0, 0), (0, 1), (0, 2), (0, 3), (0, 4)]
+    for i, (r, c) in enumerate(coords):
+        data[r, c, zone_channel] = 100.0 if i < 4 else 200.0
+
+    # Monkeypatch np.random.choice by temporarily replacing it to capture the probability vector `p`
+    captured = {}
+    original_choice = np.random.choice
+
+    def fake_choice(n, size, replace, p=None):
+        captured["p"] = np.array(p, dtype=float) if p is not None else None
+        return np.arange(size, dtype=int)
+
+    try:
+        np.random.choice = fake_choice
+
+        sample = fire_size_source.get_sample({"data": data})
+
+        # Ensure we captured probabilities and that sample has expected shape
+        assert "p" in captured and captured["p"] is not None
+        assert sample.shape == (2, len(fire_size_feats))
+
+        # Compute expected raw weights: for each zone, weight per candidate = count_in_patch / len(zone_cands)
+        lut100_len = len(fire_size_source.lut[100])
+        lut200_len = len(fire_size_source.lut[200])
+        raw_weights = np.concatenate([np.full(lut100_len, 4 / lut100_len), np.full(lut200_len, 1 / lut200_len)])
+        expected_p = raw_weights / raw_weights.sum()
+
+        np.testing.assert_allclose(captured["p"], expected_p, rtol=1e-8, atol=1e-12)
+    finally:
+        np.random.choice = original_choice

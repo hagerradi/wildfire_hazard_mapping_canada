@@ -24,6 +24,8 @@ AVAILABLE_METRICS: dict[str, Callable[..., torch.Tensor]] = {
     "iou_top005": partial(compute_top_perc_iou, percentile=0.995),
 }
 
+AVAILABLE_LR_SCHEDULERS = ["onecycle", "cosine_warmup", "plateau", "multistep"]
+
 
 def build_single_loss(name: str) -> torch.nn.Module:
     name = str(name).lower()
