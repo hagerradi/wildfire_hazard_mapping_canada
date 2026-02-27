@@ -1,6 +1,7 @@
 import os
 import random
 from functools import partial
+from typing import Callable
 
 import numpy as np
 import torch
@@ -10,7 +11,7 @@ from torch.utils.data import DataLoader
 from losses import BCELoss, BernoulliKLLoss, DiceLoss, FocalLoss, MAELoss, MSELoss
 from src.metrics import compute_bias, compute_mae, compute_mse, compute_spearman, compute_ssim, compute_top_perc_iou
 
-AVAILABLE_METRICS = {
+AVAILABLE_METRICS: dict[str, Callable[..., torch.Tensor]] = {
     "mse": compute_mse,
     "mae": compute_mae,
     "spearman": compute_spearman,
@@ -270,7 +271,26 @@ def set_device() -> str:
     return device
 
 
-import torch
+def calculate_hexel_metrics_pytorch(gt_grid: np.ndarray, pred_grid: np.ndarray, device: torch.device) -> dict[str, float]:
+    """
+    Converts 2D numpy hexels into 4D PyTorch tensors and runs them through the existing metrics.
+    """
+    valid_mask_np = ~np.isnan(gt_grid) & ~np.isnan(pred_grid)
+
+    gt_clean = np.nan_to_num(gt_grid, nan=0.0)
+    pred_clean = np.nan_to_num(pred_grid, nan=0.0)
+
+    t_targets = torch.tensor(gt_clean, dtype=torch.float32, device=device).unsqueeze(0).unsqueeze(0)
+    t_preds = torch.tensor(pred_clean, dtype=torch.float32, device=device).unsqueeze(0).unsqueeze(0)
+    t_mask = torch.tensor(valid_mask_np, dtype=torch.bool, device=device).unsqueeze(0).unsqueeze(0)
+
+    results = {}
+    with torch.no_grad():
+        for name, metric_fn in AVAILABLE_METRICS.items():
+            val = metric_fn(t_preds, t_targets, t_mask)
+            results[name] = val.item()
+
+    return results
 
 
 def get_binary_percentile_maps(

@@ -21,7 +21,7 @@ from src.datasets.postprocessing.utils import get_predicted_hexel, save_predicte
 from src.datasets.postprocessing.visualize_predictions import visualize_burn_prob_grid
 from src.datasets.utils import get_dataset_dimensions
 from src.trainer import Trainer
-from src.utils import seed_everything, visualize_model_predictions
+from src.utils import AVAILABLE_METRICS, calculate_hexel_metrics_pytorch, seed_everything, visualize_model_predictions
 
 
 def parse_args() -> argparse.Namespace:
@@ -160,6 +160,8 @@ def main() -> None:
 
     test_df = test_df[test_df["valid_ratio"] > valid_mask_threshold].reset_index(drop=True)  # type: ignore
     all_hex_ids = list(test_df["hex_id"].unique())
+    all_hexel_metrics = []
+
     for hex_id in all_hex_ids:
         print(f"======Working with hex{hex_id}========")
         one_hexel_df = test_df[test_df["hex_id"] == hex_id]
@@ -187,7 +189,19 @@ def main() -> None:
         fpath = find_simulation_output_file(hex_dir, hex_id, output_type, season=season, cause=cause)
         grid_gt = load_output_burn_grid(fpath)
         visualize_burn_prob_grid(gt_grid=grid_gt, pred_grid=reconstructed_hexel_denorm, hex_id=hex_id, save_dir=config.save_dir)
+
+        hex_metrics = calculate_hexel_metrics_pytorch(grid_gt, reconstructed_hexel_denorm, trainer.device)
+        all_hexel_metrics.append(hex_metrics)
+
         print(f"=======Saved subplot for hex{hex_id}==============")
+
+    print(f"=======Global Stiched Hexel Metrics==============")
+    final_global_metrics = {}
+    for key in AVAILABLE_METRICS.keys():
+        # Average across all hexels
+        mean_val = np.nanmean([hm[key] for hm in all_hexel_metrics if not np.isnan(hm[key])])
+        final_global_metrics[key] = mean_val
+        print(f"  Global {key}: {mean_val:.6f}")
 
     print(f"=======Total Evaluation Time {round(time.time()-start_time, 3)}s========")
     print(f"=======Prediction Time {round(preds_time, 3)}s========")
