@@ -3,6 +3,7 @@ End-to-end script for evaluation of one hexel
 """
 
 import argparse
+import functools
 import glob
 import json
 import os
@@ -21,7 +22,14 @@ from src.datasets.postprocessing.utils import get_predicted_hexel, save_predicte
 from src.datasets.postprocessing.visualize_predictions import visualize_burn_prob_grid
 from src.datasets.utils import get_dataset_dimensions
 from src.trainer import Trainer
-from src.utils import AVAILABLE_METRICS, calculate_hexel_metrics_pytorch, seed_everything, visualize_model_predictions
+from src.utils import (
+    AVAILABLE_METRICS,
+    calculate_hexel_metrics_pytorch,
+    get_hexel_binary_maps,
+    seed_everything,
+    visualize_hexel_iou,
+    visualize_model_predictions,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -192,6 +200,16 @@ def main() -> None:
 
         hex_metrics = calculate_hexel_metrics_pytorch(grid_gt, reconstructed_hexel_denorm, trainer.device)
         all_hexel_metrics.append(hex_metrics)
+
+        percentiles_to_plot = [
+            fn.keywords["percentile"]
+            for _, fn in trainer.metric_functions.items()
+            if isinstance(fn, functools.partial) and "percentile" in fn.keywords
+        ]
+
+        for p in percentiles_to_plot:
+            pred_bin, gt_bin = get_hexel_binary_maps(reconstructed_hexel_denorm, grid_gt, percentile=p)
+            visualize_hexel_iou(grid_gt, reconstructed_hexel_denorm, gt_bin, pred_bin, hex_id, config.save_dir, p)
 
         print(f"=======Saved subplot for hex{hex_id}==============")
 

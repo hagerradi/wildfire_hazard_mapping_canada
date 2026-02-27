@@ -295,42 +295,53 @@ def calculate_hexel_metrics_pytorch(gt_grid: np.ndarray, pred_grid: np.ndarray, 
     return results
 
 
-def get_binary_percentile_maps(
-    preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None, percentile: float = 0.90
-) -> tuple[torch.Tensor, torch.Tensor]:
+def get_hexel_binary_maps(pred_grid: np.ndarray, gt_grid: np.ndarray, percentile: float = 0.95):
     """
-    Returns the spatial 2D binary maps representing the top percentile hotspots for plotting purposes.
+    Finds the Top-K percentile thresholds for full 2D numpy hexel grids.
+    Ignores NaN values (the background outside the hexel boundary).
     """
-    batch_size = preds.size(0)
+    valid_mask = ~np.isnan(gt_grid) & ~np.isnan(pred_grid)
 
-    preds_bin_map = torch.zeros_like(preds, dtype=torch.bool)
-    targets_bin_map = torch.zeros_like(targets, dtype=torch.bool)
+    p_valid = pred_grid[valid_mask]
+    t_valid = gt_grid[valid_mask]
 
-    flat_preds = preds.reshape(batch_size, -1)
-    flat_targets = targets.reshape(batch_size, -1)
+    pred_bin = np.zeros_like(pred_grid, dtype=bool)
+    gt_bin = np.zeros_like(gt_grid, dtype=bool)
 
-    if mask is None:
-        for i in range(batch_size):
-            p_thresh = torch.quantile(flat_preds[i].float(), percentile)
-            t_thresh = torch.quantile(flat_targets[i].float(), percentile)
+    if len(p_valid) > 0:
+        p_thresh = np.quantile(p_valid, percentile)
+        t_thresh = np.quantile(t_valid, percentile)
 
-            preds_bin_map[i] = preds[i] >= p_thresh
-            targets_bin_map[i] = targets[i] >= t_thresh
-    else:
-        valid_mask = mask.bool().reshape(batch_size, -1)
-        for i in range(batch_size):
-            sample_valid_mask = valid_mask[i]
+        pred_bin[valid_mask] = p_valid >= p_thresh
+        gt_bin[valid_mask] = t_valid >= t_thresh
 
-            # Skip if patch has no valid data
-            if sample_valid_mask.sum() == 0:
-                continue
+    return pred_bin, gt_bin
 
-            # Find threshold using ONLY valid pixels
-            p_thresh = torch.quantile(flat_preds[i][sample_valid_mask].float(), percentile)
-            t_thresh = torch.quantile(flat_targets[i][sample_valid_mask].float(), percentile)
 
-            # Apply threshold to the 2D spatial map, but force masked areas to stay False
-            preds_bin_map[i] = (preds[i] >= p_thresh) & mask[i].bool()
-            targets_bin_map[i] = (targets[i] >= t_thresh) & mask[i].bool()
+def visualize_hexel_iou(gt_grid, pred_grid, gt_bin, pred_bin, hex_id, save_dir, percentile):
+    """Saves a 2x2 plot comparing the raw hexel predictions to the binary hotspots."""
+    fig, axes = plt.subplots(2, 2, figsize=(12, 12))
 
-    return preds_bin_map, targets_bin_map
+    # Raw Continuous Maps
+    axes[0, 0].imshow(gt_grid, cmap="magma")
+    axes[0, 0].set_title(f"Hexel {hex_id}: Ground Truth (Raw)")
+    axes[0, 0].axis("off")
+
+    axes[0, 1].imshow(pred_grid, cmap="magma")
+    axes[0, 1].set_title(f"Hexel {hex_id}: Prediction (Raw)")
+    axes[0, 1].axis("off")
+
+    # Binary Top % Maps
+    top_perc_label = f"Top {int((1-percentile)*100)}% Hotspots"
+    axes[1, 0].imshow(gt_bin, cmap="Reds")
+    axes[1, 0].set_title(f"Ground Truth ({top_perc_label})")
+    axes[1, 0].axis("off")
+
+    axes[1, 1].imshow(pred_bin, cmap="Reds")
+    axes[1, 1].set_title(f"Prediction ({top_perc_label})")
+    axes[1, 1].axis("off")
+
+    plt.tight_layout()
+    save_path = os.path.join(save_dir, f"hex{hex_id}_top_{int((1-percentile)*100)}perc_iou.png")
+    plt.savefig(save_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
