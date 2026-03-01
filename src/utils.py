@@ -275,7 +275,7 @@ def set_device() -> str:
 
 def calculate_hexel_metrics_pytorch(gt_grid: np.ndarray, pred_grid: np.ndarray, device: torch.device) -> dict[str, float]:
     """
-    Converts 2D numpy hexels into 4D PyTorch tensors and runs them through the existing metrics.
+    Utils to convert 2D numpy hexels into torch tensors to run the global per-hexel eval. metrics.
     """
     valid_mask_np = ~np.isnan(gt_grid) & ~np.isnan(pred_grid)
 
@@ -297,8 +297,7 @@ def calculate_hexel_metrics_pytorch(gt_grid: np.ndarray, pred_grid: np.ndarray, 
 
 def get_hexel_binary_maps(pred_grid: np.ndarray, gt_grid: np.ndarray, percentile: float = 0.95):
     """
-    Finds the Top-K percentile thresholds for full 2D numpy hexel grids.
-    Ignores NaN values (the background outside the hexel boundary).
+    Utils to get the Top K percentile thresholds (binary maps) for full 2D numpy hexel grids.
     """
     valid_mask = ~np.isnan(gt_grid) & ~np.isnan(pred_grid)
 
