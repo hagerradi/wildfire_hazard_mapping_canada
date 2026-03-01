@@ -64,6 +64,7 @@ class GridParams(BaseModel):
     """Specific parameters for the GridSource."""
 
     feature_names_list: list[str]
+    # TODO: move out_norm outside of grid source config since it's for GT
     out_norm: str = "min_max"
     fuel_feats_encoding: str = "one_hot"
     normalize_fuel_feats_ordinal: bool = True
@@ -111,7 +112,7 @@ class Config(BaseModel):
     modelling_approach: str = "2"
     model: ModelConfig
     optimizer: OptimizerConfig
-    lr_scheduler: SchedulerConfig
+    lr_scheduler: SchedulerConfig = Field(default_factory=SchedulerConfig)
     training: TrainingConfig
     evaluation: EvaluationConfig
     data: DataConfig

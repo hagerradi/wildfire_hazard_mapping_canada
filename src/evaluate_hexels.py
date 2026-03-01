@@ -3,31 +3,21 @@ End-to-end script for evaluation of one hexel
 """
 
 import argparse
-import functools
 import glob
 import json
 import os
 import time
 
 import numpy as np
-import pandas as pd
 import yaml
 
-from data_preparation.grid_loader.output import load_output_burn_grid
-from data_preparation.grid_loader.utils import get_range_burn_count, get_range_burn_prob
-from data_preparation.utils import find_simulation_output_file
 from src.config import Config, GridParams
 from src.datasets.dataset import get_test_dataloader
-from src.datasets.postprocessing.utils import get_predicted_hexel, save_predicted_hexels
-from src.datasets.postprocessing.visualize_predictions import visualize_burn_prob_grid
+from src.datasets.postprocessing.utils import reconstruct_and_visualize_hexels
 from src.datasets.utils import get_dataset_dimensions
 from src.trainer import Trainer
 from src.utils import (
-    AVAILABLE_METRICS,
-    calculate_hexel_metrics_pytorch,
-    get_hexel_binary_maps,
     seed_everything,
-    visualize_hexel_iou,
     visualize_model_predictions,
 )
 
@@ -105,7 +95,7 @@ def main() -> None:
     # ---------- Evaluation ----------
 
     source_map = {s.name: s for s in config.data.input_sources}
-    grid_source = source_map.get("grid") if "grid" in source_map.keys() else None
+    grid_source = source_map.get("grid") if "grid" in source_map else None
     grid_features = None
     out_norm = "min_max"  # default fallback, prevent mypy crash
     if grid_source and isinstance(grid_source.params, GridParams):
@@ -147,79 +137,15 @@ def main() -> None:
         for k, v in test_metrics.items():
             print(f"  {k}: {v:.6f}")
 
-    data_dir = config.data.root_dir
-    raw_data_dir = config.data.raw_data_dir
-    modelling_approach = config.modelling_approach
-    valid_mask_threshold = config.data.valid_mask_threshold
-    output_type, season, cause = "prob", None, None
-    if modelling_approach == "1":
-        max_target_val, min_target_val = get_range_burn_prob(root_dir=raw_data_dir)
-    else:
-        max_target_val, min_target_val = get_range_burn_count(root_dir=raw_data_dir)
-
-    if isinstance(test_predictions, str):
-        # Handle the error or raise an exception
-        raise TypeError(f"Expected ndarray, but got string: {test_predictions}")
-
-    try:
-        test_df = pd.read_csv(os.path.join(data_dir, config.data.test_split))
-    except (FileNotFoundError, AttributeError):
-        raise ValueError("Test df file does not exist.")  # noqa: B904
-
-    test_df = test_df[test_df["valid_ratio"] > valid_mask_threshold].reset_index(drop=True)  # type: ignore
-    all_hex_ids = list(test_df["hex_id"].unique())
-    all_hexel_metrics = []
-
-    for hex_id in all_hex_ids:
-        print(f"======Working with hex{hex_id}========")
-        one_hexel_df = test_df[test_df["hex_id"] == hex_id]
-        hexel_indices = test_df[test_df["hex_id"] == hex_id].index.tolist()
-        if len(str(hex_id)) != 2:
-            hex_id = "0" + str(hex_id)
-        hex_test_predictions = test_predictions[hexel_indices]
-        reconstructed_hexel_denorm, gt_elevation_grid_profile = get_predicted_hexel(
-            base_dir=data_dir,
-            raw_data_dir=raw_data_dir,
-            test_df=one_hexel_df,
-            predictions=hex_test_predictions,
-            min_target_val=min_target_val,
-            max_target_val=max_target_val,
-            hex_id=hex_id,
-            modelling_approach=modelling_approach,
-            out_norm=out_norm,
-            stitch_mode="mean",
-            win_h=128,
-            win_w=128,
+    if isinstance(test_predictions, np.ndarray):
+        global_metrics = reconstruct_and_visualize_hexels(
+            test_predictions=test_predictions, config=config, out_norm=out_norm, experiment_logger=None, trainer=trainer
         )
-        save_predicted_hexels(reconstructed_hexel_denorm, gt_elevation_grid_profile, hex_id, config.save_dir)
-        # Save the hex as plt plot
-        hex_dir = os.path.join(raw_data_dir, f"hex{hex_id}")
-        fpath = find_simulation_output_file(hex_dir, hex_id, output_type, season=season, cause=cause)
-        grid_gt = load_output_burn_grid(fpath)
-        visualize_burn_prob_grid(gt_grid=grid_gt, pred_grid=reconstructed_hexel_denorm, hex_id=hex_id, save_dir=config.save_dir)
 
-        hex_metrics = calculate_hexel_metrics_pytorch(grid_gt, reconstructed_hexel_denorm, trainer.device)
-        all_hexel_metrics.append(hex_metrics)
-
-        percentiles_to_plot = [
-            fn.keywords["percentile"]
-            for _, fn in trainer.metric_functions.items()
-            if isinstance(fn, functools.partial) and "percentile" in fn.keywords
-        ]
-
-        for p in percentiles_to_plot:
-            pred_bin, gt_bin = get_hexel_binary_maps(reconstructed_hexel_denorm, grid_gt, percentile=p)
-            visualize_hexel_iou(grid_gt, reconstructed_hexel_denorm, gt_bin, pred_bin, hex_id, config.save_dir, p)
-
-        print(f"=======Saved subplot for hex{hex_id}==============")
-
-    print(f"=======Global Stiched Hexel Metrics==============")
-    final_global_metrics = {}
-    for key in AVAILABLE_METRICS.keys():
-        # Average across all hexels
-        mean_val = np.nanmean([hm[key] for hm in all_hexel_metrics if not np.isnan(hm[key])])
-        final_global_metrics[key] = mean_val
-        print(f"  Global {key}: {mean_val:.6f}")
+        if global_metrics:
+            print(f"\n=======Global Stitched Hexel Metrics==============")
+            for k, v in global_metrics.items():
+                print(f"  Global {k}: {v:.6f}")
 
     print(f"=======Total Evaluation Time {round(time.time()-start_time, 3)}s========")
     print(f"=======Prediction Time {round(preds_time, 3)}s========")

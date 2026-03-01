@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 
 from comet_ml import Experiment
 
@@ -19,7 +20,7 @@ class CometLogger:
 
         # init. experiment
         self.experiment = Experiment(
-            api_key=api_key,
+            api_key=self.api_key,
             project_name=project_name,
             workspace=workspace,
             log_code=False,
@@ -53,3 +54,26 @@ class CometLogger:
 
     def log_params(self, params: dict):
         self.experiment.log_parameters(params)
+
+    def log_image(
+        self,
+        image_path: str | os.PathLike[str],
+        name: str | None = None,
+        step: int | None = None,
+        epoch: int | None = None,
+    ) -> None:
+        """
+        Log an image file to Comet.
+        """
+        image_path = Path(image_path)
+        if not image_path.exists():
+            raise FileNotFoundError(f"Image path does not exist: {image_path}")
+
+        if epoch is not None:
+            self.experiment.set_epoch(epoch)
+
+        self.experiment.log_image(
+            image_path,
+            name=name,
+            step=step,
+        )
