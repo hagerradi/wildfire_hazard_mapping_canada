@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from src.metrics import compute_mae, compute_mse, compute_spearman, compute_ssim
+from src.metrics import compute_bias, compute_mae, compute_mse, compute_spearman, compute_ssim, compute_top_perc_iou
 
 
 @pytest.fixture
@@ -70,3 +70,76 @@ def test_ssim_range_with_mask(dummy_data, dummy_mask):
     preds, targets = dummy_data
     score = compute_ssim(preds, targets, mask=dummy_mask)
     assert -1.0 <= score <= 1.0
+
+
+def test_top_perc_iou_perfect_match(dummy_data):
+    _, targets = dummy_data
+    iou = compute_top_perc_iou(targets, targets, percentile=0.90)
+    assert torch.isclose(iou, torch.tensor(1.0))
+
+
+def test_top_perc_iou_perfect_match_with_mask(dummy_data, dummy_mask):
+    _, targets = dummy_data
+    iou = compute_top_perc_iou(targets, targets, mask=dummy_mask, percentile=0.90)
+    assert torch.isclose(iou, torch.tensor(1.0))
+
+
+def test_top_perc_iou_range(dummy_data):
+    preds, targets = dummy_data
+    iou = compute_top_perc_iou(preds, targets, percentile=0.90)
+    assert 0.0 <= iou.item() <= 1.0
+
+
+def test_top_perc_iou_empty_mask_edge_case(dummy_data):
+    preds, targets = dummy_data
+    empty_mask = torch.zeros_like(targets)
+    iou = compute_top_perc_iou(preds, targets, mask=empty_mask)
+    assert torch.isnan(iou)
+
+
+def test_top_perc_iou_completely_disjoint():
+    targets = torch.zeros(1, 1, 1, 10)
+    targets[..., -1] = 1.0
+
+    preds = torch.zeros(1, 1, 1, 10)
+    preds[..., 0] = 1.0
+
+    iou = compute_top_perc_iou(preds, targets, percentile=0.90)
+    assert torch.isclose(iou, torch.tensor(0.0))
+
+
+def test_bias_zero_when_perfect_match(dummy_data, dummy_mask):
+    _, targets = dummy_data
+    bias = compute_bias(targets, targets, mask=dummy_mask)
+    assert torch.isclose(bias, torch.tensor(0.0))
+
+
+def test_bias_positive_and_negative_shifts(dummy_data, dummy_mask):
+    _, targets = dummy_data
+    preds_over = targets + 2.5
+    bias_over = compute_bias(preds_over, targets, mask=dummy_mask)
+    assert torch.isclose(bias_over, torch.tensor(2.5))
+
+    preds_under = targets - 1.5
+    bias_under = compute_bias(preds_under, targets, mask=dummy_mask)
+    assert torch.isclose(bias_under, torch.tensor(-1.5))
+
+
+def test_bias_ignores_masked_out_regions():
+    targets = torch.zeros(1, 1, 4, 4)
+    preds = torch.zeros(1, 1, 4, 4)
+    mask = torch.zeros(1, 1, 4, 4)
+
+    mask[..., :2, :2] = 1.0
+    preds[..., :2, :2] = 3.0
+    preds[..., 2:, 2:] = 100.0
+
+    bias = compute_bias(preds, targets, mask=mask)
+    assert torch.isclose(bias, torch.tensor(3.0))
+
+
+def test_bias_empty_mask_edge_case(dummy_data):
+    preds, targets = dummy_data
+    empty_mask = torch.zeros_like(targets)
+    bias = compute_bias(preds, targets, mask=empty_mask)
+    assert torch.isclose(bias, torch.tensor(0.0))
