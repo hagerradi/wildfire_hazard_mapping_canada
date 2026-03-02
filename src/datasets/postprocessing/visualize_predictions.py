@@ -111,36 +111,36 @@ def visualize_hexel_iou(
     os.makedirs(out_dir, exist_ok=True)
     out_path = os.path.join(out_dir, f"hexel_{hex_id}_top_{top_pct_str}perc_iou.png")
 
-    inferred_vmax = np.nanmax(gt_grid)
+    inferred_vmax = max(np.nanmax(gt_grid), np.nanmax(pred_grid))
 
     # plot the full targets and preds maps
     fig, axes = plt.subplots(2, 2, figsize=(14, 12))
     fig.suptitle(f"Top {top_pct_str}% Burn Probability Hotspots - Hex {hex_id}", fontsize=16)
 
-    _ = axes[0, 0].imshow(gt_grid, cmap="viridis", origin="upper", vmax=inferred_vmax)
-    axes[0, 0].set_title("Ground Truth")
+    _ = axes[0, 0].imshow(pred_grid, cmap="viridis", origin="upper", vmax=inferred_vmax)
+    axes[0, 0].set_title("Prediction")
     axes[0, 0].set_xlabel("Easting (m)")
     axes[0, 0].set_ylabel("Northing (m)")
 
-    im2 = axes[0, 1].imshow(pred_grid, cmap="viridis", origin="upper", vmax=inferred_vmax)
-    axes[0, 1].set_title("Prediction")
+    im2 = axes[0, 1].imshow(gt_grid, cmap="viridis", origin="upper", vmax=inferred_vmax)
+    axes[0, 1].set_title("Ground Truth")
     axes[0, 1].set_xlabel("Easting (m)")
     axes[0, 1].set_ylabel("Northing (m)")
 
-    fig.colorbar(im2, ax=axes[0, :].ravel().tolist(), label="Burn Probability", shrink=0.8)
+    fig.colorbar(im2, ax=axes.ravel().tolist(), label="Burn Probability", shrink=0.6)
 
     # get the thresholded binary preds and targets maps
     gt_bin_viz = np.where(np.isnan(gt_grid), np.nan, gt_bin.astype(float))
     pred_bin_viz = np.where(np.isnan(pred_grid), np.nan, pred_bin.astype(float))
 
     # plot the binary top K preds and targets maps
-    _ = axes[1, 0].imshow(gt_bin_viz, cmap="Reds", origin="upper", vmin=0, vmax=1)
-    axes[1, 0].set_title(f"Ground Truth (Top {top_pct_str}%)")
+    _ = axes[1, 0].imshow(pred_bin_viz, cmap="Reds", origin="upper", vmin=0, vmax=1)
+    axes[1, 0].set_title(f"Prediction (Top {top_pct_str}%)")
     axes[1, 0].set_xlabel("Easting (m)")
     axes[1, 0].set_ylabel("Northing (m)")
 
-    _ = axes[1, 1].imshow(pred_bin_viz, cmap="Reds", origin="upper", vmin=0, vmax=1)
-    axes[1, 1].set_title(f"Prediction (Top {top_pct_str}%)")
+    _ = axes[1, 1].imshow(gt_bin_viz, cmap="Reds", origin="upper", vmin=0, vmax=1)
+    axes[1, 1].set_title(f"Ground Truth (Top {top_pct_str}%)")
     axes[1, 1].set_xlabel("Easting (m)")
     axes[1, 1].set_ylabel("Northing (m)")
 

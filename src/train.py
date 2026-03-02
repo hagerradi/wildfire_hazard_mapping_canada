@@ -10,7 +10,7 @@ import yaml
 
 from src.config import Config, GridParams
 from src.datasets.dataset import get_test_dataloader, get_train_val_dataloader
-from src.datasets.postprocessing.utils import reconstruct_and_visualize_hexels
+from src.datasets.postprocessing.utils import evaluate_and_visualize_hexels
 from src.datasets.utils import get_dataset_dimensions
 from src.trainer import Trainer
 from src.utils import seed_everything
@@ -105,7 +105,7 @@ def main() -> None:
             out_norm = grid_source.params.out_norm
 
         if isinstance(test_predictions, np.ndarray):  # for mypy
-            reconstruct_and_visualize_hexels(
+            evaluate_and_visualize_hexels(
                 test_predictions=test_predictions, config=config, out_norm=out_norm, experiment_logger=trainer.logger
             )
 
