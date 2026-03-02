@@ -13,7 +13,7 @@ import yaml
 
 from src.config import Config, GridParams
 from src.datasets.dataset import get_test_dataloader
-from src.datasets.postprocessing.utils import reconstruct_and_visualize_hexels
+from src.datasets.postprocessing.utils import evaluate_and_visualize_hexels
 from src.datasets.utils import get_dataset_dimensions
 from src.trainer import Trainer
 from src.utils import (
@@ -138,7 +138,7 @@ def main() -> None:
             print(f"  {k}: {v:.6f}")
 
     if isinstance(test_predictions, np.ndarray):
-        global_metrics = reconstruct_and_visualize_hexels(
+        global_metrics = evaluate_and_visualize_hexels(
             test_predictions=test_predictions, config=config, out_norm=out_norm, experiment_logger=None, trainer=trainer
         )
 
