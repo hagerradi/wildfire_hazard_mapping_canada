@@ -9,17 +9,17 @@ deterministic: True
 
 model:
   num_classes: 1
-  input_feature_list: ["spatial", "tabular"]
+  input_feature_list: ["spatial", "auxillary"]
 
-  tabular_hidden_dims:
+  auxillary_hidden_dims:
     weather: [32, 64]
     fire_size: [8, 16]
 
-  tabular_embed_dims:
+  auxillary_embed_dims:
     weather: 128
     fire_size: 16
 
-  tabular_poolings:
+  auxillary_poolings:
     weather: "max" # max, mean, attention
     fire_size: "max" # max, mean, attention
 
