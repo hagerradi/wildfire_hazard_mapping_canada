@@ -1,5 +1,5 @@
 # Where to save checkpoints
-save_dir: "experiments/unet_full_data_spatial_weather_firesize_wind"
+save_dir: "/home/mila/c/chirag.goel/scratch/experiments/unet_full_data_spatial_weather_firesize_wind"
 
 # approaches 1 or 2
 modelling_approach: "1"
@@ -14,12 +14,15 @@ model:
   tabular_hidden_dims:
     weather: [32, 64]
     fire_size: [8, 16]
-    wind: [32,64]
+    wind:
+      mixer: [16]
+      local: [32,64,16]
+      global: [16]
 
   tabular_embed_dims:
     weather: 128
     fire_size: 16
-    wind: 64
+    wind: 16
 
   tabular_poolings:
     weather: "max" # max, mean, attention
@@ -32,7 +35,7 @@ optimizer:
   # loss_weights: {"bce": 0.8, "kl": 0.2} # use if loss is a list
 
 training:
-  max_epochs: 50
+  max_epochs: 1
   # Logging frequency in epochs
   log_every_n_epoch: 1
 
@@ -92,8 +95,8 @@ logger:
   enabled: True
   project_name: "nrcan-wildfireriskmapping"
   workspace: "mila-amlrt"
-  experiment_name: "unet_full_data_spatial_weather_firesize"
-  tags: ["baseline", "full_data", "modelling_approach=1", "fuel_one_hot_encoding", "KL-loss", "3inputfeatures", "weather-tabular", "firesize-tabular"]
+  experiment_name: "unet_full_data_spatial_weather_firesize_wind"
+  tags: ["baseline", "full_data", "modelling_approach=1", "fuel_one_hot_encoding", "KL-loss", "weather-tabular", "firesize-tabular", "wind-spatial"]
   # log loss and metrics on comet every n steps
   log_every_n_step: 5
 
