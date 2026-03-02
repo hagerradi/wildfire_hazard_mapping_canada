@@ -121,7 +121,7 @@ class MultiSourceUNet(UNetBase):
         use_transpose_conv: bool = False,
         use_activation_after_upsampling: bool = False,
         tabular_input_dims: dict[str, int] | None = None,
-        tabular_hidden_dims: dict[str, list[int]] | None = None,
+        tabular_hidden_dims: dict[str, list[int] | dict[str, list[int]]] | None = None,
         tabular_embed_dims: dict[str, int] | None = None,
         tabular_feature_encoder_poolings: dict[str, str] | None = None,
     ):
@@ -135,7 +135,7 @@ class MultiSourceUNet(UNetBase):
         self.use_transpose_conv = use_transpose_conv
         self.use_activation_after_upsampling = use_activation_after_upsampling
         self.tabular_input_dims: dict[str, int] = tabular_input_dims or {}
-        self.tabular_hidden_dims: dict[str, list[int]] = tabular_hidden_dims or {}
+        self.tabular_hidden_dims: dict[str, list[int] | dict[str, list[int]]] = tabular_hidden_dims or {}
         self.tabular_embed_dims: dict[str, int] = tabular_embed_dims or {}
         self.tabular_feature_encoder_poolings: dict[str, str] = tabular_feature_encoder_poolings or {}
         self._build_components()
@@ -154,19 +154,24 @@ class MultiSourceUNet(UNetBase):
         if self.tabular_input_dims:
             for name, input_dim in self.tabular_input_dims.items():
                 if name == "wind":
-                    encoders[name] = WindFeatureEncoder(in_channels=input_dim, hidden_dims=self.tabular_hidden_dims.get(name, [32, 64]))
+                    hidden_dims = self.tabular_hidden_dims.get(name, {"mixer": [16], "local": [32, 64, 16], "global": [16]})
+                    if isinstance(hidden_dims, dict):
+                        encoders[name] = WindFeatureEncoder(
+                            in_channels=input_dim, hidden_dims=hidden_dims, embed_dim=self.tabular_embed_dims.get(name, 16)
+                        )
                     continue
                 # get the architectural values for each different tabular encoder
                 hidden_dims = self.tabular_hidden_dims.get(name, [32, 64])
                 embed_dim = self.tabular_embed_dims.get(name, 64)
                 pool = self.tabular_feature_encoder_poolings.get(name, "max")
 
-                encoders[name] = TabularFeatureEncoder(
-                    input_dim=input_dim,
-                    hidden_dims=hidden_dims,
-                    embed_dim=embed_dim,
-                    pooling_type=pool,
-                )
+                if isinstance(hidden_dims, list):
+                    encoders[name] = TabularFeatureEncoder(
+                        input_dim=input_dim,
+                        hidden_dims=hidden_dims,
+                        embed_dim=embed_dim,
+                        pooling_type=pool,
+                    )
 
         return encoders
 
