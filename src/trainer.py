@@ -5,6 +5,7 @@ from typing import Any, cast
 import numpy as np
 import torch
 import torch.optim as optim
+from torch.optim.lr_scheduler import LRScheduler, ReduceLROnPlateau
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
@@ -13,6 +14,7 @@ from src.logger import CometLogger
 from src.losses import WeightedLoss
 from src.models.unet import BaselineUNet, MultiSourceUNet
 from src.models.utils import get_nbr_model_parameters
+from src.schedulers import build_lr_scheduler
 from utils import AVAILABLE_METRICS, build_single_loss, set_device
 
 
@@ -83,7 +85,7 @@ class Trainer:
             )
         # Single-source path: spatial grids only.
         else:
-            print(f"[Trainer] Mode: Baseline (Spatial Only)")
+            print("[Trainer] Mode: Baseline (Spatial Only)")
             print(f"[Trainer] Spatial Channels: {self.spatial_input_channels}")
 
             self.model = BaselineUNet(
@@ -186,7 +188,10 @@ class Trainer:
                 raise ValueError(f"Unknown mode: {mode}")
         return improved  # Only True if at least one metric improved, none worse
 
-    def train_epoch(self, loader: DataLoader) -> dict[str, float]:
+    # Supports any LRScheduler object and metric-based ReduceLROnPlateau schedulers
+    def train_epoch(
+        self, loader: DataLoader, lr_scheduler: LRScheduler | ReduceLROnPlateau | None = None, lr_scheduler_type: str | None = None
+    ) -> dict[str, float]:
         self.model.train()
         running_loss = 0.0
         running_batch_count = 0
@@ -203,12 +208,20 @@ class Trainer:
             loss.backward()
             self.optimizer.step()
 
+            # use scheduler if its type is batch-level
+            if lr_scheduler is not None and lr_scheduler_type == "batch":
+                lr_scheduler.step()
+
             batch_size = targets.size(0) if hasattr(targets, "size") else 1
             running_loss += loss.item() * batch_size
             running_batch_count += batch_size
 
             if self.logger and self.global_step % self.log_every_n_step == 0:
                 self.logger.log_metrics({"train_step_loss": loss.item()}, step=self.global_step)
+
+                # log LR since it can change with scheduler
+                current_lr = self.optimizer.param_groups[0]["lr"]
+                self.logger.log_metrics({"learning_rate": current_lr}, step=self.global_step)
 
             training_loop.set_description(f"Loss: {running_loss / running_batch_count:.4f}")
 
@@ -306,20 +319,34 @@ class Trainer:
         num_epochs = self.config.training.max_epochs
         log_every_n_epoch = self.config.training.log_every_n_epoch
 
+        # get scheduler and its type
+        lr_scheduler, lr_scheduler_type = build_lr_scheduler(self.config, self.optimizer, train_loader)
+
         for epoch in range(1, num_epochs + 1):
             start = time.time()
-            train_res = self.train_epoch(train_loader)
+            train_res = self.train_epoch(train_loader, lr_scheduler=lr_scheduler, lr_scheduler_type=lr_scheduler_type)
             elapsed = time.time() - start
 
             val_result = self.validate(val_loader) if val_loader is not None else None
             if isinstance(val_result, tuple):
                 val_result = val_result[0]
+
+            # for epoch level schedulers
+            if lr_scheduler is not None:
+                if lr_scheduler_type == "epoch":
+                    lr_scheduler.step()
+                elif lr_scheduler_type == "epoch_metric":
+                    # Plateau needs a metric to watch. Default to val_loss, fallback to train_loss
+                    watch_metric = val_result["loss"] if val_result else train_res["loss"]
+                    lr_scheduler.step(watch_metric)
+
             # log metrics and loss
             if epoch % log_every_n_epoch == 0:
+                current_lr = self.optimizer.param_groups[0]["lr"]
                 msg = f"Epoch {epoch}/{num_epochs} - train_loss: {train_res['loss']:.4f}"
                 if val_result is not None:
                     msg += f", val_loss: {val_result['loss']:.4f}"
-                msg += f", time: {elapsed:.1f}s"
+                msg += f", lr: {current_lr:.2e}, time: {elapsed:.1f}s"
                 print(msg)
 
                 metrics_to_log = {f"train_{k}": v for k, v in train_res.items()}

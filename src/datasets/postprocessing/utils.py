@@ -5,9 +5,14 @@ import pandas as pd
 import rasterio
 from rasterio.profiles import Profile
 
-from data_preparation.grid_loader.utils import denormalize_burn_count, denormalize_burn_prob
+from data_preparation.grid_loader.output import load_output_burn_grid
+from data_preparation.grid_loader.utils import denormalize_burn_count, denormalize_burn_prob, get_range_burn_count, get_range_burn_prob
 from data_preparation.paths import ELEVATION_GRID_PATH
+from data_preparation.utils import find_simulation_output_file
+from src.config import Config
 from src.datasets.postprocessing.stitch_hexel import stitch_windows
+from src.datasets.postprocessing.visualize_predictions import visualize_burn_prob_grids
+from src.logger import CometLogger
 
 
 def save_predicted_hexels(predicted_hexel: np.ndarray, hexel_profile: Profile, hex_id: str, save_dir: str):
@@ -59,7 +64,7 @@ def get_predicted_hexel(
     min_target_val: float,
     max_target_val: float,
     hex_id: str,
-    modelling_approach: str = "2",
+    modelling_approach: str = "1",
     out_norm: str = "min_max",
     stitch_mode: str = "mean",
     win_h: int = 128,
@@ -73,6 +78,9 @@ def get_predicted_hexel(
         with rasterio.open(os.path.join(os.path.join(raw_data_dir, "hex" + str(hex_id)), ELEVATION_GRID_PATH)) as src:
             gt_elevation_grid = src.read(1, masked=True)
             gt_elevation_grid_profile = src.profile.copy()
+
+    # clip predictions between 0 and 1 in case of outliers
+    predictions = np.clip(predictions, 0, 1)
 
     if modelling_approach == "1":
         reconstructed_hexel = get_stitched_windows(
@@ -90,7 +98,7 @@ def get_predicted_hexel(
         )
         gt_elevation_grid_profile.update(dtype="float32", compress="lzw", nodata=-9999)  # type: ignore
     else:
-        unique_season_cause = list(set(zip(test_df["season"], test_df["cause"])))
+        unique_season_cause = list(set(zip(test_df["season"], test_df["cause"], strict=False)))
         season_cause_hexels = []
         for season, cause in unique_season_cause:
             filtered_season_cause_df = test_df[(test_df["season"] == season) & (test_df["cause"] == cause)]
@@ -112,6 +120,77 @@ def get_predicted_hexel(
         # merge the counts
         reconstructed_hexel_denorm = np.sum(np.stack(season_cause_hexels), axis=0)
         reconstructed_hexel_denorm = np.rint(reconstructed_hexel_denorm).astype("int32")
+        # clip values to the true range, in case of outliers
+        reconstructed_hexel_denorm = np.clip(reconstructed_hexel_denorm, min_target_val, max_target_val)
         gt_elevation_grid_profile.update(dtype="int32", compress="lzw", nodata=-9999)  # type: ignore
 
     return reconstructed_hexel_denorm, gt_elevation_grid_profile
+
+
+def reconstruct_and_visualize_hexels(
+    test_predictions: np.ndarray, config: Config, out_norm: str, experiment_logger: CometLogger | None = None
+) -> None:
+    """
+    A util function to re-construct predicted hexels out of test predictions, and visualize side-by-side with the Groundtruth
+    """
+    data_dir = config.data.root_dir
+    raw_data_dir = config.data.raw_data_dir
+    modelling_approach = config.modelling_approach
+    valid_mask_threshold = config.data.valid_mask_threshold
+    output_type, season, cause = "prob", None, None
+    if modelling_approach == "1":
+        max_target_val, min_target_val = get_range_burn_prob(root_dir=raw_data_dir)
+    else:
+        max_target_val, min_target_val = get_range_burn_count(root_dir=raw_data_dir)
+
+    if isinstance(test_predictions, str):
+        # Handle the error or raise an exception
+        raise TypeError(f"Expected ndarray, but got string: {test_predictions}")
+
+    try:
+        test_df = pd.read_csv(os.path.join(data_dir, config.data.test_split))
+    except (FileNotFoundError, AttributeError):
+        raise ValueError("Test df file does not exist.")  # noqa: B904
+
+    # separate hexels by their IDs
+    test_df = test_df[test_df["valid_ratio"] > valid_mask_threshold].reset_index(drop=True)  # type: ignore
+    all_hex_ids = list(test_df["hex_id"].unique())
+
+    # loop over test hexels
+    for hex_id in all_hex_ids:
+        print(f"======Working with hex{hex_id}========")
+        one_hexel_df = test_df[test_df["hex_id"] == hex_id]
+        hexel_indices = test_df[test_df["hex_id"] == hex_id].index.tolist()
+        if len(str(hex_id)) != 2:
+            hex_id = "0" + str(hex_id)
+
+        hex_test_predictions = test_predictions[hexel_indices]
+        reconstructed_hexel_denorm, gt_elevation_grid_profile = get_predicted_hexel(
+            base_dir=data_dir,
+            raw_data_dir=raw_data_dir,
+            test_df=one_hexel_df,
+            predictions=hex_test_predictions,
+            min_target_val=min_target_val,
+            max_target_val=max_target_val,
+            hex_id=hex_id,
+            modelling_approach=modelling_approach,
+            out_norm=out_norm,
+            stitch_mode="mean",
+            win_h=128,
+            win_w=128,
+        )
+        save_predicted_hexels(reconstructed_hexel_denorm, gt_elevation_grid_profile, hex_id, config.save_dir)
+        # Save the hex as plt plot
+        hex_dir = os.path.join(raw_data_dir, f"hex{hex_id}")
+        fpath = find_simulation_output_file(hex_dir, hex_id, output_type, season=season, cause=cause)
+        grid_gt = load_output_burn_grid(fpath)
+
+        visualize_burn_prob_grids(
+            gt_grid=grid_gt,
+            pred_grid=reconstructed_hexel_denorm,
+            hex_id=hex_id,
+            save_dir=config.save_dir,
+            experiment_logger=experiment_logger,
+        )
+
+        print(f"=======Saved subplot for hex{hex_id}==============")
