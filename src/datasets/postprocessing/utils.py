@@ -131,7 +131,9 @@ def get_predicted_hexel(
     return reconstructed_hexel_denorm, gt_elevation_grid_profile
 
 
-def calculate_hexel_metrics_pytorch(gt_grid: np.ndarray, pred_grid: np.ndarray, device: torch.device) -> dict[str, float]:
+def calculate_hexel_metrics_pytorch(
+    gt_grid: np.ndarray, pred_grid: np.ndarray, device: torch.device, noise_threshold: float = 1e-4
+) -> dict[str, float]:
     """
     Utils to convert 2D numpy hexels into torch tensors to run the global per-hexel eval. metrics.
     """
@@ -139,6 +141,10 @@ def calculate_hexel_metrics_pytorch(gt_grid: np.ndarray, pred_grid: np.ndarray, 
 
     gt_clean = np.nan_to_num(gt_grid, nan=0.0)
     pred_clean = np.nan_to_num(pred_grid, nan=0.0)
+
+    # clamp background noise to avoid spearman ranking issue
+    gt_clean[gt_clean < noise_threshold] = 0.0
+    pred_clean[pred_clean < noise_threshold] = 0.0
 
     t_targets = torch.tensor(gt_clean, dtype=torch.float32, device=device).unsqueeze(0).unsqueeze(0)
     t_preds = torch.tensor(pred_clean, dtype=torch.float32, device=device).unsqueeze(0).unsqueeze(0)
@@ -175,7 +181,7 @@ def get_hexel_binary_maps(pred_grid: np.ndarray, gt_grid: np.ndarray, percentile
     return pred_bin, gt_bin
 
 
-def reconstruct_and_visualize_hexels(
+def evaluate_and_visualize_hexels(
     test_predictions: np.ndarray,
     config: Config,
     out_norm: str,
