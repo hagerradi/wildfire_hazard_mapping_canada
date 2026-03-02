@@ -17,10 +17,10 @@ from utils import AVAILABLE_METRICS, build_single_loss, set_device
 
 
 class Trainer:
-    def __init__(self, config: Config, spatial_input_channels: int | None = None, tabular_input_dims: dict[str, int] | None = None):
+    def __init__(self, config: Config, spatial_input_channels: int | None = None, aux_input_dims: dict[str, int] | None = None):
         self.config = config
         self.spatial_input_channels = spatial_input_channels
-        self.tabular_input_dims = tabular_input_dims if tabular_input_dims is not None else {}
+        self.aux_input_dims = aux_input_dims if aux_input_dims is not None else {}
 
         # Set device
         self.device = set_device()
@@ -57,16 +57,16 @@ class Trainer:
         Define model, loss function and optimizer.
         """
 
-        # Flag to indicate we are including tabular features
-        self.use_tabular = "tabular" in self.config.model.input_feature_list
+        # Flag to indicate we are including auxillary features
+        self.use_auxillary = "auxillary" in self.config.model.input_feature_list
 
-        # Multi-source path: spatial grids + tabular data.
-        if self.use_tabular:
-            if not self.tabular_input_dims:
-                raise ValueError("Config requests tabular features, but no tabular dim. were detected.")
+        # Multi-source path: spatial grids + auxillary data.
+        if self.use_auxillary:
+            if not self.aux_input_dims:
+                raise ValueError("Config requests auxillary features, but no auxillary dim. were detected.")
 
-            print(f"[Trainer] Mode: Multi-Source (Spatial + Tabular)")
-            print(f"[Trainer] Spatial Channels: {self.spatial_input_channels}, Tabular Dim: {self.tabular_input_dims}")
+            print(f"[Trainer] Mode: Multi-Source (Spatial + auxillary)")
+            print(f"[Trainer] Spatial Channels: {self.spatial_input_channels}, Auxillary Dim: {self.aux_input_dims}")
 
             self.model = MultiSourceUNet(
                 input_channels=self.spatial_input_channels,
@@ -76,10 +76,10 @@ class Trainer:
                 use_skip_connections=self.config.model.use_skip_connections,
                 use_transpose_conv=self.config.model.use_transpose_conv,
                 use_activation_after_upsampling=self.config.model.use_activation_after_upsampling,
-                tabular_input_dims=self.tabular_input_dims,
-                tabular_hidden_dims=self.config.model.tabular_hidden_dims,
-                tabular_embed_dims=self.config.model.tabular_embed_dims,
-                tabular_feature_encoder_poolings=self.config.model.tabular_poolings,
+                auxillary_input_dims=self.aux_input_dims,
+                auxillary_hidden_dims=self.config.model.auxillary_hidden_dims,
+                auxillary_embed_dims=self.config.model.auxillary_embed_dims,
+                auxillary_feature_encoder_poolings=self.config.model.auxillary_poolings,
             )
         # Single-source path: spatial grids only.
         else:
@@ -145,14 +145,14 @@ class Trainer:
             raise ValueError("Batch is missing required 'grid' data.")
         inputs, targets, masks = [t.to(self.device) for t in batch["grid"]]
 
-        # Unpack all potential tabular data
-        tabular_data = {}
+        # Unpack all potential auxillary data
+        auxillary_data = {}
         for key, value in batch.items():
             if key == "grid":
                 continue
-            tabular_data[key] = value.to(self.device)
+            auxillary_data[key] = value.to(self.device)
 
-        predictions = self.model(inputs, tabular_data)
+        predictions = self.model(inputs, auxillary_data)
 
         loss_out = self.loss_fn(predictions, targets, masks)
 

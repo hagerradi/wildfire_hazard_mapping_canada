@@ -55,7 +55,7 @@ def main() -> None:
     print(f"Detected Data Dimensions: Spatial={spatial_channels} | Tabular={aux_input_dims}")
 
     # ---------- Training ----------
-    trainer = Trainer(config=config, spatial_input_channels=spatial_channels, tabular_input_dims=aux_input_dims)
+    trainer = Trainer(config=config, spatial_input_channels=spatial_channels, aux_input_dims=aux_input_dims)
 
     trainer.run_training(
         train_loader=train_loader,
