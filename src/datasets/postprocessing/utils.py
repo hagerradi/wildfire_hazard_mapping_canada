@@ -147,9 +147,9 @@ def calculate_hexel_metrics_pytorch(
     gt_clean[gt_clean < noise_threshold] = 0.0
     pred_clean[pred_clean < noise_threshold] = 0.0
 
-    t_targets = torch.tensor(gt_clean, dtype=torch.float32, device=device).unsqueeze(0).unsqueeze(0)
-    t_preds = torch.tensor(pred_clean, dtype=torch.float32, device=device).unsqueeze(0).unsqueeze(0)
-    t_mask = torch.tensor(valid_mask_np, dtype=torch.bool, device=device).unsqueeze(0).unsqueeze(0)
+    t_targets = torch.from_numpy(gt_clean).to(device=device, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
+    t_preds = torch.from_numpy(pred_clean).to(device=device, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
+    t_mask = torch.from_numpy(valid_mask_np).to(device=device, dtype=torch.bool).unsqueeze(0).unsqueeze(0)
 
     results = {}
     # compute metrics requested in config.
@@ -288,8 +288,8 @@ def evaluate_and_visualize_hexels(
     # aggregate final scores
     final_global_metrics = {}
     if trainer is not None and len(all_hexel_metrics) > 0:
-        for key in AVAILABLE_METRICS.keys():
-            # average across all hexels
+        # average across all hexels
+        for key in trainer.metric_functions.keys():
             mean_val = np.nanmean([hm[key] for hm in all_hexel_metrics if key in hm and not np.isnan(hm[key])])
             final_global_metrics[key] = float(mean_val)
 
