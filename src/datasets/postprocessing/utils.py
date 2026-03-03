@@ -282,19 +282,18 @@ def evaluate_and_visualize_hexels(
         gt_vals = gt_clean[valid_mask]
         pred_vals = pred_clean[valid_mask]
 
-        fig, axes = plt.subplots(1, 2, figsize=(14, 5))
-        fig.suptitle(f"Metric Input Distributions (Log Scale) - Hex {hex_id}", fontsize=14)
+        fig, ax = plt.subplots(figsize=(10, 6))
 
-        # Ground Truth Histogram
-        axes[0].hist(gt_vals, bins=100, log=True, color="blue", alpha=0.7)
-        axes[0].set_title("Ground Truth Values")
-        axes[0].set_xlabel("Burn Probability")
-        axes[0].set_ylabel("Pixel Count (Log Scale)")
+        # Plot both histograms on the SAME axis with transparency (alpha=0.5)
+        ax.hist(gt_vals, bins=100, log=True, color="blue", alpha=0.5, label="Ground Truth")
+        ax.hist(pred_vals, bins=100, log=True, color="orange", alpha=0.5, label="Prediction")
 
-        # Prediction Histogram
-        axes[1].hist(pred_vals, bins=100, log=True, color="orange", alpha=0.7)
-        axes[1].set_title("Prediction Values")
-        axes[1].set_xlabel("Burn Probability")
+        ax.set_title(f"Overlayed Input Distributions (Log Scale) - Hex {hex_id}", fontsize=14)
+        ax.set_xlabel("Burn Probability")
+        ax.set_ylabel("Pixel Count (Log Scale)")
+
+        # Add a legend so we know which color is which
+        ax.legend(loc="upper right")
 
         out_hist_path = os.path.join(config.save_dir, f"distribution_hex_{hex_id}.png")
         plt.savefig(out_hist_path, dpi=300, bbox_inches="tight")
