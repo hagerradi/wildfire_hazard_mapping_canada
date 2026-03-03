@@ -125,7 +125,7 @@ def main() -> None:
     if hexel_metrics:
         print("\n[Test per-hexel and aggregated metrics]")
         for k, v in hexel_metrics.items():
-            print(f"  {k}: {v:.6f}")
+            print(f"  hexel_{k}: {v:.6f}")
         # Log test results to comet, at the end
         if trainer.logger:
             trainer.logger.log_metrics({f"hexel_{k}": v for k, v in hexel_metrics.items()})
