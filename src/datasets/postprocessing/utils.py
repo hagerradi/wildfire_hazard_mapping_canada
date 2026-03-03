@@ -139,6 +139,7 @@ def calculate_hexel_metrics_pytorch(
     Utils to convert 2D numpy hexels into torch tensors to run the global per-hexel eval. metrics.
     """
     valid_mask_np = ~np.isnan(gt_grid) & ~np.isnan(pred_grid)
+    valid_mask_np = valid_mask_np & (gt_grid >= 0.0)
 
     gt_clean = np.nan_to_num(gt_grid, nan=0.0)
     pred_clean = np.nan_to_num(pred_grid, nan=0.0)
