@@ -1,5 +1,6 @@
 import functools
 import os
+from typing import Callable
 
 import numpy as np
 import pandas as pd
@@ -132,7 +133,7 @@ def get_predicted_hexel(
 
 
 def calculate_hexel_metrics_pytorch(
-    gt_grid: np.ndarray, pred_grid: np.ndarray, device: torch.device, noise_threshold: float = 1e-4
+    gt_grid: np.ndarray, pred_grid: np.ndarray, device: torch.device, metric_functions: dict[str, Callable], noise_threshold: float = 1e-4
 ) -> dict[str, float]:
     """
     Utils to convert 2D numpy hexels into torch tensors to run the global per-hexel eval. metrics.
@@ -151,8 +152,9 @@ def calculate_hexel_metrics_pytorch(
     t_mask = torch.tensor(valid_mask_np, dtype=torch.bool, device=device).unsqueeze(0).unsqueeze(0)
 
     results = {}
+    # compute metrics requested in config.
     with torch.no_grad():
-        for name, metric_fn in AVAILABLE_METRICS.items():
+        for name, metric_fn in metric_functions.items():
             val = metric_fn(t_preds, t_targets, t_mask)
             results[name] = val.item()
 
@@ -171,14 +173,23 @@ def get_hexel_binary_maps(pred_grid: np.ndarray, gt_grid: np.ndarray, percentile
     pred_bin = np.zeros_like(pred_grid, dtype=bool)
     gt_bin = np.zeros_like(gt_grid, dtype=bool)
 
-    if len(p_valid) > 0:
-        p_thresh = np.quantile(p_valid, percentile)
-        t_thresh = np.quantile(t_valid, percentile)
-
-        pred_bin[valid_mask] = p_valid >= p_thresh
-        gt_bin[valid_mask] = t_valid >= t_thresh
-
-    return pred_bin, gt_bin
+    n_valid = len(p_valid)
+    if n_valid > 0:
+        # get count (number of elements) for the specific top K %
+        k = int(np.ceil(percentile * n_valid))
+        if k >= n_valid:
+            pred_bin[valid_mask] = True
+            gt_bin[valid_mask] = True
+        elif k > 0:
+            # select exactly k highest values within the valid area
+            pred_valid_bin = np.zeros_like(p_valid, dtype=bool)
+            gt_valid_bin = np.zeros_like(t_valid, dtype=bool)
+            pred_topk_idx = np.argpartition(p_valid, -k)[-k:]
+            gt_topk_idx = np.argpartition(t_valid, -k)[-k:]
+            pred_valid_bin[pred_topk_idx] = True
+            gt_valid_bin[gt_topk_idx] = True
+            pred_bin[valid_mask] = pred_valid_bin
+            gt_bin[valid_mask] = gt_valid_bin
 
 
 def evaluate_and_visualize_hexels(
@@ -257,7 +268,7 @@ def evaluate_and_visualize_hexels(
 
         # when we provide trainer, it will trigger global hexel-level metrics
         if trainer is not None:
-            hex_metrics = calculate_hexel_metrics_pytorch(grid_gt, reconstructed_hexel_denorm, trainer.device)
+            hex_metrics = calculate_hexel_metrics_pytorch(grid_gt, reconstructed_hexel_denorm, trainer.device, trainer.metric_functions)
             all_hexel_metrics.append(hex_metrics)
 
             # get top k perc. values dynamically
