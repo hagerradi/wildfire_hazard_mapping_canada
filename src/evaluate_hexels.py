@@ -139,7 +139,12 @@ def main() -> None:
 
     if isinstance(test_predictions, np.ndarray):
         global_metrics = evaluate_and_visualize_hexels(
-            test_predictions=test_predictions, config=config, out_norm=out_norm, experiment_logger=None, trainer=trainer
+            test_predictions=test_predictions,
+            config=config,
+            out_norm=out_norm,
+            device=trainer.device,
+            experiment_logger=None,
+            metric_functions=trainer.metric_functions,
         )
 
         if global_metrics:

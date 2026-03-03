@@ -17,8 +17,6 @@ from src.config import Config
 from src.datasets.postprocessing.stitch_hexel import stitch_windows
 from src.datasets.postprocessing.visualize_predictions import visualize_burn_prob_grids, visualize_hexel_iou
 from src.logger import CometLogger
-from src.trainer import Trainer
-from src.utils import AVAILABLE_METRICS
 
 
 def save_predicted_hexels(predicted_hexel: np.ndarray, hexel_profile: Profile, hex_id: str, save_dir: str):
@@ -134,7 +132,7 @@ def get_predicted_hexel(
 
 
 def calculate_hexel_metrics_pytorch(
-    gt_grid: np.ndarray, pred_grid: np.ndarray, device: torch.device, metric_functions: dict[str, Callable], noise_threshold: float = 1e-4
+    gt_grid: np.ndarray, pred_grid: np.ndarray, device: torch.device, metric_functions: dict[str, Callable]
 ) -> dict[str, float]:
     """
     Utils to convert 2D numpy hexels into torch tensors to run the global per-hexel eval. metrics.
@@ -144,10 +142,6 @@ def calculate_hexel_metrics_pytorch(
 
     gt_clean = np.nan_to_num(gt_grid, nan=0.0)
     pred_clean = np.nan_to_num(pred_grid, nan=0.0)
-
-    # clamp background noise to avoid spearman ranking issue
-    gt_clean[gt_clean < noise_threshold] = 0.0
-    pred_clean[pred_clean < noise_threshold] = 0.0
 
     t_targets = torch.from_numpy(gt_clean).to(device=device, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
     t_preds = torch.from_numpy(pred_clean).to(device=device, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
@@ -200,12 +194,13 @@ def evaluate_and_visualize_hexels(
     test_predictions: np.ndarray,
     config: Config,
     out_norm: str,
+    device: torch.device,
     experiment_logger: CometLogger | None = None,
-    trainer: Trainer | None = None,
+    metric_functions: dict[str, Callable] | None = None,
 ) -> dict[str, float]:
     """
     A util function to re-construct predicted hexels out of test predictions, and visualize side-by-side with the Groundtruth.
-    Also computes global stitched hexel-level metrics if a trainer is provided.
+    Also computes and aggregates stitched hexel-level metrics.
     """
     data_dir = config.data.root_dir
     raw_data_dir = config.data.raw_data_dir
@@ -270,44 +265,17 @@ def evaluate_and_visualize_hexels(
             experiment_logger=experiment_logger,
         )
 
-        valid_mask = ~np.isnan(grid_gt) & ~np.isnan(reconstructed_hexel_denorm)
-        gt_clean = np.nan_to_num(grid_gt, nan=0.0)
-        pred_clean = np.nan_to_num(reconstructed_hexel_denorm, nan=0.0)
-
-        # Apply your noise threshold
-        gt_clean[gt_clean < 1e-4] = 0.0
-        pred_clean[pred_clean < 1e-4] = 0.0
-
-        # Extract strictly the valid pixels (this is exactly what Spearman ranks!)
-        gt_vals = gt_clean[valid_mask]
-        pred_vals = pred_clean[valid_mask]
-
-        fig, ax = plt.subplots(figsize=(10, 6))
-
-        # Plot both histograms on the SAME axis with transparency (alpha=0.5)
-        ax.hist(gt_vals, bins=100, log=True, color="blue", alpha=0.5, label="Ground Truth")
-        ax.hist(pred_vals, bins=100, log=True, color="orange", alpha=0.5, label="Prediction")
-
-        ax.set_title(f"Overlayed Input Distributions (Log Scale) - Hex {hex_id}", fontsize=14)
-        ax.set_xlabel("Burn Probability")
-        ax.set_ylabel("Pixel Count (Log Scale)")
-
-        # Add a legend so we know which color is which
-        ax.legend(loc="upper right")
-
-        out_hist_path = os.path.join(config.save_dir, f"distribution_hex_{hex_id}.png")
-        plt.savefig(out_hist_path, dpi=300, bbox_inches="tight")
-        plt.close(fig)
-
         # when we provide trainer, it will trigger global hexel-level metrics
-        if trainer is not None:
-            hex_metrics = calculate_hexel_metrics_pytorch(grid_gt, reconstructed_hexel_denorm, trainer.device, trainer.metric_functions)
+        if metric_functions is not None:
+            hex_metrics = calculate_hexel_metrics_pytorch(
+                gt_grid=grid_gt, pred_grid=reconstructed_hexel_denorm, device=device, metric_functions=metric_functions
+            )
             all_hexel_metrics.append(hex_metrics)
 
             # get top k perc. values dynamically
             percentiles_to_plot = [
                 fn.keywords["percentile"]
-                for _, fn in trainer.metric_functions.items()
+                for _, fn in metric_functions.items()
                 if isinstance(fn, functools.partial) and "percentile" in fn.keywords
             ]
 
@@ -319,11 +287,22 @@ def evaluate_and_visualize_hexels(
         print(f"=======Saved subplots for hex{hex_id}==============")
 
     # aggregate final scores
-    final_global_metrics = {}
-    if trainer is not None and len(all_hexel_metrics) > 0:
-        # average across all hexels
-        for key in trainer.metric_functions.keys():
-            mean_val = np.nanmean([hm[key] for hm in all_hexel_metrics if key in hm and not np.isnan(hm[key])])
-            final_global_metrics[key] = float(mean_val)
+    hexel_metrics = {}
 
-    return final_global_metrics
+    if metric_functions is not None and len(all_hexel_metrics) > 0:
+        # get per-hexel metrics
+        for hex_id, hex_metric in zip(all_hex_ids, all_hexel_metrics):
+            hex_id_str = str(hex_id).zfill(2)
+            for key, val in hex_metric.items():
+                hexel_metrics[f"{key}_hex{hex_id_str}"] = float(val) if not np.isnan(val) else float("nan")
+
+        # get the aggregated averages over all hexels
+        for key in metric_functions.keys():
+            mean_val = np.nanmean([hm[key] for hm in all_hexel_metrics if key in hm and not np.isnan(hm[key])])
+            hexel_metrics[key] = float(mean_val)
+
+        # log per-hexel and aggregated metrics on comet
+        if experiment_logger is not None:
+            experiment_logger.log_metrics({f"hexel_{k}": v for k, v in hexel_metrics.items()})
+
+    return hexel_metrics
