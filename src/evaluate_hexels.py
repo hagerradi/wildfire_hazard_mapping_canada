@@ -75,7 +75,7 @@ def main() -> None:
     spatial_channels, aux_input_dims = get_dataset_dimensions(test_loader.dataset)
     print(f"Detected Data Dimensions: Spatial={spatial_channels} | Aux={aux_input_dims}")
 
-    trainer = Trainer(config, spatial_input_channels=spatial_channels, tabular_input_dims=aux_input_dims)
+    trainer = Trainer(config, spatial_input_channels=spatial_channels, aux_input_dims=aux_input_dims)
 
     # ---------- Load best checkpoint ----------
     # Try best.pth first, fall back to last.pth if needed
