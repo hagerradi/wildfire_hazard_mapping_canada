@@ -162,7 +162,7 @@ def calculate_hexel_metrics_pytorch(
     return results
 
 
-def get_hexel_binary_maps(pred_grid: np.ndarray, gt_grid: np.ndarray, percentile: float = 0.95):
+def get_hexel_binary_maps(pred_grid: np.ndarray, gt_grid: np.ndarray, percentile: float = 0.95) -> tuple[np.ndarray, np.ndarray]:
     """
     Utils to get the Top K percentile thresholds (binary maps) for full 2D numpy hexel grids.
     """
@@ -191,6 +191,8 @@ def get_hexel_binary_maps(pred_grid: np.ndarray, gt_grid: np.ndarray, percentile
             gt_valid_bin[gt_topk_idx] = True
             pred_bin[valid_mask] = pred_valid_bin
             gt_bin[valid_mask] = gt_valid_bin
+
+    return pred_bin, gt_bin
 
 
 def evaluate_and_visualize_hexels(
