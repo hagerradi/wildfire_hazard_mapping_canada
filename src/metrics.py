@@ -5,7 +5,7 @@ from torchmetrics.functional.image import structural_similarity_index_measure
 from torchmetrics.functional.regression import spearman_corrcoef
 
 
-def compute_mse(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None, eps: float = 1e-8):
+def compute_mse(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None, eps: float = 1e-8) -> torch.Tensor:
     """Computes Mean Squared Error (MSE), optionally using a mask."""
     if mask is None:
         return F.mse_loss(preds, targets, reduction="mean")
@@ -19,7 +19,7 @@ def compute_mse(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor =
     return loss.sum() / denom
 
 
-def compute_mae(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None, eps: float = 1e-8):
+def compute_mae(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None, eps: float = 1e-8) -> torch.Tensor:
     """Computes Mean Absolute Error (MAE), optionally using a mask."""
     if mask is None:
         return F.l1_loss(preds, targets, reduction="mean")
@@ -33,7 +33,7 @@ def compute_mae(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor =
     return loss.sum() / denom
 
 
-def compute_spearman(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None):
+def compute_spearman(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None) -> torch.Tensor:
     """
     Computes Spearman correlation per sample, then averages. Optionally uses a mask.
     """
@@ -59,7 +59,9 @@ def compute_spearman(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Ten
     return torch.nanmean(torch.stack(corrs))
 
 
-def compute_ssim(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor | None = None):
+def compute_ssim(
+    preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor | None = None
+) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
     """
     Computes SSIM over valid pixels only.
     Assumes preds/targets ∈ [0, 1].
@@ -99,7 +101,7 @@ def compute_bias(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor)
 
 def compute_top_perc_iou(
     preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None, percentile: float = 0.90, eps: float = 1e-8
-):
+) -> torch.Tensor:
     """
     Computes the Intersection over Union (IoU) on binarized top percentile maps.
     """
