@@ -59,15 +59,13 @@ def compute_spearman(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Ten
     return torch.nanmean(torch.stack(corrs))
 
 
-def compute_ssim(
-    preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor | None = None
-) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
+def compute_ssim(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor | None = None) -> torch.Tensor:
     """
     Computes SSIM over valid pixels only.
     Assumes preds/targets ∈ [0, 1].
     """
     if mask is None:
-        return structural_similarity_index_measure(preds, targets, data_range=1.0)
+        return structural_similarity_index_measure(preds, targets, data_range=1.0)  # type: ignore
 
     # Ensure mask is boolean and broadcastable
     mask_bool = mask.bool()
@@ -83,7 +81,7 @@ def compute_ssim(
     preds_masked = preds.clone().masked_fill(~mask_bool, 0.0)
     targets_masked = targets.clone().masked_fill(~mask_bool, 0.0)
 
-    return structural_similarity_index_measure(preds_masked, targets_masked, data_range=1.0)
+    return structural_similarity_index_measure(preds_masked, targets_masked, data_range=1.0)  # type: ignore
 
 
 def compute_bias(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
