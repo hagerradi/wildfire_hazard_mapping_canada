@@ -138,7 +138,7 @@ def main() -> None:
             print(f"  {k}: {v:.6f}")
 
     if isinstance(test_predictions, np.ndarray):
-        global_metrics = evaluate_and_visualize_hexels(
+        hexel_metrics = evaluate_and_visualize_hexels(
             test_predictions=test_predictions,
             config=config,
             out_norm=out_norm,
@@ -147,9 +147,9 @@ def main() -> None:
             metric_functions=trainer.metric_functions,
         )
 
-        if global_metrics:
+        if hexel_metrics:
             print(f"\n=======Global Stitched Hexel Metrics==============")
-            for k, v in global_metrics.items():
+            for k, v in hexel_metrics.items():
                 print(f"  Global {k}: {v:.6f}")
 
     print(f"=======Total Evaluation Time {round(time.time()-start_time, 3)}s========")
