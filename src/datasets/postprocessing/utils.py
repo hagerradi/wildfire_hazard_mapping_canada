@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import rasterio
 import torch
+from matplotlib import pyplot as plt
 from rasterio.profiles import Profile
 
 from data_preparation.grid_loader.output import load_output_burn_grid
@@ -268,6 +269,36 @@ def evaluate_and_visualize_hexels(
             save_dir=config.save_dir,
             experiment_logger=experiment_logger,
         )
+
+        valid_mask = ~np.isnan(grid_gt) & ~np.isnan(reconstructed_hexel_denorm)
+        gt_clean = np.nan_to_num(grid_gt, nan=0.0)
+        pred_clean = np.nan_to_num(reconstructed_hexel_denorm, nan=0.0)
+
+        # Apply your noise threshold
+        gt_clean[gt_clean < 1e-4] = 0.0
+        pred_clean[pred_clean < 1e-4] = 0.0
+
+        # Extract strictly the valid pixels (this is exactly what Spearman ranks!)
+        gt_vals = gt_clean[valid_mask]
+        pred_vals = pred_clean[valid_mask]
+
+        fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+        fig.suptitle(f"Metric Input Distributions (Log Scale) - Hex {hex_id}", fontsize=14)
+
+        # Ground Truth Histogram
+        axes[0].hist(gt_vals, bins=100, log=True, color="blue", alpha=0.7)
+        axes[0].set_title("Ground Truth Values")
+        axes[0].set_xlabel("Burn Probability")
+        axes[0].set_ylabel("Pixel Count (Log Scale)")
+
+        # Prediction Histogram
+        axes[1].hist(pred_vals, bins=100, log=True, color="orange", alpha=0.7)
+        axes[1].set_title("Prediction Values")
+        axes[1].set_xlabel("Burn Probability")
+
+        out_hist_path = os.path.join(config.save_dir, f"distribution_hex_{hex_id}.png")
+        plt.savefig(out_hist_path, dpi=300, bbox_inches="tight")
+        plt.close(fig)
 
         # when we provide trainer, it will trigger global hexel-level metrics
         if trainer is not None:
