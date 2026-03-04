@@ -265,7 +265,7 @@ def evaluate_and_visualize_hexels(
             experiment_logger=experiment_logger,
         )
 
-        # when we provide trainer, it will trigger global hexel-level metrics
+        # compute per-hexel metrics
         if metric_functions is not None:
             hex_metrics = calculate_hexel_metrics_pytorch(
                 gt_grid=grid_gt, pred_grid=reconstructed_hexel_denorm, device=device, metric_functions=metric_functions

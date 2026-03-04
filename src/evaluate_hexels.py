@@ -148,9 +148,9 @@ def main() -> None:
         )
 
         if hexel_metrics:
-            print(f"\n=======Global Stitched Hexel Metrics==============")
+            print("\n[Test per-hexel and aggregated metrics]")
             for k, v in hexel_metrics.items():
-                print(f"  Global {k}: {v:.6f}")
+                print(f"  hexel_{k}: {v:.6f}")
 
     print(f"=======Total Evaluation Time {round(time.time()-start_time, 3)}s========")
     print(f"=======Prediction Time {round(preds_time, 3)}s========")
