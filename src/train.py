@@ -110,7 +110,7 @@ def main() -> None:
                 config=config,
                 out_norm=out_norm,
                 device=trainer.device,
-                experiment_logger=None,
+                experiment_logger=trainer.logger,
                 metric_functions=trainer.metric_functions,
             )
 
