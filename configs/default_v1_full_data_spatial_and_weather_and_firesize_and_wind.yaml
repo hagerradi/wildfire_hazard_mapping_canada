@@ -1,5 +1,5 @@
 # Where to save checkpoints
-save_dir: "/home/mila/c/chirag.goel/scratch/experiments/unet_full_data_spatial_weather_firesize_wind"
+save_dir: "experiments/unet_full_data_spatial_weather_firesize_wind"
 
 # approaches 1 or 2
 modelling_approach: "1"
