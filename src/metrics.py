@@ -5,7 +5,7 @@ from torchmetrics.functional.image import structural_similarity_index_measure
 from torchmetrics.functional.regression import spearman_corrcoef
 
 
-def compute_mse(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None, eps: float = 1e-8):
+def compute_mse(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None, eps: float = 1e-8) -> torch.Tensor:
     """Computes Mean Squared Error (MSE), optionally using a mask."""
     if mask is None:
         return F.mse_loss(preds, targets, reduction="mean")
@@ -19,7 +19,7 @@ def compute_mse(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor =
     return loss.sum() / denom
 
 
-def compute_mae(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None, eps: float = 1e-8):
+def compute_mae(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None, eps: float = 1e-8) -> torch.Tensor:
     """Computes Mean Absolute Error (MAE), optionally using a mask."""
     if mask is None:
         return F.l1_loss(preds, targets, reduction="mean")
@@ -33,7 +33,7 @@ def compute_mae(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor =
     return loss.sum() / denom
 
 
-def compute_spearman(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None):
+def compute_spearman(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None) -> torch.Tensor:
     """
     Computes Spearman correlation per sample, then averages. Optionally uses a mask.
     """
@@ -59,13 +59,13 @@ def compute_spearman(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Ten
     return torch.nanmean(torch.stack(corrs))
 
 
-def compute_ssim(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor | None = None):
+def compute_ssim(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor | None = None) -> torch.Tensor:
     """
     Computes SSIM over valid pixels only.
     Assumes preds/targets ∈ [0, 1].
     """
     if mask is None:
-        return structural_similarity_index_measure(preds, targets, data_range=1.0)
+        return structural_similarity_index_measure(preds, targets, data_range=1.0)  # type: ignore
 
     # Ensure mask is boolean and broadcastable
     mask_bool = mask.bool()
@@ -81,7 +81,7 @@ def compute_ssim(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor 
     preds_masked = preds.clone().masked_fill(~mask_bool, 0.0)
     targets_masked = targets.clone().masked_fill(~mask_bool, 0.0)
 
-    return structural_similarity_index_measure(preds_masked, targets_masked, data_range=1.0)
+    return structural_similarity_index_measure(preds_masked, targets_masked, data_range=1.0)  # type: ignore
 
 
 def compute_bias(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
@@ -95,3 +95,57 @@ def compute_bias(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor)
 
     denom = m.sum().clamp_min(1.0)  # avoid divide-by-zero
     return ((preds - targets) * m).sum() / denom
+
+
+def compute_top_perc_iou(
+    preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None, percentile: float = 0.90, eps: float = 1e-8
+) -> torch.Tensor:
+    """
+    Computes the Intersection over Union (IoU) on binarized top percentile maps.
+    """
+    batch_size = preds.size(0)
+    flat_preds = preds.reshape(batch_size, -1)
+    flat_targets = targets.reshape(batch_size, -1)
+
+    ious = []
+
+    if mask is None:
+        for i in range(batch_size):
+            p = flat_preds[i]
+            t = flat_targets[i]
+
+            p_thresh = torch.quantile(p.float(), percentile)
+            t_thresh = torch.quantile(t.float(), percentile)
+
+            # binarization
+            p_bin = p >= p_thresh
+            t_bin = t >= t_thresh
+
+            intersection = (p_bin & t_bin).sum().float()
+            union = (p_bin | t_bin).sum().float()
+
+            ious.append(intersection / (union + eps))
+    else:
+        valid_mask = mask.bool().reshape(batch_size, -1)
+        for i in range(batch_size):
+            sample_valid_mask = valid_mask[i]
+
+            if sample_valid_mask.sum() == 0:
+                ious.append(torch.tensor(float("nan"), device=preds.device))
+                continue
+
+            p_valid = flat_preds[i][sample_valid_mask]
+            t_valid = flat_targets[i][sample_valid_mask]
+
+            p_thresh = torch.quantile(p_valid.float(), percentile)
+            t_thresh = torch.quantile(t_valid.float(), percentile)
+
+            p_bin = p_valid >= p_thresh
+            t_bin = t_valid >= t_thresh
+
+            intersection = (p_bin & t_bin).sum().float()
+            union = (p_bin | t_bin).sum().float()
+
+            ious.append(intersection / (union + eps))
+
+    return torch.nanmean(torch.stack(ious))

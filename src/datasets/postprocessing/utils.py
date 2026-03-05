@@ -1,8 +1,12 @@
+import functools
 import os
+from typing import Callable
 
 import numpy as np
 import pandas as pd
 import rasterio
+import torch
+from matplotlib import pyplot as plt
 from rasterio.profiles import Profile
 
 from data_preparation.grid_loader.output import load_output_burn_grid
@@ -11,7 +15,7 @@ from data_preparation.paths import ELEVATION_GRID_PATH
 from data_preparation.utils import find_simulation_output_file
 from src.config import Config
 from src.datasets.postprocessing.stitch_hexel import stitch_windows
-from src.datasets.postprocessing.visualize_predictions import visualize_burn_prob_grids
+from src.datasets.postprocessing.visualize_predictions import visualize_burn_prob_grids, visualize_hexel_iou
 from src.logger import CometLogger
 
 
@@ -127,24 +131,89 @@ def get_predicted_hexel(
     return reconstructed_hexel_denorm, gt_elevation_grid_profile
 
 
-def reconstruct_and_visualize_hexels(
-    test_predictions: np.ndarray, config: Config, out_norm: str, experiment_logger: CometLogger | None = None
-) -> None:
+def calculate_hexel_metrics_pytorch(
+    gt_grid: np.ndarray, pred_grid: np.ndarray, device: torch.device, metric_functions: dict[str, Callable]
+) -> dict[str, float]:
     """
-    A util function to re-construct predicted hexels out of test predictions, and visualize side-by-side with the Groundtruth
+    Utils to convert 2D numpy hexels into torch tensors to run the global per-hexel eval. metrics.
+    """
+    valid_mask_np = ~np.isnan(gt_grid) & ~np.isnan(pred_grid)
+    valid_mask_np = valid_mask_np & (gt_grid >= 0.0)
+
+    gt_clean = np.nan_to_num(gt_grid, nan=0.0)
+    pred_clean = np.nan_to_num(pred_grid, nan=0.0)
+
+    t_targets = torch.from_numpy(gt_clean).to(device=device, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
+    t_preds = torch.from_numpy(pred_clean).to(device=device, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
+    t_mask = torch.from_numpy(valid_mask_np).to(device=device, dtype=torch.bool).unsqueeze(0).unsqueeze(0)
+
+    results = {}
+    # compute metrics requested in config.
+    with torch.no_grad():
+        for name, metric_fn in metric_functions.items():
+            val = metric_fn(t_preds, t_targets, t_mask)
+            results[name] = val.item()
+
+    return results
+
+
+def get_hexel_binary_maps(pred_grid: np.ndarray, gt_grid: np.ndarray, percentile: float = 0.95) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Utils to get the Top K percentile thresholds (binary maps) for full 2D numpy hexel grids.
+    """
+    valid_mask = ~np.isnan(gt_grid) & ~np.isnan(pred_grid)
+
+    p_valid = pred_grid[valid_mask]
+    t_valid = gt_grid[valid_mask]
+
+    pred_bin = np.zeros_like(pred_grid, dtype=bool)
+    gt_bin = np.zeros_like(gt_grid, dtype=bool)
+
+    n_valid = len(p_valid)
+    if n_valid > 0:
+        # get count (number of elements) for the specific top K %
+        k = int(np.ceil(percentile * n_valid))
+        if k >= n_valid:
+            pred_bin[valid_mask] = True
+            gt_bin[valid_mask] = True
+        elif k > 0:
+            # select exactly k highest values within the valid area
+            pred_valid_bin = np.zeros_like(p_valid, dtype=bool)
+            gt_valid_bin = np.zeros_like(t_valid, dtype=bool)
+            pred_topk_idx = np.argpartition(p_valid, -k)[-k:]
+            gt_topk_idx = np.argpartition(t_valid, -k)[-k:]
+            pred_valid_bin[pred_topk_idx] = True
+            gt_valid_bin[gt_topk_idx] = True
+            pred_bin[valid_mask] = pred_valid_bin
+            gt_bin[valid_mask] = gt_valid_bin
+
+    return pred_bin, gt_bin
+
+
+def evaluate_and_visualize_hexels(
+    test_predictions: np.ndarray,
+    config: Config,
+    out_norm: str,
+    device: torch.device,
+    experiment_logger: CometLogger | None = None,
+    metric_functions: dict[str, Callable] | None = None,
+) -> dict[str, float]:
+    """
+    A util function to re-construct predicted hexels out of test predictions, and visualize side-by-side with the Groundtruth.
+    Also computes and aggregates stitched hexel-level metrics.
     """
     data_dir = config.data.root_dir
     raw_data_dir = config.data.raw_data_dir
     modelling_approach = config.modelling_approach
     valid_mask_threshold = config.data.valid_mask_threshold
     output_type, season, cause = "prob", None, None
+
     if modelling_approach == "1":
         max_target_val, min_target_val = get_range_burn_prob(root_dir=raw_data_dir)
     else:
         max_target_val, min_target_val = get_range_burn_count(root_dir=raw_data_dir)
 
     if isinstance(test_predictions, str):
-        # Handle the error or raise an exception
         raise TypeError(f"Expected ndarray, but got string: {test_predictions}")
 
     try:
@@ -155,6 +224,9 @@ def reconstruct_and_visualize_hexels(
     # separate hexels by their IDs
     test_df = test_df[test_df["valid_ratio"] > valid_mask_threshold].reset_index(drop=True)  # type: ignore
     all_hex_ids = list(test_df["hex_id"].unique())
+
+    # init. hexel metrics
+    all_hexel_metrics = []
 
     # loop over test hexels
     for hex_id in all_hex_ids:
@@ -193,4 +265,42 @@ def reconstruct_and_visualize_hexels(
             experiment_logger=experiment_logger,
         )
 
-        print(f"=======Saved subplot for hex{hex_id}==============")
+        # compute per-hexel metrics
+        if metric_functions is not None:
+            hex_metrics = calculate_hexel_metrics_pytorch(
+                gt_grid=grid_gt, pred_grid=reconstructed_hexel_denorm, device=device, metric_functions=metric_functions
+            )
+            all_hexel_metrics.append(hex_metrics)
+
+            # get top k perc. values dynamically
+            percentiles_to_plot = [
+                fn.keywords["percentile"]
+                for _, fn in metric_functions.items()
+                if isinstance(fn, functools.partial) and "percentile" in fn.keywords
+            ]
+
+            # generate the TopK IoU plots
+            for p in percentiles_to_plot:
+                pred_bin, gt_bin = get_hexel_binary_maps(reconstructed_hexel_denorm, grid_gt, percentile=p)
+                visualize_hexel_iou(grid_gt, reconstructed_hexel_denorm, gt_bin, pred_bin, hex_id, config.save_dir, p)
+
+        print(f"=======Saved subplots for hex{hex_id}==============")
+
+    # aggregate final scores
+    hexel_metrics = {}
+
+    if metric_functions is not None and len(all_hexel_metrics) > 0:
+        # get per-hexel metrics
+        for hex_id, hex_metric in zip(all_hex_ids, all_hexel_metrics):
+            hex_id_str = str(hex_id).zfill(2)
+            for key, val in hex_metric.items():
+                # we create keys such as "hex12/mse" for clarity
+                hexel_metrics[f"hex{hex_id_str}/{key}"] = float(val) if not np.isnan(val) else float("nan")
+
+        # get the aggregated averages over all hexels
+        for key in metric_functions.keys():
+            mean_val = np.nanmean([hm[key] for hm in all_hexel_metrics if key in hm and not np.isnan(hm[key])])
+            # we create keys such as "all/mse"
+            hexel_metrics[f"all/{key}"] = float(mean_val)
+
+    return hexel_metrics

@@ -1,5 +1,7 @@
 import os
 import random
+from functools import partial
+from typing import Callable
 
 import numpy as np
 import torch
@@ -7,14 +9,19 @@ from matplotlib import pyplot as plt
 from torch.utils.data import DataLoader
 
 from losses import BCELoss, BernoulliKLLoss, DiceLoss, FocalLoss, MAELoss, MSELoss
-from src.metrics import compute_bias, compute_mae, compute_mse, compute_spearman, compute_ssim
+from src.metrics import compute_bias, compute_mae, compute_mse, compute_spearman, compute_ssim, compute_top_perc_iou
 
-AVAILABLE_METRICS = {
+AVAILABLE_METRICS: dict[str, Callable[..., torch.Tensor]] = {
     "mse": compute_mse,
     "mae": compute_mae,
     "spearman": compute_spearman,
     "ssim": compute_ssim,
     "bias": compute_bias,
+    "iou_top10": partial(compute_top_perc_iou, percentile=0.90),
+    "iou_top05": partial(compute_top_perc_iou, percentile=0.95),
+    "iou_top02": partial(compute_top_perc_iou, percentile=0.98),
+    "iou_top01": partial(compute_top_perc_iou, percentile=0.99),
+    "iou_top005": partial(compute_top_perc_iou, percentile=0.995),
 }
 
 AVAILABLE_LR_SCHEDULERS = ["onecycle", "cosine_warmup", "plateau", "multistep"]
