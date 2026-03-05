@@ -149,8 +149,13 @@ def main() -> None:
 
         if hexel_metrics:
             print("\n[Test per-hexel and aggregated metrics]")
+            current_group = None
             for k, v in hexel_metrics.items():
-                print(f"  hexel_{k}: {v:.6f}")
+                group, metric_name = k.split("/")
+                if current_group is not None and current_group != group:
+                    print("")
+                current_group = group
+                print(f"  [{group}] {metric_name}: {v:.6f}")
 
     print(f"=======Total Evaluation Time {round(time.time()-start_time, 3)}s========")
     print(f"=======Prediction Time {round(preds_time, 3)}s========")

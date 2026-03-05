@@ -124,11 +124,20 @@ def main() -> None:
 
     if hexel_metrics:
         print("\n[Test per-hexel and aggregated metrics]")
+        current_group = None
+
         for k, v in hexel_metrics.items():
-            print(f"  hexel_{k}: {v:.6f}")
+            group, metric_name = k.split("/")
+
+            # print empty line if we switch to new hexel (or to mean)
+            if current_group is not None and current_group != group:
+                print("")
+            current_group = group
+            print(f"  [{group}] {metric_name}: {v:.6f}")
+
         # Log test results to comet, at the end
         if trainer.logger:
-            trainer.logger.log_metrics({f"hexel_{k}": v for k, v in hexel_metrics.items()})
+            trainer.logger.log_metrics({f"hexel/{k}": v for k, v in hexel_metrics.items()})
 
 
 if __name__ == "__main__":

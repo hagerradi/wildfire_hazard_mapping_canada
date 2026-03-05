@@ -294,15 +294,13 @@ def evaluate_and_visualize_hexels(
         for hex_id, hex_metric in zip(all_hex_ids, all_hexel_metrics):
             hex_id_str = str(hex_id).zfill(2)
             for key, val in hex_metric.items():
-                hexel_metrics[f"{key}_hex{hex_id_str}"] = float(val) if not np.isnan(val) else float("nan")
+                # we create keys such as "hex12/mse" for clarity
+                hexel_metrics[f"hex{hex_id_str}/{key}"] = float(val) if not np.isnan(val) else float("nan")
 
         # get the aggregated averages over all hexels
         for key in metric_functions.keys():
             mean_val = np.nanmean([hm[key] for hm in all_hexel_metrics if key in hm and not np.isnan(hm[key])])
-            hexel_metrics[key] = float(mean_val)
-
-        # log per-hexel and aggregated metrics on comet
-        if experiment_logger is not None:
-            experiment_logger.log_metrics({f"hexel_{k}": v for k, v in hexel_metrics.items()})
+            # we create keys such as "all/mse"
+            hexel_metrics[f"all/{key}"] = float(mean_val)
 
     return hexel_metrics
