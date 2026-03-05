@@ -1,4 +1,5 @@
 # Definitions of metrics for model evaluation
+import numpy as np
 import torch
 import torch.nn.functional as F
 from torchmetrics.functional.image import structural_similarity_index_measure
@@ -149,3 +150,100 @@ def compute_top_perc_iou(
             ious.append(intersection / (union + eps))
 
     return torch.nanmean(torch.stack(ious))
+
+
+def compute_topk_perc_iou_auc(metrics_dict: dict[str, float], prefix: str = "") -> float:
+    """
+    Computes the area under the curve (AUC) of the Top K IoU metrics.
+    """
+
+    k_mapping = {
+        f"{prefix}iou_top005": 0.005,
+        f"{prefix}iou_top01": 0.01,
+        f"{prefix}iou_top02": 0.02,
+        f"{prefix}iou_top05": 0.05,
+        f"{prefix}iou_top10": 0.10,
+    }
+
+    points = []
+    for key, x_val in k_mapping.items():
+        if key in metrics_dict and not np.isnan(metrics_dict[key]):
+            points.append((x_val, metrics_dict[key]))
+
+    if len(points) < 2:
+        return float("nan")
+
+    points.sort(key=lambda p: p[0])
+
+    x = np.array([p[0] for p in points])
+    y = np.array([p[1] for p in points])
+
+    raw_auc = np.trapezoid(y, x)
+    max_possible_area = x[-1] - x[0]
+
+    return float(raw_auc / max_possible_area)
+
+
+def compute_full_auc_iou(
+    preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None, eps: float = 1e-8, steps: int = 99
+) -> torch.Tensor:
+    """
+    Computes the full Area Under the Curve (AUC) for IoU across the entire range of percentiles.
+    """
+    batch_size = preds.size(0)
+    flat_preds = preds.reshape(batch_size, -1)
+    flat_targets = targets.reshape(batch_size, -1)
+
+    percentiles = torch.linspace(0.01, 0.99, steps=steps, device=preds.device)
+
+    aucs = []
+
+    if mask is None:
+        for i in range(batch_size):
+            p = flat_preds[i]
+            t = flat_targets[i]
+
+            p_thresh = torch.quantile(p.float(), percentiles)
+            t_thresh = torch.quantile(t.float(), percentiles)
+
+            p_bin = p.unsqueeze(0) >= p_thresh.unsqueeze(1)
+            t_bin = t.unsqueeze(0) >= t_thresh.unsqueeze(1)
+
+            intersection = (p_bin & t_bin).sum(dim=1).float()
+            union = (p_bin | t_bin).sum(dim=1).float()
+
+            ious = intersection / (union + eps)
+
+            auc = torch.trapz(ious, percentiles)
+
+            max_area = percentiles[-1] - percentiles[0]
+            aucs.append(auc / max_area)
+
+    else:
+        valid_mask = mask.bool().reshape(batch_size, -1)
+        for i in range(batch_size):
+            sample_valid_mask = valid_mask[i]
+
+            if sample_valid_mask.sum() == 0:
+                aucs.append(torch.tensor(float("nan"), device=preds.device))
+                continue
+
+            p_valid = flat_preds[i][sample_valid_mask]
+            t_valid = flat_targets[i][sample_valid_mask]
+
+            p_thresh = torch.quantile(p_valid.float(), percentiles)
+            t_thresh = torch.quantile(t_valid.float(), percentiles)
+
+            p_bin = p_valid.unsqueeze(0) >= p_thresh.unsqueeze(1)
+            t_bin = t_valid.unsqueeze(0) >= t_thresh.unsqueeze(1)
+
+            intersection = (p_bin & t_bin).sum(dim=1).float()
+            union = (p_bin | t_bin).sum(dim=1).float()
+
+            ious = intersection / (union + eps)
+
+            auc = torch.trapz(ious, percentiles)
+            max_area = percentiles[-1] - percentiles[0]
+            aucs.append(auc / max_area)
+
+    return torch.nanmean(torch.stack(aucs))
