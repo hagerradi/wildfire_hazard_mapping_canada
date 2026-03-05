@@ -6,7 +6,6 @@ import numpy as np
 import pandas as pd
 import rasterio
 import torch
-from matplotlib import pyplot as plt
 from rasterio.profiles import Profile
 
 from data_preparation.grid_loader.output import load_output_burn_grid
@@ -17,6 +16,7 @@ from src.config import Config
 from src.datasets.postprocessing.stitch_hexel import stitch_windows
 from src.datasets.postprocessing.visualize_predictions import visualize_burn_prob_grids, visualize_hexel_iou
 from src.logger import CometLogger
+from src.metrics import compute_topk_perc_iou_auc
 
 
 def save_predicted_hexels(predicted_hexel: np.ndarray, hexel_profile: Profile, hex_id: str, save_dir: str):
@@ -302,5 +302,15 @@ def evaluate_and_visualize_hexels(
             mean_val = np.nanmean([hm[key] for hm in all_hexel_metrics if key in hm and not np.isnan(hm[key])])
             # we create keys such as "all/mse"
             hexel_metrics[f"all/{key}"] = float(mean_val)
+
+        global_auc = compute_topk_perc_iou_auc(hexel_metrics, prefix="all/")
+        if not np.isnan(global_auc):
+            hexel_metrics["all/auc_iou"] = global_auc
+
+        for hex_id in all_hex_ids:
+            hex_id_str = str(hex_id).zfill(2)
+            hex_auc = compute_topk_perc_iou_auc(hexel_metrics, prefix=f"hex{hex_id_str}/")
+            if not np.isnan(hex_auc):
+                hexel_metrics[f"hex{hex_id_str}/auc_iou"] = hex_auc
 
     return hexel_metrics
