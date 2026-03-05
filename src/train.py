@@ -62,7 +62,7 @@ def main() -> None:
     train_loader, val_loader = get_train_val_dataloader(config=config.data, modelling_approach=config.modelling_approach, seed=seed)
 
     spatial_channels, aux_input_dims = get_dataset_dimensions(train_loader.dataset)
-    print(f"Detected Data Dimensions: Spatial={spatial_channels} | Tabular={aux_input_dims}")
+    print(f"Detected Data Dimensions: Spatial={spatial_channels} | Auxiliary={aux_input_dims}")
 
     # ---------- Training ----------
     trainer = Trainer(config=config, spatial_input_channels=spatial_channels, aux_input_dims=aux_input_dims)
