@@ -72,32 +72,32 @@ def test_ssim_range_with_mask(dummy_data, dummy_mask):
     assert -1.0 <= score <= 1.0
 
 
-def test_top_perc_iou_perfect_match(dummy_data):
+def test_topK_iou_perfect_match(dummy_data):
     _, targets = dummy_data
     iou = compute_topK_iou(targets, targets, percentile=0.90)
     assert torch.isclose(iou, torch.tensor(1.0))
 
 
-def test_top_perc_iou_perfect_match_with_mask(dummy_data, dummy_mask):
+def test_topK_iou_perfect_match_with_mask(dummy_data, dummy_mask):
     _, targets = dummy_data
     iou = compute_topK_iou(targets, targets, mask=dummy_mask, percentile=0.90)
     assert torch.isclose(iou, torch.tensor(1.0))
 
 
-def test_top_perc_iou_range(dummy_data):
+def test_topK_iou_range(dummy_data):
     preds, targets = dummy_data
     iou = compute_topK_iou(preds, targets, percentile=0.90)
     assert 0.0 <= iou.item() <= 1.0
 
 
-def test_top_perc_iou_empty_mask_edge_case(dummy_data):
+def test_topK_iou_empty_mask_edge_case(dummy_data):
     preds, targets = dummy_data
     empty_mask = torch.zeros_like(targets)
     iou = compute_topK_iou(preds, targets, mask=empty_mask)
     assert torch.isnan(iou)
 
 
-def test_top_perc_iou_completely_disjoint():
+def test_topK_iou_completely_disjoint():
     targets = torch.zeros(1, 1, 1, 10)
     targets[..., -1] = 1.0
 

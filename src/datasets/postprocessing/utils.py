@@ -1,6 +1,6 @@
 import functools
 import os
-from typing import Any, Callable
+from typing import Callable
 
 import numpy as np
 import pandas as pd
@@ -306,7 +306,7 @@ def evaluate_and_visualize_hexels(
 
 
 def print_and_log_eval_metrics(
-    test_metrics: str | dict[str, float] | None, hexel_metrics: dict[str, float] | None, experiment_logger: CometLogger = None
+    test_metrics: str | dict[str, float] | None, hexel_metrics: dict[str, float] | None, experiment_logger: CometLogger | None = None
 ) -> None:
     """
     Prints terminal metrics and Comet logging for both patch-level and hexel-level metrics.

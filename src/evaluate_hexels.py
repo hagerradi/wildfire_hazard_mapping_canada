@@ -132,11 +132,6 @@ def main() -> None:
     # Save predictions
     np.save(os.path.join(config.save_dir, "test_predictions.npy"), test_predictions)
 
-    print("\n[Test metrics]")
-    if isinstance(test_metrics, dict):
-        for k, v in test_metrics.items():
-            print(f"  {k}: {v:.6f}")
-
     if isinstance(test_predictions, np.ndarray):
         hexel_metrics = evaluate_and_visualize_hexels(
             test_predictions=test_predictions,
