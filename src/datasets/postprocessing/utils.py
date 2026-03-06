@@ -1,6 +1,6 @@
 import functools
 import os
-from typing import Callable
+from typing import Any, Callable
 
 import numpy as np
 import pandas as pd
@@ -16,7 +16,6 @@ from src.config import Config
 from src.datasets.postprocessing.stitch_hexel import stitch_windows
 from src.datasets.postprocessing.visualize_predictions import visualize_burn_prob_grids, visualize_hexel_iou
 from src.logger import CometLogger
-from src.metrics import compute_topk_perc_iou_auc
 
 
 def save_predicted_hexels(predicted_hexel: np.ndarray, hexel_profile: Profile, hex_id: str, save_dir: str):
@@ -303,14 +302,36 @@ def evaluate_and_visualize_hexels(
             # we create keys such as "all/mse"
             hexel_metrics[f"all/{key}"] = float(mean_val)
 
-        global_auc = compute_topk_perc_iou_auc(hexel_metrics, prefix="all/")
-        if not np.isnan(global_auc):
-            hexel_metrics["all/auc_iou"] = global_auc
-
-        for hex_id in all_hex_ids:
-            hex_id_str = str(hex_id).zfill(2)
-            hex_auc = compute_topk_perc_iou_auc(hexel_metrics, prefix=f"hex{hex_id_str}/")
-            if not np.isnan(hex_auc):
-                hexel_metrics[f"hex{hex_id_str}/auc_iou"] = hex_auc
-
     return hexel_metrics
+
+
+def print_and_log_eval_metrics(
+    test_metrics: dict[str, Any] | None, hexel_metrics: dict[str, float] | None, experiment_logger: CometLogger = None
+) -> None:
+    """
+    Prints terminal metrics and Comet logging for both patch-level and hexel-level metrics.
+    """
+    # patch-level metrics
+    if isinstance(test_metrics, dict):
+        print("\n[Test metrics]")
+        for k, v in test_metrics.items():
+            print(f"  {k}: {v:.6f}")
+
+        if experiment_logger:
+            experiment_logger.log_metrics({f"test_{k}": v for k, v in test_metrics.items()})
+
+    # hexel-level metrics
+    if hexel_metrics:
+        print("\n[Test per-hexel and aggregated metrics]")
+        current_group = None
+
+        for k, v in hexel_metrics.items():
+            group, metric_name = k.split("/")
+
+            if current_group is not None and current_group != group:
+                print("")
+            current_group = group
+            print(f"  [{group}] {metric_name}: {v:.6f}")
+
+        if experiment_logger:
+            experiment_logger.log_metrics({f"hexel/{k}": v for k, v in hexel_metrics.items()})
