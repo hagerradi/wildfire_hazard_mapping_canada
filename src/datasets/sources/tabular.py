@@ -7,7 +7,6 @@ import pandas as pd
 
 from src.config import TabularParams
 from src.datasets.sources.base import DataSource
-from src.datasets.utils import FIRE_SIZE_MEANS
 
 
 class TabularSource(DataSource):
@@ -38,8 +37,17 @@ class TabularSource(DataSource):
         self.csv_name = params.csv_name
         self.feature_names_list = params.feature_names_list
         self.fire_weather_zone_id_col = params.fire_weather_zone_id_col
-        self.sampling_approach = params.sampling_approach
+        self.zone_selection_approach = params.zone_selection_approach
+        self.sampling_bias = params.sampling_bias
+        self.feature_to_bias = params.feature_to_bias
         self.num_samples_per_patch = params.num_samples_per_patch
+
+        # Pre-compute the column index for the bias feature
+        self.bias_col_idx: int | None = None
+        if self.sampling_bias is not None:
+            if self.feature_to_bias is None:
+                raise ValueError("feature_to_bias must be set when sampling_bias is not None")
+            self.bias_col_idx = self.feature_names_list.index(self.feature_to_bias)
 
         self.df = pd.read_csv(os.path.join(self.root_dir, self.csv_name))
         # 1. Extract weather zone channel index
@@ -66,12 +74,12 @@ class TabularSource(DataSource):
         values, counts = np.unique(zone_arr, return_counts=True)
 
         # 1. Select candidates depending on sampling approach
-        if self.sampling_approach == "mode":  # Selects the candidates from the most common zone in the patch
+        if self.zone_selection_approach == "mode":  # Selects the candidates from the most common zone in the patch
             mode_zone = int(values[np.argmax(counts)])
             candidates = self.lut.get(mode_zone)
             weights = None
         elif (
-            self.sampling_approach == "weighted"
+            self.zone_selection_approach == "weighted"
         ):  # Selects candidates from all zones in the patch, but weights them according to their frequency in the patch
             all_candidates = []
             probs = []
@@ -88,17 +96,31 @@ class TabularSource(DataSource):
                 weights = np.concatenate(probs)
                 weights /= weights.sum()
 
-        # 2. Perform actual sampling
-        if candidates is None:  # Only happens in fire size distribution csv
-            value = FIRE_SIZE_MEANS.get(
-                self.feature_names_list[0]
-            )  # TODO: Using mean imputation for now, will change once confirmed with experts
-            sample_features = np.full(shape=(self.num_samples_per_patch, len(self.feature_names_list)), fill_value=value, dtype=np.float32)
-        else:
-            replace = len(candidates) < self.num_samples_per_patch
-            sample_indices = np.random.choice(len(candidates), size=self.num_samples_per_patch, replace=replace, p=weights)
-            sample_features = candidates[sample_indices]
+        # 2. If sampling bias for a feature is specified, adjust weights accordingly
+        if self.sampling_bias is not None and candidates is not None and len(candidates) > 0:
+            bias_values = candidates[:, self.bias_col_idx]
+            if self.sampling_bias == "high":
+                bias_weights = np.clip(bias_values, 0.0, None)  # Clamp negatives to 0
+            elif self.sampling_bias == "low":
+                bias_weights = 1.0 / (np.abs(bias_values) + 1e-6)
+            else:
+                bias_weights = None
 
+            if bias_weights is not None:
+                bias_sum = bias_weights.sum()
+                if bias_sum > 0:
+                    bias_weights /= bias_sum
+                    # Compose with existing zone weights (if any)
+                    if weights is not None:
+                        weights = weights * bias_weights
+                        weights /= weights.sum()
+                    else:
+                        weights = bias_weights
+                # else: all-zero bias → fall back to existing weights (uniform or zone-based)
+
+        # 3. Perform actual sampling
+        if candidates is not None and len(candidates) > 0:
+            sample_features = candidates[np.random.choice(len(candidates), size=self.num_samples_per_patch, replace=True, p=weights)]
         return sample_features
 
     def input_dim(self):

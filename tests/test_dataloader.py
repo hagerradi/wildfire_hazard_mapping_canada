@@ -76,7 +76,7 @@ def temp_data_dir():
 
         # Create dummy fire size table csv
         fire_size_feats = ["size"]
-        data = {"size": np.full(5, 100.0)}  # Dummy size values
+        data = {"size": [10.0, 50.0, 100.0, 5.0, 200.0]}  # Varying size values
         data["grid_code"] = [100, 100, 100, 200, 200]  # 3 samples for zone 100
         fire_size_df = pd.DataFrame(data)
         fire_size_csv = "fire_size_table.csv"
@@ -108,7 +108,7 @@ def test_multi_source_integration(temp_data_dir):
         csv_name=weather_csv,
         feature_names_list=weather_feats,
         fire_weather_zone_id_col="wx_zone",
-        sampling_approach="mode",
+        zone_selection_approach="mode",
         num_samples_per_patch=2,
     )
 
@@ -116,7 +116,7 @@ def test_multi_source_integration(temp_data_dir):
         csv_name=fire_size_csv,
         feature_names_list=fire_size_feats,
         fire_weather_zone_id_col="grid_code",
-        sampling_approach="mode",
+        zone_selection_approach="mode",
         num_samples_per_patch=2,
     )
 
@@ -306,7 +306,7 @@ def test_tabular_weighted_sampling(temp_data_dir):
         csv_name=fire_size_csv,
         feature_names_list=fire_size_feats,
         fire_weather_zone_id_col="grid_code",
-        sampling_approach="weighted",
+        zone_selection_approach="weighted",
         num_samples_per_patch=2,
     )
 
