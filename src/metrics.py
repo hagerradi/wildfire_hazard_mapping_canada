@@ -1,5 +1,4 @@
 # Definitions of metrics for model evaluation
-import numpy as np
 import torch
 import torch.nn.functional as F
 from torchmetrics.functional.image import structural_similarity_index_measure
@@ -171,10 +170,20 @@ def compute_auc_iou(
     flat_preds = preds.reshape(batch_size, -1)
     flat_targets = targets.reshape(batch_size, -1)
 
+    # validations of inputs
     if not (isinstance(k_values, tuple) and len(k_values) == 2):
         raise ValueError("k_values must be a tuple of (min_k, max_k).")
+    if not all(isinstance(k, (int, float)) for k in k_values):
+        raise ValueError("k_values must contain numeric values (int or float).")
+    min_k, max_k = float(k_values[0]), float(k_values[1])
+    if not (0.0 < min_k <= 1.0 and 0.0 < max_k <= 1.0):
+        raise ValueError("Each value in k_values must be within the open-closed interval (0, 1].")
+    if not min_k < max_k:
+        raise ValueError("k_values must satisfy min_k < max_k.")
+    if not isinstance(steps, int) or steps < 2:
+        raise ValueError("steps must be an integer greater than or equal to 2.")
 
-    k_tensor = torch.linspace(min(k_values), max(k_values), steps=steps, device=preds.device)
+    k_tensor = torch.linspace(min_k, max_k, steps=steps, device=preds.device)
     percentiles = 1.0 - k_tensor
 
     aucs = []
