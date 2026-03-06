@@ -236,4 +236,5 @@ def compute_auc_iou(
 
             aucs.append(auc / max_area if max_area > 0 else torch.tensor(float("nan"), device=preds.device))
 
+    # return mean of auc values (scalar)
     return torch.nanmean(torch.stack(aucs))

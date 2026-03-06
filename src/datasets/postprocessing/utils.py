@@ -313,7 +313,7 @@ def print_and_log_eval_metrics(
     """
     # patch-level metrics
     if isinstance(test_metrics, dict):
-        print("\n[Test metrics]")
+        print("\n[Test patch-level metrics]")
         for k, v in test_metrics.items():
             print(f"  {k}: {v:.6f}")
 
