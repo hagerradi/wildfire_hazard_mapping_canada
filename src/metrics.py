@@ -98,11 +98,11 @@ def compute_bias(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor)
     return ((preds - targets) * m).sum() / denom
 
 
-def compute_top_perc_iou(
+def compute_topK_iou(
     preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None, percentile: float = 0.90, eps: float = 1e-8
 ) -> torch.Tensor:
     """
-    Computes the Intersection over Union (IoU) on binarized top percentile maps.
+    Computes the Intersection over Union (IoU) on binarized top K percentile maps.
     """
     batch_size = preds.size(0)
     flat_preds = preds.reshape(batch_size, -1)
@@ -152,49 +152,37 @@ def compute_top_perc_iou(
     return torch.nanmean(torch.stack(ious))
 
 
-def compute_topk_perc_iou_auc(metrics_dict: dict[str, float], prefix: str = "") -> float:
-    """
-    Computes the area under the curve (AUC) of the Top K IoU metrics.
-    """
-
-    k_mapping = {
-        f"{prefix}iou_top005": 0.005,
-        f"{prefix}iou_top01": 0.01,
-        f"{prefix}iou_top02": 0.02,
-        f"{prefix}iou_top05": 0.05,
-        f"{prefix}iou_top10": 0.10,
-    }
-
-    points = []
-    for key, x_val in k_mapping.items():
-        if key in metrics_dict and not np.isnan(metrics_dict[key]):
-            points.append((x_val, metrics_dict[key]))
-
-    if len(points) < 2:
-        return float("nan")
-
-    points.sort(key=lambda p: p[0])
-
-    x = np.array([p[0] for p in points])
-    y = np.array([p[1] for p in points])
-
-    raw_auc = np.trapezoid(y, x)
-    max_possible_area = x[-1] - x[0]
-
-    return float(raw_auc / max_possible_area)
-
-
-def compute_full_auc_iou(
-    preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None, eps: float = 1e-8, steps: int = 99
+def compute_auc_iou(
+    preds: torch.Tensor,
+    targets: torch.Tensor,
+    mask: torch.Tensor = None,
+    k_values: str | list[float] | tuple[float, float] = "all",
+    steps: int = 99,
+    eps: float = 1e-8,
 ) -> torch.Tensor:
     """
-    Computes the full Area Under the Curve (AUC) for IoU across the entire range of percentiles.
+    Computes the Area Under the Curve (AUC) for IoU across specified Top-K percentages.
+
+    Args:
+        k_values:
+            - "all": Full range from Top 1% to Top 99% for a given number of steps.
+            - tuple (min_k, max_k): Continuous range between min_k and max_k for a given number of steps.
+            - list [k1, k2, ...]: Using specified discrete TopK percentages.
     """
     batch_size = preds.size(0)
     flat_preds = preds.reshape(batch_size, -1)
     flat_targets = targets.reshape(batch_size, -1)
 
-    percentiles = torch.linspace(0.01, 0.99, steps=steps, device=preds.device)
+    if isinstance(k_values, str) and k_values == "all":
+        k_tensor = torch.linspace(0.01, 0.99, steps=steps, device=preds.device)
+    elif isinstance(k_values, tuple) and len(k_values) == 2:
+        k_tensor = torch.linspace(min(k_values), max(k_values), steps=steps, device=preds.device)
+    elif isinstance(k_values, list):
+        k_tensor = torch.tensor(sorted(k_values), device=preds.device, dtype=torch.float32)
+    else:
+        raise ValueError("k_values must be 'all', a (min, max) tuple, or a list of floats.")
+
+    percentiles = 1.0 - k_tensor
 
     aucs = []
 
@@ -214,11 +202,10 @@ def compute_full_auc_iou(
 
             ious = intersection / (union + eps)
 
-            auc = torch.trapz(ious, percentiles)
+            auc = torch.trapz(ious, k_tensor)
+            max_area = k_tensor[-1] - k_tensor[0]
 
-            max_area = percentiles[-1] - percentiles[0]
-            aucs.append(auc / max_area)
-
+            aucs.append(auc / max_area if max_area > 0 else torch.tensor(float("nan"), device=preds.device))
     else:
         valid_mask = mask.bool().reshape(batch_size, -1)
         for i in range(batch_size):
@@ -242,8 +229,9 @@ def compute_full_auc_iou(
 
             ious = intersection / (union + eps)
 
-            auc = torch.trapz(ious, percentiles)
-            max_area = percentiles[-1] - percentiles[0]
-            aucs.append(auc / max_area)
+            auc = torch.trapz(ious, k_tensor)
+            max_area = k_tensor[-1] - k_tensor[0]
+
+            aucs.append(auc / max_area if max_area > 0 else torch.tensor(float("nan"), device=preds.device))
 
     return torch.nanmean(torch.stack(aucs))
