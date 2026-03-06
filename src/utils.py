@@ -9,7 +9,7 @@ from matplotlib import pyplot as plt
 from torch.utils.data import DataLoader
 
 from losses import BCELoss, BernoulliKLLoss, DiceLoss, FocalLoss, MAELoss, MSELoss
-from src.metrics import compute_bias, compute_mae, compute_mse, compute_spearman, compute_ssim, compute_top_perc_iou
+from src.metrics import compute_bias, compute_ccc, compute_mae, compute_mse, compute_spearman, compute_ssim, compute_top_perc_iou
 
 AVAILABLE_METRICS: dict[str, Callable[..., torch.Tensor]] = {
     "mse": compute_mse,
@@ -17,6 +17,7 @@ AVAILABLE_METRICS: dict[str, Callable[..., torch.Tensor]] = {
     "spearman": compute_spearman,
     "ssim": compute_ssim,
     "bias": compute_bias,
+    "ccc": compute_ccc,
     "iou_top10": partial(compute_top_perc_iou, percentile=0.90),
     "iou_top05": partial(compute_top_perc_iou, percentile=0.95),
     "iou_top02": partial(compute_top_perc_iou, percentile=0.98),

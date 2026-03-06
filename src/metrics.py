@@ -97,6 +97,52 @@ def compute_bias(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor)
     return ((preds - targets) * m).sum() / denom
 
 
+def compute_ccc(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None, eps: float = 1e-8) -> torch.Tensor:
+    """
+    Computes the Concordance Correlation Coefficient (CCC), optionally using a mask.
+
+    CCC = 2 * cov(preds, targets) / (var(preds) + var(targets) + (mean(preds) - mean(targets))^2)
+
+    Returns a scalar tensor averaging CCC across the batch.
+    """
+    batch_size = preds.size(0)
+    flat_preds = preds.reshape(batch_size, -1).float()
+    flat_targets = targets.reshape(batch_size, -1).float()
+
+    min_valid = 2  # need at least 2 values for meaningful variance/covariance
+    cccs = []
+
+    if mask is None:
+        for i in range(batch_size):
+            p = flat_preds[i]
+            t = flat_targets[i]
+            mean_p = p.mean()
+            mean_t = t.mean()
+            var_p = p.var(correction=0)
+            var_t = t.var(correction=0)
+            cov_pt = ((p - mean_p) * (t - mean_t)).mean()
+            denom = var_p + var_t + (mean_p - mean_t) ** 2
+            cccs.append(2.0 * cov_pt / denom.clamp_min(eps))
+    else:
+        valid_mask = mask.bool().reshape(batch_size, -1)
+        for i in range(batch_size):
+            m = valid_mask[i]
+            if m.sum() < min_valid:
+                cccs.append(torch.tensor(float("nan"), device=preds.device))
+                continue
+            p = flat_preds[i][m]
+            t = flat_targets[i][m]
+            mean_p = p.mean()
+            mean_t = t.mean()
+            var_p = p.var(correction=0)
+            var_t = t.var(correction=0)
+            cov_pt = ((p - mean_p) * (t - mean_t)).mean()
+            denom = var_p + var_t + (mean_p - mean_t) ** 2
+            cccs.append(2.0 * cov_pt / denom.clamp_min(eps))
+
+    return torch.nanmean(torch.stack(cccs))
+
+
 def compute_top_perc_iou(
     preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None, percentile: float = 0.90, eps: float = 1e-8
 ) -> torch.Tensor:

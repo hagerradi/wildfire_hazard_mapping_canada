@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from src.metrics import compute_bias, compute_mae, compute_mse, compute_spearman, compute_ssim, compute_top_perc_iou
+from src.metrics import compute_bias, compute_ccc, compute_mae, compute_mse, compute_spearman, compute_ssim, compute_top_perc_iou
 
 
 @pytest.fixture
@@ -143,3 +143,43 @@ def test_bias_empty_mask_edge_case(dummy_data):
     empty_mask = torch.zeros_like(targets)
     bias = compute_bias(preds, targets, mask=empty_mask)
     assert torch.isclose(bias, torch.tensor(0.0))
+
+
+def test_ccc_perfect_agreement():
+    targets = torch.rand(4, 1, 16, 16)
+    ccc = compute_ccc(targets, targets)
+    assert torch.isclose(ccc, torch.tensor(1.0), atol=1e-5)
+
+
+def test_ccc_perfect_agreement_with_mask():
+    targets = torch.rand(4, 1, 16, 16)
+    mask = torch.ones_like(targets)
+    ccc = compute_ccc(targets, targets, mask=mask)
+    assert torch.isclose(ccc, torch.tensor(1.0), atol=1e-5)
+
+
+def test_ccc_range(dummy_data):
+    preds, targets = dummy_data
+    ccc = compute_ccc(preds, targets)
+    assert -1.0 <= ccc.item() <= 1.0
+
+
+def test_ccc_range_with_mask(dummy_data, dummy_mask):
+    preds, targets = dummy_data
+    ccc = compute_ccc(preds, targets, mask=dummy_mask)
+    assert -1.0 <= ccc.item() <= 1.0
+
+
+def test_ccc_empty_mask_edge_case(dummy_data):
+    preds, targets = dummy_data
+    empty_mask = torch.zeros_like(targets)
+    ccc = compute_ccc(preds, targets, mask=empty_mask)
+    assert torch.isnan(ccc)
+
+
+def test_ccc_scaled_preds_less_than_one():
+    """CCC should be < 1 when preds are a scaled version of targets (not identical)."""
+    targets = torch.rand(4, 1, 16, 16)
+    preds = targets * 2.0
+    ccc = compute_ccc(preds, targets)
+    assert ccc.item() < 1.0
