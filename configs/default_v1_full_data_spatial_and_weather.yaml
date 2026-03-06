@@ -12,7 +12,7 @@ model:
   input_feature_list: ["spatial", "tabular"]
 
   tabular_hidden_dims:
-    weather: [32, 64]
+    weather: [32, 64, 128]
 
   tabular_embed_dims:
     weather: 128
