@@ -22,8 +22,8 @@ AVAILABLE_METRICS: dict[str, Callable[..., torch.Tensor]] = {
     "iou_top02": partial(compute_topK_iou, percentile=0.98),
     "iou_top01": partial(compute_topK_iou, percentile=0.99),
     "iou_top005": partial(compute_topK_iou, percentile=0.995),
-    "auc_iou_full": partial(compute_auc_iou, k_values="all"),  # AUC on full range of K
-    "auc_iou_top10perc": partial(compute_auc_iou, k_values=[0.005, 0.01, 0.02, 0.05, 0.10]),  # AUC on selected K values
+    "auc_iou_full": partial(compute_auc_iou, k_values=(0.01, 0.99), steps=99),  # AUC on full range of K (granularity 1%)
+    "auc_iou_top10": partial(compute_auc_iou, k_values=(0.01, 0.10), steps=10),  # AUC for top 10% (granularity 1%)
 }
 
 AVAILABLE_LR_SCHEDULERS = ["onecycle", "cosine_warmup", "plateau", "multistep"]

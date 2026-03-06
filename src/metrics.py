@@ -156,32 +156,25 @@ def compute_auc_iou(
     preds: torch.Tensor,
     targets: torch.Tensor,
     mask: torch.Tensor = None,
-    k_values: str | list[float] | tuple[float, float] = "all",
+    k_values: tuple[float, float] = (0.01, 0.99),
     steps: int = 99,
     eps: float = 1e-8,
 ) -> torch.Tensor:
     """
-    Computes the Area Under the Curve (AUC) for IoU across specified Top-K percentages.
+    Computes the Area Under the Curve (AUC) for IoU for a specified continuous TopK perc. range.
 
     Args:
-        k_values:
-            - "all": Full range from Top 1% to Top 99% for a given number of steps.
-            - tuple (min_k, max_k): Continuous range between min_k and max_k for a given number of steps.
-            - list [k1, k2, ...]: Using specified discrete TopK percentages.
+        k_values (tuple[float, float]): Tuple (min_k, max_k) defining the continuous range for eval.
+        steps (int): Number of points to evaluate within the continuous range.
     """
     batch_size = preds.size(0)
     flat_preds = preds.reshape(batch_size, -1)
     flat_targets = targets.reshape(batch_size, -1)
 
-    if isinstance(k_values, str) and k_values == "all":
-        k_tensor = torch.linspace(0.01, 0.99, steps=steps, device=preds.device)
-    elif isinstance(k_values, tuple) and len(k_values) == 2:
-        k_tensor = torch.linspace(min(k_values), max(k_values), steps=steps, device=preds.device)
-    elif isinstance(k_values, list):
-        k_tensor = torch.tensor(sorted(k_values), device=preds.device, dtype=torch.float32)
-    else:
-        raise ValueError("k_values must be 'all', a (min, max) tuple, or a list of floats.")
+    if not (isinstance(k_values, tuple) and len(k_values) == 2):
+        raise ValueError("k_values must be a tuple of (min_k, max_k).")
 
+    k_tensor = torch.linspace(min(k_values), max(k_values), steps=steps, device=preds.device)
     percentiles = 1.0 - k_tensor
 
     aucs = []
