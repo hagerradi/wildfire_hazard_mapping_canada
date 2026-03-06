@@ -9,7 +9,7 @@ from matplotlib import pyplot as plt
 from torch.utils.data import DataLoader
 
 from losses import BCELoss, BernoulliKLLoss, DiceLoss, FocalLoss, MAELoss, MSELoss
-from src.metrics import compute_bias, compute_full_auc_iou, compute_mae, compute_mse, compute_spearman, compute_ssim, compute_top_perc_iou
+from src.metrics import compute_auc_iou, compute_bias, compute_mae, compute_mse, compute_spearman, compute_ssim, compute_topK_iou
 
 AVAILABLE_METRICS: dict[str, Callable[..., torch.Tensor]] = {
     "mse": compute_mse,
@@ -17,12 +17,13 @@ AVAILABLE_METRICS: dict[str, Callable[..., torch.Tensor]] = {
     "spearman": compute_spearman,
     "ssim": compute_ssim,
     "bias": compute_bias,
-    "iou_top10": partial(compute_top_perc_iou, percentile=0.90),
-    "iou_top05": partial(compute_top_perc_iou, percentile=0.95),
-    "iou_top02": partial(compute_top_perc_iou, percentile=0.98),
-    "iou_top01": partial(compute_top_perc_iou, percentile=0.99),
-    "iou_top005": partial(compute_top_perc_iou, percentile=0.995),
-    "full_auc_iou": compute_full_auc_iou,
+    "iou_top10": partial(compute_topK_iou, percentile=0.90),
+    "iou_top05": partial(compute_topK_iou, percentile=0.95),
+    "iou_top02": partial(compute_topK_iou, percentile=0.98),
+    "iou_top01": partial(compute_topK_iou, percentile=0.99),
+    "iou_top005": partial(compute_topK_iou, percentile=0.995),
+    "auc_iou_full": partial(compute_auc_iou, k_values="all"),  # AUC on full range of K
+    "auc_iou_top10perc": partial(compute_auc_iou, k_values=[0.005, 0.01, 0.02, 0.05, 0.10]),  # AUC on selected K values
 }
 
 AVAILABLE_LR_SCHEDULERS = ["onecycle", "cosine_warmup", "plateau", "multistep"]
