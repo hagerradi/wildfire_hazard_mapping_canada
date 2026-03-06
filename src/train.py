@@ -10,7 +10,7 @@ import yaml
 
 from src.config import Config, GridParams
 from src.datasets.dataset import get_test_dataloader, get_train_val_dataloader
-from src.datasets.postprocessing.utils import evaluate_and_visualize_hexels
+from src.datasets.postprocessing.utils import evaluate_and_visualize_hexels, print_and_log_eval_metrics
 from src.datasets.utils import get_dataset_dimensions
 from src.trainer import Trainer
 from src.utils import seed_everything
@@ -97,6 +97,8 @@ def main() -> None:
     )
     test_metrics, test_predictions = trainer.test(test_loader, return_predictions=True)
 
+    hexel_metrics = {}
+
     if args.log_test_predicted_hexels:
         source_map = {s.name: s for s in config.data.input_sources}
         grid_source = source_map.get("grid") if "grid" in source_map else None
@@ -114,30 +116,8 @@ def main() -> None:
                 metric_functions=trainer.metric_functions,
             )
 
-    if isinstance(test_metrics, dict):
-        print("\n[Test metrics]")
-        for k, v in test_metrics.items():
-            print(f"  {k}: {v:.6f}")
-        # Log test results to comet, at the end
-        if trainer.logger:
-            trainer.logger.log_metrics({f"test_{k}": v for k, v in test_metrics.items()})
-
-    if hexel_metrics:
-        print("\n[Test per-hexel and aggregated metrics]")
-        current_group = None
-
-        for k, v in hexel_metrics.items():
-            group, metric_name = k.split("/")
-
-            # print empty line if we switch to new hexel (or to mean)
-            if current_group is not None and current_group != group:
-                print("")
-            current_group = group
-            print(f"  [{group}] {metric_name}: {v:.6f}")
-
-        # Log test results to comet, at the end
-        if trainer.logger:
-            trainer.logger.log_metrics({f"hexel/{k}": v for k, v in hexel_metrics.items()})
+    # print metrics in terminal and log into comet
+    print_and_log_eval_metrics(test_metrics=test_metrics, hexel_metrics=hexel_metrics, experiment_logger=trainer.logger)
 
 
 if __name__ == "__main__":

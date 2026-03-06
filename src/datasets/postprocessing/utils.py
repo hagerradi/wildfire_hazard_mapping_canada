@@ -306,7 +306,7 @@ def evaluate_and_visualize_hexels(
 
 
 def print_and_log_eval_metrics(
-    test_metrics: dict[str, Any] | None, hexel_metrics: dict[str, float] | None, experiment_logger: CometLogger = None
+    test_metrics: str | dict[str, float] | None, hexel_metrics: dict[str, float] | None, experiment_logger: CometLogger = None
 ) -> None:
     """
     Prints terminal metrics and Comet logging for both patch-level and hexel-level metrics.

@@ -13,7 +13,7 @@ import yaml
 
 from src.config import Config, GridParams
 from src.datasets.dataset import get_test_dataloader
-from src.datasets.postprocessing.utils import evaluate_and_visualize_hexels
+from src.datasets.postprocessing.utils import evaluate_and_visualize_hexels, print_and_log_eval_metrics
 from src.datasets.utils import get_dataset_dimensions
 from src.trainer import Trainer
 from src.utils import (
@@ -147,15 +147,8 @@ def main() -> None:
             metric_functions=trainer.metric_functions,
         )
 
-        if hexel_metrics:
-            print("\n[Test per-hexel and aggregated metrics]")
-            current_group = None
-            for k, v in hexel_metrics.items():
-                group, metric_name = k.split("/")
-                if current_group is not None and current_group != group:
-                    print("")
-                current_group = group
-                print(f"  [{group}] {metric_name}: {v:.6f}")
+        # print metrics in terminal and log into comet
+        print_and_log_eval_metrics(test_metrics=test_metrics, hexel_metrics=hexel_metrics, experiment_logger=trainer.logger)
 
     print(f"=======Total Evaluation Time {round(time.time()-start_time, 3)}s========")
     print(f"=======Prediction Time {round(preds_time, 3)}s========")
