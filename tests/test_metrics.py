@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from src.metrics import compute_bias, compute_mae, compute_mse, compute_spearman, compute_ssim, compute_top_perc_iou
+from src.metrics import compute_auc_iou, compute_bias, compute_mae, compute_mse, compute_spearman, compute_ssim, compute_topK_iou
 
 
 @pytest.fixture
@@ -72,39 +72,39 @@ def test_ssim_range_with_mask(dummy_data, dummy_mask):
     assert -1.0 <= score <= 1.0
 
 
-def test_top_perc_iou_perfect_match(dummy_data):
+def test_topK_iou_perfect_match(dummy_data):
     _, targets = dummy_data
-    iou = compute_top_perc_iou(targets, targets, percentile=0.90)
+    iou = compute_topK_iou(targets, targets, percentile=0.90)
     assert torch.isclose(iou, torch.tensor(1.0))
 
 
-def test_top_perc_iou_perfect_match_with_mask(dummy_data, dummy_mask):
+def test_topK_iou_perfect_match_with_mask(dummy_data, dummy_mask):
     _, targets = dummy_data
-    iou = compute_top_perc_iou(targets, targets, mask=dummy_mask, percentile=0.90)
+    iou = compute_topK_iou(targets, targets, mask=dummy_mask, percentile=0.90)
     assert torch.isclose(iou, torch.tensor(1.0))
 
 
-def test_top_perc_iou_range(dummy_data):
+def test_topK_iou_range(dummy_data):
     preds, targets = dummy_data
-    iou = compute_top_perc_iou(preds, targets, percentile=0.90)
+    iou = compute_topK_iou(preds, targets, percentile=0.90)
     assert 0.0 <= iou.item() <= 1.0
 
 
-def test_top_perc_iou_empty_mask_edge_case(dummy_data):
+def test_topK_iou_empty_mask_edge_case(dummy_data):
     preds, targets = dummy_data
     empty_mask = torch.zeros_like(targets)
-    iou = compute_top_perc_iou(preds, targets, mask=empty_mask)
+    iou = compute_topK_iou(preds, targets, mask=empty_mask)
     assert torch.isnan(iou)
 
 
-def test_top_perc_iou_completely_disjoint():
+def test_topK_iou_completely_disjoint():
     targets = torch.zeros(1, 1, 1, 10)
     targets[..., -1] = 1.0
 
     preds = torch.zeros(1, 1, 1, 10)
     preds[..., 0] = 1.0
 
-    iou = compute_top_perc_iou(preds, targets, percentile=0.90)
+    iou = compute_topK_iou(preds, targets, percentile=0.90)
     assert torch.isclose(iou, torch.tensor(0.0))
 
 
@@ -143,3 +143,51 @@ def test_bias_empty_mask_edge_case(dummy_data):
     empty_mask = torch.zeros_like(targets)
     bias = compute_bias(preds, targets, mask=empty_mask)
     assert torch.isclose(bias, torch.tensor(0.0))
+
+
+def test_auc_iou_perfect_match(dummy_data):
+    _, targets = dummy_data
+    # test on top 10%
+    auc = compute_auc_iou(targets, targets, k_values=(0.01, 0.10), steps=10)
+    assert torch.isclose(auc, torch.tensor(1.0))
+
+
+def test_auc_iou_perfect_match_with_mask(dummy_data, dummy_mask):
+    _, targets = dummy_data
+    # test on full range
+    auc = compute_auc_iou(targets, targets, mask=dummy_mask, k_values=(0.01, 0.99), steps=50)
+    assert torch.isclose(auc, torch.tensor(1.0))
+
+
+def test_auc_iou_range(dummy_data):
+    preds, targets = dummy_data
+    auc = compute_auc_iou(preds, targets, k_values=(0.05, 0.20), steps=15)
+    assert 0.0 <= auc.item() <= 1.0
+
+
+def test_auc_iou_empty_mask_edge_case(dummy_data):
+    preds, targets = dummy_data
+    empty_mask = torch.zeros_like(targets)
+    auc = compute_auc_iou(preds, targets, mask=empty_mask)
+    assert torch.isnan(auc)
+
+
+def test_auc_iou_completely_disjoint():
+    targets = torch.zeros(1, 1, 1, 100)
+    targets[..., -10:] = 1.0
+
+    preds = torch.zeros(1, 1, 1, 100)
+    preds[..., :10] = 1.0
+
+    auc = compute_auc_iou(preds, targets, k_values=(0.01, 0.10), steps=10)
+    assert torch.isclose(auc, torch.tensor(0.0))
+
+
+def test_auc_iou_invalid_k_values(dummy_data):
+    preds, targets = dummy_data
+
+    with pytest.raises(ValueError):
+        compute_auc_iou(preds, targets, k_values="all")  # type: ignore
+
+    with pytest.raises(ValueError):
+        compute_auc_iou(preds, targets, k_values=[0.01, 0.10])  # type: ignore
