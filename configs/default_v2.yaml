@@ -58,4 +58,4 @@ logger:
   # log loss and metrics on comet every n steps
   log_every_n_step: 5
 
-metrics: ["mse", "mae", "spearman", "ssim", "bias", "ccc", "ncc", "iou_top10", "iou_top05", "iou_top02", "iou_top01", "iou_top005", "auc_iou_top10", "auc_iou_full"]
+metrics: ["mse", "mae", "spearman", "ssim", "bias", "ccc", "ncc", "iou_top005", "iou_top01", "iou_top02", "iou_top05", "iou_top10", "auc_iou_top10", "auc_iou_full"]
