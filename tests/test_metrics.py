@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from src.metrics import compute_auc_iou, compute_bias, compute_mae, compute_mse, compute_spearman, compute_ssim, compute_topK_iou
+from src.metrics import compute_auc_iou, compute_bias, compute_mae, compute_mse, compute_ncc, compute_spearman, compute_ssim, compute_topK_iou
 
 
 @pytest.fixture
@@ -191,3 +191,37 @@ def test_auc_iou_invalid_k_values(dummy_data):
 
     with pytest.raises(ValueError):
         compute_auc_iou(preds, targets, k_values=[0.01, 0.10])  # type: ignore
+
+
+def test_ncc_perfect_correlation():
+    targets = torch.rand(4, 1, 16, 16)
+    preds = targets * 2.0 + 1.0  # linear transform preserves Pearson correlation
+    score = compute_ncc(preds, targets)
+    assert torch.isclose(score, torch.tensor(1.0), atol=1e-4)
+
+
+def test_ncc_perfect_correlation_with_mask():
+    targets = torch.rand(4, 1, 16, 16)
+    preds = targets * 2.0 + 1.0
+    mask = torch.ones_like(targets)
+    score = compute_ncc(preds, targets, mask=mask)
+    assert torch.isclose(score, torch.tensor(1.0), atol=1e-4)
+
+
+def test_ncc_range(dummy_data):
+    preds, targets = dummy_data
+    score = compute_ncc(preds, targets)
+    assert -1.0 <= score.item() <= 1.0
+
+
+def test_ncc_range_with_mask(dummy_data, dummy_mask):
+    preds, targets = dummy_data
+    score = compute_ncc(preds, targets, mask=dummy_mask)
+    assert -1.0 <= score.item() <= 1.0
+
+
+def test_ncc_empty_mask_edge_case(dummy_data):
+    preds, targets = dummy_data
+    empty_mask = torch.zeros_like(targets)
+    score = compute_ncc(preds, targets, mask=empty_mask)
+    assert torch.isnan(score)
