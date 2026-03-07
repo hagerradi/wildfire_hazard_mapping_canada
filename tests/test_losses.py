@@ -5,6 +5,7 @@ import torch.nn.functional as F
 from src.losses import (
     BCELoss,
     BernoulliKLLoss,
+    CCCLoss,
     DiceLoss,
     FocalLoss,
     MAELoss,
@@ -278,6 +279,59 @@ def test_bernoulli_kl_all_masked_is_finite(dummy_data):
     targets = torch.zeros_like(logits)
     mask = torch.zeros_like(logits)
     loss_fn = BernoulliKLLoss(eps=1e-6, clamp_logits=20.0)
+    result = loss_fn(logits, targets, mask)
+    assert torch.isfinite(result)
+
+
+# -------------------------
+# CCC
+# -------------------------
+
+
+def _ccc_reference(logits: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor | None, eps: float):
+    preds = torch.sigmoid(logits)
+    if mask is None:
+        fp = preds.flatten()
+        ft = targets.flatten()
+    else:
+        valid = mask.bool().flatten()
+        fp = preds.flatten()[valid]
+        ft = targets.flatten()[valid]
+
+    if fp.numel() == 0:
+        return preds.new_tensor(1.0)
+
+    mean_p = fp.mean()
+    mean_t = ft.mean()
+    var_p = fp.var(correction=0)
+    var_t = ft.var(correction=0)
+    cov_pt = ((fp - mean_p) * (ft - mean_t)).mean()
+
+    ccc = 2.0 * cov_pt / (var_p + var_t + (mean_p - mean_t) ** 2 + eps)
+    return 1.0 - ccc
+
+
+def test_ccc_loss_no_mask(dummy_data):
+    logits, targets, _ = dummy_data
+    loss_fn = CCCLoss(eps=1e-8)
+    expected = _ccc_reference(logits, targets, None, eps=1e-8)
+    result = loss_fn(logits, targets)
+    assert torch.allclose(result, expected, atol=1e-6)
+
+
+def test_ccc_loss_with_mask(dummy_data):
+    logits, targets, masks = dummy_data
+    loss_fn = CCCLoss(eps=1e-8)
+    expected = _ccc_reference(logits, targets, masks, eps=1e-8)
+    result = loss_fn(logits, targets, masks)
+    assert torch.allclose(result, expected, atol=1e-6)
+
+
+def test_ccc_loss_all_masked_is_finite(dummy_data):
+    logits, _, _ = dummy_data
+    targets = torch.zeros_like(logits)
+    mask = torch.zeros_like(logits)
+    loss_fn = CCCLoss(eps=1e-8)
     result = loss_fn(logits, targets, mask)
     assert torch.isfinite(result)
 
