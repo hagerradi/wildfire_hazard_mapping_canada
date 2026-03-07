@@ -238,3 +238,94 @@ def compute_auc_iou(
 
     # return mean of auc values (scalar)
     return torch.nanmean(torch.stack(aucs))
+
+
+def compute_ccc(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None, eps: float = 1e-8) -> torch.Tensor:
+    """
+    Computes the Concordance Correlation Coefficient (CCC), optionally using a mask.
+
+    CCC = 2 * cov(preds, targets) / (var(preds) + var(targets) + (mean(preds) - mean(targets))^2)
+
+    Returns a scalar tensor averaging CCC across the batch.
+    """
+    batch_size = preds.size(0)
+    flat_preds = preds.reshape(batch_size, -1).float()
+    flat_targets = targets.reshape(batch_size, -1).float()
+
+    min_valid = 2  # need at least 2 values for meaningful variance/covariance
+    cccs = []
+
+    if mask is None:
+        for i in range(batch_size):
+            p = flat_preds[i]
+            t = flat_targets[i]
+            mean_p = p.mean()
+            mean_t = t.mean()
+            var_p = p.var(correction=0)
+            var_t = t.var(correction=0)
+            cov_pt = ((p - mean_p) * (t - mean_t)).mean()
+            denom = var_p + var_t + (mean_p - mean_t) ** 2
+            cccs.append(2.0 * cov_pt / denom.clamp_min(eps))
+    else:
+        valid_mask = mask.bool().reshape(batch_size, -1)
+        for i in range(batch_size):
+            m = valid_mask[i]
+            if m.sum() < min_valid:
+                cccs.append(torch.tensor(float("nan"), device=preds.device))
+                continue
+            p = flat_preds[i][m]
+            t = flat_targets[i][m]
+            mean_p = p.mean()
+            mean_t = t.mean()
+            var_p = p.var(correction=0)
+            var_t = t.var(correction=0)
+            cov_pt = ((p - mean_p) * (t - mean_t)).mean()
+            denom = var_p + var_t + (mean_p - mean_t) ** 2
+            cccs.append(2.0 * cov_pt / denom.clamp_min(eps))
+
+    return torch.nanmean(torch.stack(cccs))
+
+
+def compute_ncc(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None, eps: float = 1e-8) -> torch.Tensor:
+    """
+    Computes Normalized Cross-Correlation (NCC) per sample, then averages.
+    NCC is equivalent to the Pearson correlation coefficient computed over pixel values.
+    Optionally uses a mask to restrict computation to valid pixels.
+    """
+    batch_size = preds.size(0)
+    flat_preds = preds.reshape(batch_size, -1).float()
+    flat_targets = targets.reshape(batch_size, -1).float()
+    min_valid = 2
+    nccs = []
+    if mask is None:
+        for i in range(batch_size):
+            p = flat_preds[i]
+            t = flat_targets[i]
+            if p.numel() < min_valid:
+                nccs.append(torch.tensor(float("nan"), device=preds.device))
+                continue
+            p_mean = p.mean()
+            t_mean = t.mean()
+            p_centered = p - p_mean
+            t_centered = t - t_mean
+            numer = (p_centered * t_centered).sum()
+            denom = torch.sqrt((p_centered**2).sum() * (t_centered**2).sum()).clamp_min(eps)
+            nccs.append(numer / denom)
+    else:
+        valid_mask = mask.bool().reshape(batch_size, -1)
+        for i in range(batch_size):
+            sample_valid_mask = valid_mask[i]
+            n_valid = sample_valid_mask.sum()
+            if n_valid < min_valid:
+                nccs.append(torch.tensor(float("nan"), device=preds.device))
+                continue
+            p_valid = flat_preds[i][sample_valid_mask]
+            t_valid = flat_targets[i][sample_valid_mask]
+            p_mean = p_valid.mean()
+            t_mean = t_valid.mean()
+            p_centered = p_valid - p_mean
+            t_centered = t_valid - t_mean
+            numer = (p_centered * t_centered).sum()
+            denom = torch.sqrt((p_centered**2).sum() * (t_centered**2).sum()).clamp_min(eps)
+            nccs.append(numer / denom)
+    return torch.nanmean(torch.stack(nccs))
