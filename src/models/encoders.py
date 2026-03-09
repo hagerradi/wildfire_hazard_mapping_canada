@@ -154,7 +154,7 @@ class WindFeatureEncoder(nn.Module):
         kernel_sizes = [4, 3, 3]
         strides = [4, 2, 2]
         paddings = [0, 1, 1]
-        in_ch = in_channels
+        in_ch = self.hidden_dims["mixer"][-1]
         for i, h_dim in enumerate(self.hidden_dims["local"]):
             local_path_layers.append(nn.Conv2d(in_ch, h_dim, kernel_size=kernel_sizes[i], stride=strides[i], padding=paddings[i]))
             local_path_layers.append(nn.GroupNorm(group_norm_kernel[i], h_dim))
@@ -166,7 +166,7 @@ class WindFeatureEncoder(nn.Module):
         # 128 -> 8 | 16 -> 16 channels
         self.global_path = nn.Sequential(
             nn.AvgPool2d(kernel_size=16, stride=16),  # 128 -> 8 (Fixed, no 'adaptive' logic)
-            nn.Conv2d(in_channels, self.hidden_dims["global"][0], kernel_size=1),
+            nn.Conv2d(self.hidden_dims["mixer"][-1], self.hidden_dims["global"][0], kernel_size=1),
         )
 
         # 4. Final Fusion (16 local + 16 global = 32 -> 16)
