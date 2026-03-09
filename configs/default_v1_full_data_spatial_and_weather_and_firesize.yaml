@@ -12,7 +12,7 @@ model:
   input_feature_list: ["spatial", "tabular"]
 
   tabular_hidden_dims:
-    weather: [32, 64]
+    weather: [32, 64, 128]
     fire_size: [8, 16]
 
   tabular_embed_dims:
@@ -25,13 +25,13 @@ model:
 
 optimizer:
   name: "AdamW" # "SGD", "Adam", "AdamW"
-  lr: 1.0e-3
+  lr: 7.0e-4
   loss: "kl" # or ["bce", "kl"], str for single loss or list for multiple weighted losses
   # loss_weights: {"bce": 0.8, "kl": 0.2} # use if loss is a list
 
 lr_scheduler:
-  name: null # options: "cosine_warmup", "plateau", "onecycle", "multistep" (or null)
-  # warmup_epochs: 5 # if using cosine_warmup
+  name: "cosine_warmup" # options: "cosine_warmup", "plateau", "onecycle", "multistep" (or null)
+  warmup_epochs: 5 # if using cosine_warmup
   # max_lr: 1.0e-3 # if using onecycle
   # patience: 5 # if using plateau
   # factor: 0.1 # if using plateau or multistep
@@ -70,7 +70,7 @@ data:
     - name: "weather"
       params:
         csv_name: "weather_table_processed.csv"
-        feature_names_list: ["temp", "rh", "prec", "ffmc", "dmc", "dc", "isi", "bui"] # other options: "wd", "ws", "fwi"
+        feature_names_list: ["temp", "rh", "prec", "ffmc", "dmc", "dc", "isi", "bui", "fwi", "ws"] # other options: "wd", "ws", "fwi"
         fire_weather_zone_id_col: "wx_zone"
         sampling_approach: "mode" # "mode" or "weighted"
         num_samples_per_patch: 256
