@@ -187,7 +187,7 @@ def get_processed_hex_ids(folder_path: str) -> list:
     return hex_ids
 
 
-def get_padding_params(H: int, W: int, win_h: int, win_w: int, overlap_ratio: int):
+def get_padding_params(H: int, W: int, win_h: int, win_w: int, overlap_ratio: float):
     if overlap_ratio <= 1.0:
         stride_h = max(1, int(win_h * (1 - overlap_ratio)))  # n_rows = (H-win_h)//stride_h + 1
         stride_w = max(1, int(win_w * (1 - overlap_ratio)))
