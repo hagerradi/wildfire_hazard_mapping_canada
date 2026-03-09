@@ -212,6 +212,55 @@ class BernoulliKLLoss(nn.Module):
         return loss.sum() / denom
 
 
+class CCCLoss(nn.Module):
+    """
+    Concordance Correlation Coefficient (CCC) loss with optional mask.
+    CCC measures agreement between predictions and targets, combining
+    correlation with bias. Loss = 1 - CCC, so perfect agreement yields 0.
+    Expects:
+      logits: shape (N, 1, H, W)
+      targets: same shape, values in [0,1]
+      mask: same shape (bool or 0/1), where 1 means valid pixel
+    """
+
+    def __init__(self, eps: float = 1e-8):
+        super().__init__()
+        self.eps = eps
+
+    def forward(self, logits: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None) -> torch.Tensor:
+        preds = torch.sigmoid(logits)
+        # Flatten the tensors: (Batch, Channels, H, W) -> (Batch, -1)
+        if mask is None:
+            flat_preds = preds.flatten()
+            flat_targets = targets.flatten()
+        else:
+            mask = mask.to(dtype=preds.dtype)
+            valid = mask.bool().flatten()
+            flat_preds = preds.flatten()[valid]
+            flat_targets = targets.flatten()[valid]
+        n = flat_preds.numel()
+        if n == 0:
+            return preds.new_tensor(1.0)
+        # 1. Calculate Means
+        mean_p = flat_preds.mean()
+        mean_t = flat_targets.mean()
+
+        # 2. Calculate Variances
+        var_p = flat_preds.var(correction=0)
+        var_t = flat_targets.var(correction=0)
+
+        # 3. Calculate Covariance
+        # Cov(X,Y) = E[(X - mu_x)(Y - mu_y)]
+        cov_pt = ((flat_preds - mean_p) * (flat_targets - mean_t)).mean()
+
+        # 4. Calculate CCC
+        # Formula: (2 * cov) / (var_x + var_y + (mu_x - mu_y)^2)
+        numerator = 2.0 * cov_pt
+        denominator = var_p + var_t + (mean_p - mean_t) ** 2 + self.eps
+        ccc = numerator / denominator
+        return 1.0 - ccc
+
+
 class WeightedLoss(nn.Module):
     """
     Combine multiple loss modules with weights.
