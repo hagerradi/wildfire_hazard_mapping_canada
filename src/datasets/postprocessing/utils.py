@@ -6,7 +6,6 @@ import numpy as np
 import pandas as pd
 import rasterio
 import torch
-from matplotlib import pyplot as plt
 from rasterio.profiles import Profile
 
 from data_preparation.grid_loader.output import load_output_burn_grid
@@ -304,3 +303,35 @@ def evaluate_and_visualize_hexels(
             hexel_metrics[f"all/{key}"] = float(mean_val)
 
     return hexel_metrics
+
+
+def print_and_log_eval_metrics(
+    test_metrics: str | dict[str, float] | None, hexel_metrics: dict[str, float] | None, experiment_logger: CometLogger | None = None
+) -> None:
+    """
+    Prints terminal metrics and Comet logging for both patch-level and hexel-level metrics.
+    """
+    # patch-level metrics
+    if isinstance(test_metrics, dict):
+        print("\n[Test patch-level metrics]")
+        for k, v in test_metrics.items():
+            print(f"  {k}: {v:.6f}")
+
+        if experiment_logger:
+            experiment_logger.log_metrics({f"test_{k}": v for k, v in test_metrics.items()})
+
+    # hexel-level metrics
+    if hexel_metrics:
+        print("\n[Test per-hexel and aggregated metrics]")
+        current_group = None
+
+        for k, v in hexel_metrics.items():
+            group, metric_name = k.split("/")
+
+            if current_group is not None and current_group != group:
+                print("")
+            current_group = group
+            print(f"  [{group}] {metric_name}: {v:.6f}")
+
+        if experiment_logger:
+            experiment_logger.log_metrics({f"hexel/{k}": v for k, v in hexel_metrics.items()})

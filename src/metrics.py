@@ -97,11 +97,11 @@ def compute_bias(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor)
     return ((preds - targets) * m).sum() / denom
 
 
-def compute_top_perc_iou(
+def compute_topK_iou(
     preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None, percentile: float = 0.90, eps: float = 1e-8
 ) -> torch.Tensor:
     """
-    Computes the Intersection over Union (IoU) on binarized top percentile maps.
+    Computes the Intersection over Union (IoU) on binarized top K percentile maps.
     """
     batch_size = preds.size(0)
     flat_preds = preds.reshape(batch_size, -1)
@@ -149,3 +149,92 @@ def compute_top_perc_iou(
             ious.append(intersection / (union + eps))
 
     return torch.nanmean(torch.stack(ious))
+
+
+def compute_auc_iou(
+    preds: torch.Tensor,
+    targets: torch.Tensor,
+    mask: torch.Tensor = None,
+    k_values: tuple[float, float] = (0.01, 0.99),
+    steps: int = 99,
+    eps: float = 1e-8,
+) -> torch.Tensor:
+    """
+    Computes the Area Under the Curve (AUC) for IoU for a specified continuous TopK perc. range.
+
+    Args:
+        k_values (tuple[float, float]): Tuple (min_k, max_k) defining the continuous range for eval.
+        steps (int): Number of points to evaluate within the continuous range.
+    """
+    batch_size = preds.size(0)
+    flat_preds = preds.reshape(batch_size, -1)
+    flat_targets = targets.reshape(batch_size, -1)
+
+    # validations of inputs
+    if not (isinstance(k_values, tuple) and len(k_values) == 2):
+        raise ValueError("k_values must be a tuple of (min_k, max_k).")
+    if not all(isinstance(k, (int, float)) for k in k_values):
+        raise ValueError("k_values must contain numeric values (int or float).")
+    min_k, max_k = float(k_values[0]), float(k_values[1])
+    if not (0.0 < min_k <= 1.0 and 0.0 < max_k <= 1.0):
+        raise ValueError("Each value in k_values must be within the open-closed interval (0, 1].")
+    if not min_k < max_k:
+        raise ValueError("k_values must satisfy min_k < max_k.")
+    if not isinstance(steps, int) or steps < 2:
+        raise ValueError("steps must be an integer greater than or equal to 2.")
+
+    k_tensor = torch.linspace(min_k, max_k, steps=steps, device=preds.device)
+    percentiles = 1.0 - k_tensor
+
+    aucs = []
+
+    if mask is None:
+        for i in range(batch_size):
+            p = flat_preds[i]
+            t = flat_targets[i]
+
+            p_thresh = torch.quantile(p.float(), percentiles)
+            t_thresh = torch.quantile(t.float(), percentiles)
+
+            p_bin = p.unsqueeze(0) >= p_thresh.unsqueeze(1)
+            t_bin = t.unsqueeze(0) >= t_thresh.unsqueeze(1)
+
+            intersection = (p_bin & t_bin).sum(dim=1).float()
+            union = (p_bin | t_bin).sum(dim=1).float()
+
+            ious = intersection / (union + eps)
+
+            auc = torch.trapz(ious, k_tensor)
+            max_area = k_tensor[-1] - k_tensor[0]
+
+            aucs.append(auc / max_area if max_area > 0 else torch.tensor(float("nan"), device=preds.device))
+    else:
+        valid_mask = mask.bool().reshape(batch_size, -1)
+        for i in range(batch_size):
+            sample_valid_mask = valid_mask[i]
+
+            if sample_valid_mask.sum() == 0:
+                aucs.append(torch.tensor(float("nan"), device=preds.device))
+                continue
+
+            p_valid = flat_preds[i][sample_valid_mask]
+            t_valid = flat_targets[i][sample_valid_mask]
+
+            p_thresh = torch.quantile(p_valid.float(), percentiles)
+            t_thresh = torch.quantile(t_valid.float(), percentiles)
+
+            p_bin = p_valid.unsqueeze(0) >= p_thresh.unsqueeze(1)
+            t_bin = t_valid.unsqueeze(0) >= t_thresh.unsqueeze(1)
+
+            intersection = (p_bin & t_bin).sum(dim=1).float()
+            union = (p_bin | t_bin).sum(dim=1).float()
+
+            ious = intersection / (union + eps)
+
+            auc = torch.trapz(ious, k_tensor)
+            max_area = k_tensor[-1] - k_tensor[0]
+
+            aucs.append(auc / max_area if max_area > 0 else torch.tensor(float("nan"), device=preds.device))
+
+    # return mean of auc values (scalar)
+    return torch.nanmean(torch.stack(aucs))
