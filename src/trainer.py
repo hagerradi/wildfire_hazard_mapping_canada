@@ -59,16 +59,16 @@ class Trainer:
         Define model, loss function and optimizer.
         """
 
-        # Flag to indicate we are including auxillary features
-        self.use_auxillary = "auxillary" in self.config.model.input_feature_list
+        # Flag to indicate we are including auxilary features
+        self.use_auxilary = "auxilary" in self.config.model.input_feature_list
 
-        # Multi-source path: spatial grids + auxillary data.
-        if self.use_auxillary:
+        # Multi-source path: spatial grids + auxilary data.
+        if self.use_auxilary:
             if not self.aux_input_dims:
-                raise ValueError("Config requests auxillary features, but no auxillary dim. were detected.")
+                raise ValueError("Config requests auxilary features, but no auxilary dim. were detected.")
 
-            print(f"[Trainer] Mode: Multi-Source (Spatial + auxillary)")
-            print(f"[Trainer] Spatial Channels: {self.spatial_input_channels}, Auxillary Dim: {self.aux_input_dims}")
+            print(f"[Trainer] Mode: Multi-Source (Spatial + auxilary)")
+            print(f"[Trainer] Spatial Channels: {self.spatial_input_channels}, Auxilary Dim: {self.aux_input_dims}")
 
             self.model = MultiSourceUNet(
                 input_channels=self.spatial_input_channels,
@@ -78,10 +78,10 @@ class Trainer:
                 use_skip_connections=self.config.model.use_skip_connections,
                 use_transpose_conv=self.config.model.use_transpose_conv,
                 use_activation_after_upsampling=self.config.model.use_activation_after_upsampling,
-                auxillary_input_dims=self.aux_input_dims,
-                auxillary_hidden_dims=self.config.model.auxillary_hidden_dims,
-                auxillary_embed_dims=self.config.model.auxillary_embed_dims,
-                auxillary_feature_encoder_poolings=self.config.model.auxillary_poolings,
+                auxilary_input_dims=self.aux_input_dims,
+                auxilary_hidden_dims=self.config.model.auxilary_hidden_dims,
+                auxilary_embed_dims=self.config.model.auxilary_embed_dims,
+                auxilary_feature_encoder_poolings=self.config.model.auxilary_poolings,
             )
         # Single-source path: spatial grids only.
         else:
@@ -147,14 +147,14 @@ class Trainer:
             raise ValueError("Batch is missing required 'grid' data.")
         inputs, targets, masks = [t.to(self.device) for t in batch["grid"]]
 
-        # Unpack all potential auxillary data
-        auxillary_data = {}
+        # Unpack all potential auxilary data
+        auxilary_data = {}
         for key, value in batch.items():
             if key == "grid":
                 continue
-            auxillary_data[key] = value.to(self.device)
+            auxilary_data[key] = value.to(self.device)
 
-        predictions = self.model(inputs, auxillary_data)
+        predictions = self.model(inputs, auxilary_data)
 
         loss_out = self.loss_fn(predictions, targets, masks)
 
