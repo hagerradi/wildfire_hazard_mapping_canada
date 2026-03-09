@@ -84,21 +84,22 @@ def compute_ssim(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor 
     return structural_similarity_index_measure(preds_masked, targets_masked, data_range=1.0)  # type: ignore
 
 
-def compute_bias(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+def compute_bias(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor | None = None) -> torch.Tensor:
     """
     preds, targets, mask: same shape
     returns scalar bias (mean(preds-target) over valid pixels)
     """
     preds = preds.float()
     targets = targets.float()
-    m = (mask > 0).float()
+    if mask is not None:
+        valid = (mask > 0).float()
 
-    denom = m.sum().clamp_min(1.0)  # avoid divide-by-zero
-    return ((preds - targets) * m).sum() / denom
+    denom = valid.sum().clamp_min(1.0)  # avoid divide-by-zero
+    return ((preds - targets) * valid).sum() / denom
 
 
 def compute_topK_iou(
-    preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None, percentile: float = 0.90, eps: float = 1e-8
+    preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor | None = None, percentile: float = 0.90, eps: float = 1e-8
 ) -> torch.Tensor:
     """
     Computes the Intersection over Union (IoU) on binarized top K percentile maps.
@@ -329,3 +330,43 @@ def compute_ncc(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor =
             denom = torch.sqrt((p_centered**2).sum() * (t_centered**2).sum()).clamp_min(eps)
             nccs.append(numer / denom)
     return torch.nanmean(torch.stack(nccs))
+
+
+def compute_kl_divergence(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None, eps: float = 1e-10) -> torch.Tensor:
+    """
+    Computes the Kullback-Leibler (KL) Divergence, optionally using a mask.
+    The tensors are normalized per-sample to form a valid probability distribution.
+
+    KL(P||Q) = sum(P * log(P / Q))
+    where P is the target distribution and Q is the predicted distribution.
+
+    Returns a scalar tensor averaging KL across the batch.
+    """
+    batch_size = preds.size(0)
+    # Ensure non-negative and add epsilon to avoid log(0) or div by 0
+    flat_preds = preds.reshape(batch_size, -1).float().clamp_min(eps)
+    flat_targets = targets.reshape(batch_size, -1).float().clamp_min(eps)
+
+    kl_divs = []
+
+    for i in range(batch_size):
+        p_raw = flat_targets[i]
+        q_raw = flat_preds[i]
+
+        if mask is not None:
+            valid = mask.bool().reshape(batch_size, -1)[i]
+            if valid.sum() == 0:
+                kl_divs.append(torch.tensor(float("nan"), device=preds.device))
+                continue
+            p_raw = p_raw[valid]
+            q_raw = q_raw[valid]
+
+        # Normalize to create a probability distribution (sum to 1)
+        p = p_raw / p_raw.sum().clamp_min(eps)
+        q = q_raw / q_raw.sum().clamp_min(eps)
+
+        # Compute KL(P || Q)
+        kl = torch.sum(p * torch.log(p / q))
+        kl_divs.append(kl)
+
+    return torch.nanmean(torch.stack(kl_divs))

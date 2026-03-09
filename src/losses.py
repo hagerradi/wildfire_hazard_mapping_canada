@@ -227,38 +227,55 @@ class CCCLoss(nn.Module):
         super().__init__()
         self.eps = eps
 
-    def forward(self, logits: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None) -> torch.Tensor:
+    def forward(self, logits: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor | None = None) -> torch.Tensor:
         preds = torch.sigmoid(logits)
-        # Flatten the tensors: (Batch, Channels, H, W) -> (Batch, -1)
-        if mask is None:
-            flat_preds = preds.flatten()
-            flat_targets = targets.flatten()
+
+        # Flatten to (Batch, Pixels)
+        N = preds.shape[0]
+        preds = preds.view(N, -1)
+        targets = targets.view(N, -1)
+
+        if mask is not None:
+            mask = mask.view(N, -1).to(dtype=preds.dtype)
+            # Use mask to zero out invalid pixels
+            preds = preds * mask
+            targets = targets * mask
+
+            # Count valid pixels per sample
+            n = mask.sum(dim=1)
         else:
-            mask = mask.to(dtype=preds.dtype)
-            valid = mask.bool().flatten()
-            flat_preds = preds.flatten()[valid]
-            flat_targets = targets.flatten()[valid]
-        n = flat_preds.numel()
-        if n == 0:
-            return preds.new_tensor(1.0)
-        # 1. Calculate Means
-        mean_p = flat_preds.mean()
-        mean_t = flat_targets.mean()
+            n = torch.full((N,), preds.shape[1], device=preds.device, dtype=preds.dtype)
 
-        # 2. Calculate Variances
-        var_p = flat_preds.var(correction=0)
-        var_t = flat_targets.var(correction=0)
+        # 1. Calculate Means (per sample)
+        # If masking, we must divide by n, not the total width
+        sum_p = preds.sum(dim=1)
+        sum_t = targets.sum(dim=1)
+        mean_p = sum_p / (n + self.eps)
+        mean_t = sum_t / (n + self.eps)
 
-        # 3. Calculate Covariance
-        # Cov(X,Y) = E[(X - mu_x)(Y - mu_y)]
-        cov_pt = ((flat_preds - mean_p) * (flat_targets - mean_t)).mean()
+        # 2. Calculate Variances & Covariance (per sample)
+        # Using the formula: Var(X) = E[X^2] - (E[X])^2
+        # We apply the mask again during squaring to ensure invalid pixels stay 0
+        mean_p2 = (preds**2).sum(dim=1) / (n + self.eps)
+        mean_t2 = (targets**2).sum(dim=1) / (n + self.eps)
+        mean_pt = (preds * targets).sum(dim=1) / (n + self.eps)
 
-        # 4. Calculate CCC
-        # Formula: (2 * cov) / (var_x + var_y + (mu_x - mu_y)^2)
+        var_p = mean_p2 - mean_p**2
+        var_t = mean_t2 - mean_t**2
+        cov_pt = mean_pt - (mean_p * mean_t)
+
+        # 3. Calculate CCC
         numerator = 2.0 * cov_pt
         denominator = var_p + var_t + (mean_p - mean_t) ** 2 + self.eps
         ccc = numerator / denominator
-        return 1.0 - ccc
+
+        # 4. Filter and Average
+        # Skip samples where n == 0 to avoid biased gradients or NaNs
+        valid_samples = n > 0
+        if not valid_samples.any():
+            return preds.new_tensor(0.0)
+
+        return 1.0 - ccc[valid_samples].mean()
 
 
 class WeightedLoss(nn.Module):

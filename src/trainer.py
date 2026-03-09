@@ -15,7 +15,7 @@ from src.losses import WeightedLoss
 from src.models.unet import BaselineUNet, MultiSourceUNet
 from src.models.utils import get_nbr_model_parameters
 from src.schedulers import build_lr_scheduler
-from utils import AVAILABLE_METRICS, build_single_loss, set_device
+from src.utils import AVAILABLE_METRICS, build_single_loss, set_device
 
 
 class Trainer:

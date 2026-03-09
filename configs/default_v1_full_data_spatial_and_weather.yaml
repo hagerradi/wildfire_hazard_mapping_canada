@@ -81,6 +81,6 @@ logger:
   experiment_name: "unet_full_data_spatial_weather"
   tags: ["baseline", "full_data", "modelling_approach=1", "fuel_one_hot_encoding", "KL-loss", "3inputfeatures", "weather-tabular"]
   # log loss and metrics on comet every n steps
-  log_every_n_step: 5
+  log_every_n_step: 10
 
 metrics: ["mse", "mae", "spearman", "ssim", "bias", "ccc", "ncc", "iou_top005", "iou_top01", "iou_top02", "iou_top05", "iou_top10", "auc_iou_top10", "auc_iou_full"]
