@@ -127,6 +127,7 @@ def generate_data_samples(
     is_array_job: bool = False,
     task_id: int = 0,
     num_tasks: int = 1,
+    hex_ids: list | None = None,
 ):
     if save_dir:
         out_dir = save_dir
@@ -138,7 +139,7 @@ def generate_data_samples(
 
     if is_array_job:
         # 1. Get all Hex IDs
-        hex_ids = ["41"]  # find_hex_ids(root_dir)
+        hex_ids = find_hex_ids(root_dir) if hex_ids is None else hex_ids
         # Sort them to ensure every worker sees the same order
         hex_ids = sorted(list(hex_ids))
 
@@ -149,7 +150,7 @@ def generate_data_samples(
             print(f"[Worker {task_id}/{num_tasks}] Processing {len(my_hexels)} hexels out of {len(hex_ids)} total.")
             hex_ids = my_hexels
     else:
-        hex_ids = ["41"]  # find_hex_ids(root_dir)
+        hex_ids = find_hex_ids(root_dir) if hex_ids is None else hex_ids
 
     for hex_id in hex_ids:
         if hex_id in completed_hex_ids:
@@ -201,6 +202,14 @@ def main():
         default="dist",
         choices=["dist", "random", "weather_zone_id"],
     )
+    parser.add_argument(
+        "--hex_ids",
+        type=str,
+        nargs="+",
+        required=False,
+        default=None,
+        help="List of hex IDs to use for the data prep",
+    )
     parser.add_argument("--is_array_job", action="store_true", help="Boolean to indicate if using SLURM job array")
     parser.add_argument("--task_id", type=int, default=0, help="SLURM array ID")
     parser.add_argument("--num_tasks", type=int, default=1, help="Total number of array tasks")
@@ -218,6 +227,7 @@ def main():
         is_array_job=args.is_array_job,
         task_id=args.task_id,
         num_tasks=args.num_tasks,
+        hex_ids=args.hex_ids,
     )
 
 
