@@ -10,7 +10,7 @@ import yaml
 
 from src.config import Config, GridParams
 from src.datasets.dataset import get_test_dataloader, get_train_val_dataloader
-from src.datasets.postprocessing.utils import reconstruct_and_visualize_hexels
+from src.datasets.postprocessing.utils import evaluate_and_visualize_hexels, print_and_log_eval_metrics
 from src.datasets.utils import get_dataset_dimensions
 from src.trainer import Trainer
 from src.utils import seed_everything
@@ -97,6 +97,8 @@ def main() -> None:
     )
     test_metrics, test_predictions = trainer.test(test_loader, return_predictions=True)
 
+    hexel_metrics = {}
+
     if args.log_test_predicted_hexels:
         source_map = {s.name: s for s in config.data.input_sources}
         grid_source = source_map.get("grid") if "grid" in source_map else None
@@ -105,17 +107,17 @@ def main() -> None:
             out_norm = grid_source.params.out_norm
 
         if isinstance(test_predictions, np.ndarray):  # for mypy
-            reconstruct_and_visualize_hexels(
-                test_predictions=test_predictions, config=config, out_norm=out_norm, experiment_logger=trainer.logger
+            hexel_metrics = evaluate_and_visualize_hexels(
+                test_predictions=test_predictions,
+                config=config,
+                out_norm=out_norm,
+                device=trainer.device,
+                experiment_logger=trainer.logger,
+                metric_functions=trainer.metric_functions,
             )
 
-    print("\n[Test metrics]")
-    if isinstance(test_metrics, dict):
-        for k, v in test_metrics.items():
-            print(f"  {k}: {v:.6f}")
-        # Log test results to comet, at the end
-        if trainer.logger:
-            trainer.logger.log_metrics({f"test_{k}": v for k, v in test_metrics.items()})
+    # print metrics in terminal and log into comet
+    print_and_log_eval_metrics(test_metrics=test_metrics, hexel_metrics=hexel_metrics, experiment_logger=trainer.logger)
 
 
 if __name__ == "__main__":

@@ -11,12 +11,15 @@ import time
 import numpy as np
 import yaml
 
-from datasets.postprocessing.utils import reconstruct_and_visualize_hexels
 from src.config import Config, GridParams
 from src.datasets.dataset import get_test_dataloader
+from src.datasets.postprocessing.utils import evaluate_and_visualize_hexels, print_and_log_eval_metrics
 from src.datasets.utils import get_dataset_dimensions
 from src.trainer import Trainer
-from src.utils import seed_everything, visualize_model_predictions
+from src.utils import (
+    seed_everything,
+    visualize_model_predictions,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -129,13 +132,19 @@ def main() -> None:
     # Save predictions
     np.save(os.path.join(config.save_dir, "test_predictions.npy"), test_predictions)
 
-    print("\n[Test metrics]")
-    if isinstance(test_metrics, dict):
-        for k, v in test_metrics.items():
-            print(f"  {k}: {v:.6f}")
+    if isinstance(test_predictions, np.ndarray):
+        hexel_metrics = evaluate_and_visualize_hexels(
+            test_predictions=test_predictions,
+            config=config,
+            out_norm=out_norm,
+            device=trainer.device,
+            experiment_logger=None,
+            metric_functions=trainer.metric_functions,
+        )
 
-    if isinstance(test_predictions, np.ndarray):  # for mypy
-        reconstruct_and_visualize_hexels(test_predictions=test_predictions, config=config, out_norm=out_norm)
+        # print metrics in terminal and log into comet
+        print_and_log_eval_metrics(test_metrics=test_metrics, hexel_metrics=hexel_metrics, experiment_logger=trainer.logger)
+
     print(f"=======Total Evaluation Time {round(time.time()-start_time, 3)}s========")
     print(f"=======Prediction Time {round(preds_time, 3)}s========")
 
