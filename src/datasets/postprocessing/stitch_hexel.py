@@ -19,7 +19,7 @@ def stitch_windows(
         coords (list of tuples): List of (row, col) top-left coordinates for each window.
         masks (list of np.ndarray): List of masks for the windows. True if valid value
         original_shape (tuple): Shape of the target hexel (H, W, C).
-        mode (str): How to combine/stitch the windows (Options: mean, max)
+        mode (str): How to combine/stitch the windows (Options: mean, max, center_crop)
     Returns:
         np.array: The reconstructed image (Shape: original_shape, (H,W))
     """
@@ -78,7 +78,7 @@ def stitch_windows(
 
     elif mode == "center_crop":
         print("==========Stitch model is center crop===============")
-        H, W = original_shape
+        H, W = original_shape[:2]
         accumulator = np.zeros(original_shape, dtype=dtype)
         halo = (window_size - center_crop_size) // 2
         for window, mask, (r, c) in zip(windows, masks, coords):
