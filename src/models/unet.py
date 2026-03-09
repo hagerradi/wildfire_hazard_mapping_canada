@@ -153,7 +153,7 @@ class MultiSourceUNet(UNetBase):
         # Build encoders for each extra auxilary feature type.
         if self.auxilary_input_dims:
             for name, input_dim in self.auxilary_input_dims.items():
-                if name == "wind":
+                if name == "wind_grid":
                     hidden_dims = self.auxilary_hidden_dims.get(name, {"mixer": [16], "local": [32, 64, 16], "global": [16]})
                     if isinstance(hidden_dims, dict):
                         encoders[name] = WindFeatureEncoder(
@@ -222,7 +222,8 @@ class MultiSourceUNet(UNetBase):
                 if name in x_auxilary:
                     encoder_aux = self.encoder[name]  # type: ignore
                     encoder_emb = encoder_aux(x_auxilary[name])
-                    if name == "wind":
+                    if name == "wind_grid":
+                        # print("====================in wind grid==================")
                         x_wind = encoder_emb
                         continue
                     tabular_embeddings.append(encoder_emb)
