@@ -14,7 +14,7 @@ model:
   auxilary_hidden_dims:
     weather: [32, 64]
     fire_size: [8, 16]
-    wind:
+    wind_grid:
       mixer: [16]
       local: [32,64,16] #kernel_sizes/strides/paddings/group_norm_kernel are hardcoded so need to change that in encoders.py
       global: [16]
