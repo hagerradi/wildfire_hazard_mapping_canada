@@ -75,10 +75,10 @@ def main() -> None:
     test_loader = get_test_dataloader(config=config.data, modelling_approach=config.modelling_approach, seed=seed)
 
     # Get all data sources from the test dataset
-    spatial_channels, aux_input_dims = get_dataset_dimensions(test_loader.dataset)
-    print(f"Detected Data Dimensions: Spatial={spatial_channels} | Aux={aux_input_dims}")
+    spatial_channels, auxiliary_input_dims = get_dataset_dimensions(test_loader.dataset)
+    print(f"Detected Data Dimensions: Spatial={spatial_channels} | Auxilary={auxiliary_input_dims}")
 
-    trainer = Trainer(config, spatial_input_channels=spatial_channels, aux_input_dims=aux_input_dims)
+    trainer = Trainer(config, spatial_input_channels=spatial_channels, auxiliary_input_dims=auxiliary_input_dims)
 
     # ---------- Load best checkpoint ----------
     # Try best.pth first, fall back to last.pth if needed
