@@ -32,6 +32,12 @@ def parse_args() -> argparse.Namespace:
         help="Path to YAML config file.",
     )
     parser.add_argument(
+        "--stitch_mode",
+        type=str,
+        default="mean",
+        help="How to stitch the hexel",
+    )
+    parser.add_argument(
         "--visualize_predictions",
         action="store_true",
         help="Boolean flag to visualize some random predictions vs. targets",
@@ -140,6 +146,7 @@ def main() -> None:
             device=trainer.device,
             experiment_logger=None,
             metric_functions=trainer.metric_functions,
+            stitch_mode=args.stitch_mode,
         )
 
         # print metrics in terminal and log into comet

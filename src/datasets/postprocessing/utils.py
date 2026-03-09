@@ -196,6 +196,7 @@ def evaluate_and_visualize_hexels(
     device: torch.device,
     experiment_logger: CometLogger | None = None,
     metric_functions: dict[str, Callable] | None = None,
+    stitch_mode: str = "mean",
 ) -> dict[str, float]:
     """
     A util function to re-construct predicted hexels out of test predictions, and visualize side-by-side with the Groundtruth.
@@ -246,7 +247,7 @@ def evaluate_and_visualize_hexels(
             hex_id=hex_id,
             modelling_approach=modelling_approach,
             out_norm=out_norm,
-            stitch_mode="mean",
+            stitch_mode=stitch_mode,
             win_h=128,
             win_w=128,
         )

@@ -77,6 +77,7 @@ def stitch_windows(
         return accumulator
 
     elif mode == "center_crop":
+        print("==========Stitch model is center crop===============")
         H, W = original_shape
         accumulator = np.zeros(original_shape, dtype=dtype)
         halo = (window_size - center_crop_size) // 2
