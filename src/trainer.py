@@ -19,10 +19,10 @@ from utils import AVAILABLE_METRICS, build_single_loss, set_device
 
 
 class Trainer:
-    def __init__(self, config: Config, spatial_input_channels: int | None = None, aux_input_dims: dict[str, int] | None = None):
+    def __init__(self, config: Config, spatial_input_channels: int | None = None, auxiliary_input_dims: dict[str, int] | None = None):
         self.config = config
         self.spatial_input_channels = spatial_input_channels
-        self.aux_input_dims = aux_input_dims if aux_input_dims is not None else {}
+        self.aux_input_dims = auxiliary_input_dims if auxiliary_input_dims is not None else {}
 
         # Set device
         self.device = set_device()

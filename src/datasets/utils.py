@@ -34,15 +34,15 @@ def get_dataset_dimensions(dataset) -> tuple[int | None, dict[str, int]]:
     sources = getattr(dataset, "sources", {})
 
     spatial_channels = None
-    aux_input_dims = {}
+    auxiliary_input_dims = {}
 
     for name, source in sources.items():
         if name == "grid":
             spatial_channels = source.input_dim()
         else:
-            aux_input_dims[name] = source.input_dim()
+            auxiliary_input_dims[name] = source.input_dim()
 
-    return spatial_channels, aux_input_dims
+    return spatial_channels, auxiliary_input_dims
 
 
 def fill_nan_channel_mean_numpy(arr: np.ndarray) -> np.ndarray:
