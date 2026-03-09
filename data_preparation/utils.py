@@ -187,6 +187,36 @@ def get_processed_hex_ids(folder_path: str) -> list:
     return hex_ids
 
 
+def get_padding_params(H: int, W: int, win_h: int, win_w: int, overlap_ratio: int | float):
+    if overlap_ratio <= 1.0:
+        stride_h = max(1, int(win_h * (1 - overlap_ratio)))  # n_rows = (H-win_h)//stride_h + 1
+        stride_w = max(1, int(win_w * (1 - overlap_ratio)))
+
+        # Adding padding for the edges (bottom and right only)
+        pad_top, pad_left = 0, 0
+        pad_bot = stride_h - (H - win_h) % stride_h if (H - win_h) % stride_h != 0 else 0
+        pad_right = stride_w - (W - win_w) % stride_w if (W - win_w) % stride_w != 0 else 0
+
+    else:
+        # Halo padding logic for center-crop stitching
+        overlap_ratio = int(overlap_ratio)
+        stride_h = overlap_ratio
+        stride_w = overlap_ratio
+
+        halo_h = (win_h - stride_h) // 2
+        halo_w = (win_w - stride_w) // 2
+
+        # Calculate extra padding to ensure grid divisibility
+        pad_h_extra = (stride_h - (H % stride_h)) % stride_h
+        pad_w_extra = (stride_w - (W % stride_w)) % stride_w
+
+        # Pad top/left with halo, bottom/right with halo + extra
+        pad_top, pad_bot = halo_h, halo_h + pad_h_extra
+        pad_left, pad_right = halo_w, halo_w + pad_w_extra
+
+    return pad_top, pad_bot, pad_left, pad_right, stride_h, stride_w
+
+
 def plot_split_window_hexel(windows, channel_index=0, max_cols=5, figsize=(15, 15)):
     """
     Plots a list/array of 3D windows in a subplot grid.
