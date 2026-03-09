@@ -82,7 +82,7 @@ data:
         num_samples_per_patch: 128
         transforms_list: []
         augmentation_prob: 0.0
-    - name: "wind"
+    - name: "wind_grid"
       params:
         feature_names_list: ["wind_grid"]
         out_norm: "min_max"
