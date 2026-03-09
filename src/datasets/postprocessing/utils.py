@@ -171,7 +171,8 @@ def get_hexel_binary_maps(pred_grid: np.ndarray, gt_grid: np.ndarray, percentile
     n_valid = len(p_valid)
     if n_valid > 0:
         # get count (number of elements) for the specific top K %
-        k = int(np.ceil(percentile * n_valid))
+        top_fraction = 1.0 - percentile
+        k = int(np.ceil(top_fraction * n_valid))
         if k >= n_valid:
             pred_bin[valid_mask] = True
             gt_bin[valid_mask] = True
