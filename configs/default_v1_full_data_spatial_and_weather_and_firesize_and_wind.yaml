@@ -22,7 +22,7 @@ model:
   auxilary_embed_dims:
     weather: 128
     fire_size: 16
-    wind: 16
+    wind_grid: 16
 
   auxilary_poolings:
     weather: "max" # max, mean, attention

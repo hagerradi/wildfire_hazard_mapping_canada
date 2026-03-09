@@ -217,7 +217,7 @@ class MultiSourceUNet(UNetBase):
 
         # Extra auxilary encoders path.
         x_wind = None
-        if self.auxillary_input_dims and x_auxilary is not None:
+        if self.auxilary_input_dims and x_auxilary is not None:
             for name in self.auxilary_input_dims.keys():
                 if name in x_auxilary:
                     encoder_aux = self.encoder[name]  # type: ignore
