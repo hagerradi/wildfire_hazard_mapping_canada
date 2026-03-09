@@ -3,7 +3,13 @@ import pandas as pd
 
 
 def stitch_windows(
-    windows: list[np.ndarray], coords: list[tuple], masks: list[np.ndarray], original_shape: tuple, mode: str = "mean"
+    windows: list[np.ndarray],
+    coords: list[tuple],
+    masks: list[np.ndarray],
+    original_shape: tuple,
+    mode: str = "mean",
+    window_size: int = 128,
+    center_crop_size: int = 64,
 ) -> np.ndarray:
     """
     Reconstructs an image from overlapping windows using either averaging or maximization.
@@ -68,6 +74,19 @@ def stitch_windows(
         # Replace remaining -inf with 0 (areas where no window was placed)
         accumulator[np.isinf(accumulator)] = 0.0
 
+        return accumulator
+
+    elif mode == "center_crop":
+        H, W = original_shape
+        accumulator = np.zeros(original_shape, dtype=dtype)
+        halo = (window_size - center_crop_size) // 2
+        for window, mask, (r, c) in zip(windows, masks, coords):
+            window[~mask] = 0.0
+            center_pred = window[halo : halo + center_crop_size, halo : halo + center_crop_size]
+            valid_h = min(center_crop_size, H - r)
+            valid_w = min(center_crop_size, W - c)
+            if valid_h > 0 and valid_w > 0:
+                accumulator[r : r + valid_h, c : c + valid_w] = center_pred[:valid_h, :valid_w]
         return accumulator
 
     else:
