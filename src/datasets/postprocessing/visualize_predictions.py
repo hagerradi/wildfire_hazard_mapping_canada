@@ -169,7 +169,7 @@ def plot_hexbin_distribution(
     else:
         max_limit = 0.15
 
-    fig, ax = plt.subplots(figsize=(8, 8))
+    fig, ax = plt.subplots(figsize=(8, 7))
     hb = ax.hexbin(gt_vals, pred_vals, gridsize=100, cmap="viridis", bins="log", mincnt=1)
 
     ax.plot([0, max_limit], [0, max_limit], color="black", linestyle="--", linewidth=2, label="Perfect Alignment")
