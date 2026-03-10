@@ -9,7 +9,16 @@ from matplotlib import pyplot as plt
 from torch.utils.data import DataLoader
 
 from losses import BCELoss, BernoulliKLLoss, DiceLoss, FocalLoss, MAELoss, MSELoss
-from src.metrics import compute_auc_iou, compute_bias, compute_mae, compute_mse, compute_spearman, compute_ssim, compute_topK_iou
+from src.metrics import (
+    compute_auc_iou,
+    compute_bias,
+    compute_mae,
+    compute_mse,
+    compute_spearman,
+    compute_ssim,
+    compute_topK_iou,
+    compute_topK_mae,
+)
 
 AVAILABLE_METRICS: dict[str, Callable[..., torch.Tensor]] = {
     "mse": compute_mse,
@@ -24,6 +33,8 @@ AVAILABLE_METRICS: dict[str, Callable[..., torch.Tensor]] = {
     "iou_top005": partial(compute_topK_iou, percentile=0.995),
     "auc_iou_full": partial(compute_auc_iou, k_values=(0.01, 0.99), steps=99),  # AUC on full range of K (granularity 1%)
     "auc_iou_top10": partial(compute_auc_iou, k_values=(0.01, 0.10), steps=10),  # AUC for top 10% (granularity 1%)
+    "mae_top10": partial(compute_topK_mae, percentile=0.90),
+    "mae_top05": partial(compute_topK_mae, percentile=0.95),
 }
 
 AVAILABLE_LR_SCHEDULERS = ["onecycle", "cosine_warmup", "plateau", "multistep"]
