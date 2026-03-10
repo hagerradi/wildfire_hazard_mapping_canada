@@ -12,6 +12,7 @@ from losses import BCELoss, BernoulliKLLoss, DiceLoss, FocalLoss, MAELoss, MSELo
 from src.metrics import (
     compute_auc_iou,
     compute_bias,
+    compute_ece,
     compute_mae,
     compute_mse,
     compute_spearman,
@@ -35,6 +36,7 @@ AVAILABLE_METRICS: dict[str, Callable[..., torch.Tensor]] = {
     "auc_iou_top10": partial(compute_auc_iou, k_values=(0.01, 0.10), steps=10),  # AUC for top 10% (granularity 1%)
     "mae_top10": partial(compute_topK_mae, percentile=0.90),
     "mae_top05": partial(compute_topK_mae, percentile=0.95),
+    "ece": compute_ece,
 }
 
 AVAILABLE_LR_SCHEDULERS = ["onecycle", "cosine_warmup", "plateau", "multistep"]

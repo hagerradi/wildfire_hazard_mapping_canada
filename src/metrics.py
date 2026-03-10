@@ -298,3 +298,45 @@ def compute_topK_mae(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Ten
             errors.append(mae)
 
     return torch.nanmean(torch.stack(errors))
+
+
+def compute_ece(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None, num_bins: int = 100) -> torch.Tensor:
+    """
+    Computes the standard Expected Calibration Error (ECE) for probabilistic predictions.
+    Bins predictions into `num_bins` and weights the absolute error in each bin
+    by the proportion of total valid pixels that fall into that bin.
+    """
+    if mask is not None:
+        valid_mask = mask.bool()
+        p = preds[valid_mask]
+        t = targets[valid_mask]
+    else:
+        p = preds.flatten()
+        t = targets.flatten()
+
+    if p.numel() == 0:
+        return torch.tensor(float("nan"), device=preds.device)
+
+    bin_boundaries = torch.linspace(0.0, 1.0, steps=num_bins + 1, device=preds.device)
+    ece = torch.tensor(0.0, device=preds.device)
+
+    for i in range(num_bins):
+        bin_lower = bin_boundaries[i]
+        bin_upper = bin_boundaries[i + 1]
+
+        # Inclusively bound the final bin
+        if i == num_bins - 1:
+            in_bin = (p >= bin_lower) & (p <= bin_upper)
+        else:
+            in_bin = (p >= bin_lower) & (p < bin_upper)
+
+        prop_in_bin = in_bin.float().mean()
+
+        if prop_in_bin > 0:
+            avg_target_in_bin = t[in_bin].float().mean()
+            avg_pred_in_bin = p[in_bin].mean()
+
+            # Add the weighted absolute difference to the total ECE
+            ece += torch.abs(avg_pred_in_bin - avg_target_in_bin) * prop_in_bin
+
+    return ece
