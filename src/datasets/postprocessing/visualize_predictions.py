@@ -172,14 +172,14 @@ def plot_hexbin_distribution(
     fig, ax = plt.subplots(figsize=(8, 8))
     hb = ax.hexbin(gt_vals, pred_vals, gridsize=100, cmap="viridis", bins="log", mincnt=1)
 
-    ax.plot([0, max_limit], [0, max_limit], color="white", linestyle="--", linewidth=2, label="Perfect Alignment")
+    ax.plot([0, max_limit], [0, max_limit], color="black", linestyle="--", linewidth=2, label="Perfect Alignment")
 
     ax.set_title(f"Probabilities Distribution: Preds vs Targets (GT) - Hex {hex_id_str}")
     ax.set_xlabel("Ground Truth Probability")
     ax.set_ylabel("Predicted Probability")
 
-    ax.set_xlim(-0.005, max_limit)
-    ax.set_ylim(-0.005, max_limit)
+    ax.set_xlim(0, max_limit)
+    ax.set_ylim(0, max_limit)
 
     fig.colorbar(hb, ax=ax, label="Log(Count of Pixels)")
     ax.legend()
