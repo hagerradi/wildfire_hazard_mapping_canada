@@ -238,3 +238,63 @@ def compute_auc_iou(
 
     # return mean of auc values (scalar)
     return torch.nanmean(torch.stack(aucs))
+
+
+def compute_topK_mae(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None, percentile: float = 0.90) -> torch.Tensor:
+    """
+    Computes the Mean Absolute Error (MAE) specifically for the Top-K probability pixels.
+    Evaluates pixels where either the prediction OR the target falls in their respective Top-K percentile.
+    """
+    batch_size = preds.size(0)
+    flat_preds = preds.reshape(batch_size, -1)
+    flat_targets = targets.reshape(batch_size, -1)
+
+    errors = []
+
+    if mask is None:
+        for i in range(batch_size):
+            p = flat_preds[i]
+            t = flat_targets[i]
+
+            p_thresh = torch.quantile(p.float(), percentile)
+            t_thresh = torch.quantile(t.float(), percentile)
+
+            danger_zone_mask = (p >= p_thresh) | (t >= t_thresh)
+
+            if danger_zone_mask.sum() == 0:
+                errors.append(torch.tensor(float("nan"), device=preds.device))
+                continue
+
+            p_danger = p[danger_zone_mask]
+            t_danger = t[danger_zone_mask]
+
+            mae = compute_mae(preds=p_danger, targets=t_danger, mask=None)
+            errors.append(mae)
+    else:
+        valid_mask = mask.bool().reshape(batch_size, -1)
+        for i in range(batch_size):
+            sample_valid_mask = valid_mask[i]
+
+            if sample_valid_mask.sum() == 0:
+                errors.append(torch.tensor(float("nan"), device=preds.device))
+                continue
+
+            p_valid = flat_preds[i][sample_valid_mask]
+            t_valid = flat_targets[i][sample_valid_mask]
+
+            p_thresh = torch.quantile(p_valid.float(), percentile)
+            t_thresh = torch.quantile(t_valid.float(), percentile)
+
+            danger_zone_mask = (p_valid >= p_thresh) | (t_valid >= t_thresh)
+
+            if danger_zone_mask.sum() == 0:
+                errors.append(torch.tensor(float("nan"), device=preds.device))
+                continue
+
+            p_danger = p_valid[danger_zone_mask]
+            t_danger = t_valid[danger_zone_mask]
+
+            mae = compute_mae(preds=p_danger, targets=t_danger, mask=None)
+            errors.append(mae)
+
+    return torch.nanmean(torch.stack(errors))
