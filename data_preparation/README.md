@@ -17,7 +17,7 @@ sbatch run_files/generate_grids.sh
 ```
 
 Instead, you can run the following:
-```
+```bash
 python -m data_preparation.process_hexels_into_grids --root_dir="../yan_bp3"  --save_dir="../yan_bp3/data_samples_approach_1" --modelling_approach=1 --output_type="prob" --win_h=128 --win_w=128 --overlap_ratio=0 --weather_sampling="weather_zone_id"
 ```
 
@@ -38,7 +38,7 @@ To produce the sequential weather table and the fire-size distribution table use
 
 To build the tabular files, run the following:
 
-For historical fire data, manually move
+
 ```bash
 python -m data_preparation.process_tabular_data \
 	--root_dir="../yan_bp3" \
