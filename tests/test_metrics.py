@@ -1,5 +1,6 @@
 import pytest
 import torch
+from torchmetrics.functional import concordance_corrcoef
 
 from src.metrics import (
     compute_auc_iou,
@@ -219,6 +220,16 @@ def test_ccc_range(dummy_data):
     preds, targets = dummy_data
     ccc = compute_ccc(preds, targets)
     assert -1.0 <= ccc.item() <= 1.0
+
+
+def test_ccc_performance(dummy_data):
+    preds, targets = dummy_data
+    ccc = compute_ccc(preds, targets)
+    x = preds.reshape(preds.shape[0], -1)
+    y = targets.reshape(targets.shape[0], -1)
+
+    ccc_torch_samplewise = torch.stack([concordance_corrcoef(x[i], y[i]) for i in range(x.shape[0])]).mean()
+    assert torch.isclose(ccc, ccc_torch_samplewise, atol=1e-4)
 
 
 def test_ccc_range_with_mask(dummy_data, dummy_mask):
