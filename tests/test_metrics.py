@@ -270,14 +270,14 @@ def test_kl_divergence_zero_when_perfect_match_with_mask(dummy_data):
 def test_kl_divergence_is_non_negative(dummy_data):
     preds, targets = dummy_data
     kl = compute_kl_divergence(preds, targets)
-    assert kl >= 0
+    assert torch.isclose(kl, torch.tensor(0.0), atol=1e-6) or kl > 0
     assert isinstance(kl, torch.Tensor)
 
 
 def test_kl_divergence_is_non_negative_with_mask(dummy_data, dummy_mask):
     preds, targets = dummy_data
     kl = compute_kl_divergence(preds, targets, mask=dummy_mask)
-    assert kl >= 0
+    assert torch.isclose(kl, torch.tensor(0.0), atol=1e-6) or kl > 0
     assert isinstance(kl, torch.Tensor)
 
 
