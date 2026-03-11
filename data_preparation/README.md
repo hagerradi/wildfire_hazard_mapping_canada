@@ -9,14 +9,14 @@ python -m data_preparation.generate_season_cause_output --root_dir="../yan_bp3"
 This saves the rasters in the original data folders under `outputs`
 
 Step 2: Process hexel data into multiple square windows, which will be our data samples:
-```bash
+
 Note: If you want to run this in the cluster using SLURM array jobs, you can modify the `run_files/generate_grid.sh` by changing the save directory path and run the following in the terminal (from the main directory)
 
-```
+```bash
 sbatch run_files/generate_grids.sh
 ```
 
-Instead, you can run the following:
+Instead, you can run the following on an interactive node:
 ```bash
 python -m data_preparation.process_hexels_into_grids --root_dir="../yan_bp3"  --save_dir="../yan_bp3/data_samples_approach_1" --modelling_approach=1 --output_type="prob" --win_h=128 --win_w=128 --overlap_ratio=0 --weather_sampling="weather_zone_id"
 ```
