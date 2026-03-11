@@ -56,6 +56,6 @@ logger:
   experiment_name: "unet_run_001_approach_2"
   tags: ["baseline", "first-exp", "modelling_approach=2", "fuel_one_hot_encoding", "KL-loss", "3inputfeatures", "standardized_probs", "masked_metrics"]
   # log loss and metrics on comet every n steps
-  log_every_n_step: 5
+  log_every_n_step: 10
 
-metrics: ["mse", "mae", "spearman", "ssim", "bias"]
+metrics: ["mse", "mae", "spearman", "bias", "ccc", "kl_div", "iou_top005", "iou_top01", "iou_top02", "iou_top05", "iou_top10", "auc_iou_top10", "auc_iou_full"]

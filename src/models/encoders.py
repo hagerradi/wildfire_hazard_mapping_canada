@@ -131,3 +131,56 @@ class TabularFeatureEncoder(nn.Module):
         x_pooled = self.pooler(x_feats)  # (B, last_dim)
         # Final projection to match the bottleneck's expected auxiliary dimension
         return self.projector(x_pooled)  # (B, embed_dim)
+
+
+class WindFeatureEncoder(nn.Module):
+    def __init__(self, in_channels: int = 16, hidden_dims: dict[str, list[int]] | None = None, embed_dim: int = 16):
+        super().__init__()
+
+        self.hidden_dims = hidden_dims if hidden_dims is not None else {"mixer": [16], "local": [32, 64, 16], "global": [16]}
+        self.embed_dim = embed_dim
+
+        # 1. Mixer: 16 -> 16 (1x1 selection)
+        mixer_layers: list[nn.Module] = []
+        in_ch = in_channels
+        for h_dim in self.hidden_dims["mixer"]:
+            mixer_layers.append(nn.Conv2d(in_ch, h_dim, kernel_size=1))
+            in_ch = h_dim
+        self.mixer = nn.Sequential(*mixer_layers)
+
+        # 2. Local Path: Hourglass (128 -> 8 spatial | 16 -> 64 -> 16 channels)
+        local_path_layers: list[nn.Module] = []
+        group_norm_kernel = [4, 8, 4]
+        kernel_sizes = [4, 3, 3]
+        strides = [4, 2, 2]
+        paddings = [0, 1, 1]
+        in_ch = self.hidden_dims["mixer"][-1]
+        for i, h_dim in enumerate(self.hidden_dims["local"]):
+            local_path_layers.append(nn.Conv2d(in_ch, h_dim, kernel_size=kernel_sizes[i], stride=strides[i], padding=paddings[i]))
+            local_path_layers.append(nn.GroupNorm(group_norm_kernel[i], h_dim))
+            local_path_layers.append(nn.ReLU(inplace=True))
+            in_ch = h_dim
+        self.local_path = nn.Sequential(*local_path_layers)
+
+        # 3. Global Path: (Spearman stability)
+        # 128 -> 8 | 16 -> 16 channels
+        self.global_path = nn.Sequential(
+            nn.AvgPool2d(kernel_size=16, stride=16),  # 128 -> 8 (Fixed, no 'adaptive' logic)
+            nn.Conv2d(self.hidden_dims["mixer"][-1], self.hidden_dims["global"][0], kernel_size=1),
+        )
+
+        # 4. Final Fusion (16 local + 16 global = 32 -> 16)
+        self.fusion = nn.Sequential(
+            nn.Conv2d(self.hidden_dims["local"][-1] + self.hidden_dims["global"][-1], self.embed_dim, kernel_size=1),
+            nn.GroupNorm(4, self.embed_dim),
+            nn.ReLU(inplace=True),
+        )
+
+        self.scale = nn.Parameter(torch.ones(1) * 0.1)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.mixer(x)
+        local_feat = self.local_path(x)  # (B, 16, 8, 8)
+        global_feat = self.global_path(x)  # (B, 16, 8, 8)
+        combined = torch.cat([local_feat, global_feat], dim=1)  # (B, 32, 8, 8)
+        return self.fusion(combined) * self.scale
