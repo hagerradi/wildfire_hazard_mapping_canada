@@ -129,6 +129,8 @@ class GridSource(DataSource):
         if self.transform:
             input_arr, output_arr, mask = self.transform(input_arr, output_arr, mask)
 
+        if len(self.feature_names_list) == 1 and "wind_grid" in self.feature_names_list:
+            return input_arr
         return (input_arr, output_arr, mask)  # (C, H, W), (1, H, W), (1, H, W)
 
     def input_dim(self):

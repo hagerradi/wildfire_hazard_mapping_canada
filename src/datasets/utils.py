@@ -2,7 +2,7 @@ import numpy as np
 
 from data_preparation.grid_loader.utils import fuel_ranking
 
-AVAILABLE_DATA_SOURCES = ["grid", "weather", "fire_size"]
+AVAILABLE_DATA_SOURCES = ["grid", "weather", "fire_size", "wind_grid"]
 MAX_FUEL_GRID = float(max(fuel_ranking.values()))
 FIRE_SIZE_MEANS = {
     "SIZE_HA": 4957.7251818740315,
@@ -15,7 +15,7 @@ def get_data_source_class(name: str):
     """
     Returns the source class dynamically to avoid circular imports.
     """
-    if name == "grid":
+    if name in ["grid", "wind_grid"]:
         from src.datasets.sources import GridSource
 
         return GridSource
@@ -34,15 +34,15 @@ def get_dataset_dimensions(dataset) -> tuple[int | None, dict[str, int]]:
     sources = getattr(dataset, "sources", {})
 
     spatial_channels = None
-    aux_input_dims = {}
+    auxiliary_input_dims = {}
 
     for name, source in sources.items():
         if name == "grid":
             spatial_channels = source.input_dim()
         else:
-            aux_input_dims[name] = source.input_dim()
+            auxiliary_input_dims[name] = source.input_dim()
 
-    return spatial_channels, aux_input_dims
+    return spatial_channels, auxiliary_input_dims
 
 
 def fill_nan_channel_mean_numpy(arr: np.ndarray) -> np.ndarray:
