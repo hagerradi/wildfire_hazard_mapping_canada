@@ -146,3 +146,99 @@ def visualize_hexel_iou(
 
     plt.savefig(out_path, dpi=300, bbox_inches="tight")
     plt.close(fig)
+
+
+def plot_hexbin_distribution(
+    gt_grid: np.ndarray, pred_grid: np.ndarray, hex_id: str | int, save_dir: str, experiment_logger: CometLogger | None = None
+) -> None:
+    """
+    Generates and saves a 2D hex binning histogram comparing preds vs. target probabilities.
+    """
+    hex_id_str = str(hex_id).zfill(2)
+
+    valid_mask = ~np.isnan(gt_grid) & ~np.isnan(pred_grid)
+    gt_vals = gt_grid[valid_mask]
+    pred_vals = pred_grid[valid_mask]
+
+    # set dynamic max limit and default fallback
+    if len(gt_vals) > 0 and len(pred_vals) > 0:
+        actual_max = float(max(np.max(gt_vals), np.max(pred_vals)))
+        max_limit = min(1.0, actual_max * 1.05)
+        if max_limit == 0.0:
+            max_limit = 0.15
+    else:
+        max_limit = 0.15
+
+    fig, ax = plt.subplots(figsize=(8, 6))
+    hb = ax.hexbin(gt_vals, pred_vals, gridsize=100, cmap="inferno_r", bins="log", mincnt=1)
+
+    ax.plot([0, max_limit], [0, max_limit], color="red", linestyle="--", linewidth=2, label="Perfect Alignment")
+
+    ax.set_title(f"Probabilities Distribution: Preds vs Targets (GT) - Hex {hex_id_str}")
+    ax.set_xlabel("Ground Truth Probability")
+    ax.set_ylabel("Predicted Probability")
+
+    ax.set_xlim(0, max_limit)
+    ax.set_ylim(0, max_limit)
+
+    fig.colorbar(hb, ax=ax, label="Log(Count of Pixels)")
+    ax.legend()
+
+    out_dir = os.path.join(save_dir, "predicted_hexels_plot")
+    os.makedirs(out_dir, exist_ok=True)
+    out_hexbin_path = os.path.join(out_dir, f"hexbin_hex_{hex_id_str}.png")
+
+    plt.savefig(out_hexbin_path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+
+    if experiment_logger is not None:
+        experiment_logger.log_image(out_hexbin_path, name=f"hexbin_hex_{hex_id_str}")
+
+
+def plot_histogram_distribution(
+    gt_grid: np.ndarray,
+    pred_grid: np.ndarray,
+    hex_id: str | int,
+    save_dir: str,
+    experiment_logger: CometLogger | None = None,
+    num_bins: int = 100,
+) -> None:
+    """
+    Generates and saves an overlaid 1D histogram comparing the global distributions
+    of preds and targets probs on a log. scale.
+    """
+    hex_id_str = str(hex_id).zfill(2)
+
+    valid_mask = ~np.isnan(gt_grid) & ~np.isnan(pred_grid)
+    gt_vals = gt_grid[valid_mask]
+    pred_vals = pred_grid[valid_mask]
+
+    # set dynamic max limit and default fallback
+    if len(gt_vals) > 0 and len(pred_vals) > 0:
+        max_val = float(max(np.max(gt_vals), np.max(pred_vals)))
+        if max_val == 0.0:
+            max_val = 0.15
+    else:
+        max_val = 0.15
+
+    shared_bins = np.linspace(0.0, max_val, num=num_bins)
+    fig, ax = plt.subplots(figsize=(10, 6), dpi=300)
+
+    ax.hist(gt_vals, bins=shared_bins.tolist(), color="blue", alpha=0.5, log=True, label="Ground Truth")
+    ax.hist(pred_vals, bins=shared_bins.tolist(), color="orange", alpha=0.5, log=True, label="Prediction")
+
+    ax.set_title(f"Overlayed Input Distributions (Log Scale) - Hex {hex_id_str}", fontsize=14)
+    ax.set_xlabel("Burn Probability", fontsize=12)
+    ax.set_ylabel("Pixel Count (Log Scale)", fontsize=12)
+
+    ax.legend(fontsize=12)
+
+    out_dir = os.path.join(save_dir, "predicted_hexels_plot")
+    os.makedirs(out_dir, exist_ok=True)
+    out_hist_path = os.path.join(out_dir, f"hist_hex_{hex_id_str}.png")
+
+    plt.savefig(out_hist_path, bbox_inches="tight")
+    plt.close(fig)
+
+    if experiment_logger is not None:
+        experiment_logger.log_image(out_hist_path, name=f"hist_dist_hex_{hex_id_str}")
