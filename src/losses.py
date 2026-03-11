@@ -97,15 +97,24 @@ class DiceLoss(nn.Module):
         if mask is None:
             probs = probs.flatten(1)
             targets = targets.flatten(1)
+            valid = None
         else:
             mask = mask.to(dtype=probs.dtype)
+            valid = mask.flatten(1).sum(dim=1) > 0
             probs = (probs * mask).flatten(1)
             targets = (targets * mask).flatten(1)
 
         intersection = (probs * targets).sum(dim=1)
         denom = probs.sum(dim=1) + targets.sum(dim=1)
         dice = (2.0 * intersection + self.eps) / (denom + self.eps)
-        return 1.0 - dice.mean()
+
+        if valid is None:
+            return 1.0 - dice.mean()
+
+        if valid.any():
+            return 1.0 - dice[valid].mean()
+        else:
+            return dice.new_tensor(0.0)
 
 
 class FocalLoss(nn.Module):
