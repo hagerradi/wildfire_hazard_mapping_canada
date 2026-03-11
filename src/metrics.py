@@ -350,7 +350,7 @@ def compute_topK_mae(
             topK_mask = (p >= p_thresh) | (t >= t_thresh)
 
             if topK_mask.sum() == 0:
-                errors.append(torch.tensor(float("nan"), device=preds.device))
+                errors.append(torch.tensor(float("nan"), device=preds.device, dtype=preds.dtype))
                 continue
 
             p_topK = p[topK_mask]
@@ -364,7 +364,7 @@ def compute_topK_mae(
             sample_valid_mask = valid_mask[i]
 
             if sample_valid_mask.sum() == 0:
-                errors.append(torch.tensor(float("nan"), device=preds.device))
+                errors.append(torch.tensor(float("nan"), device=preds.device, dtype=preds.dtype))
                 continue
 
             p_valid = flat_preds[i][sample_valid_mask]
@@ -376,7 +376,7 @@ def compute_topK_mae(
             topK_mask = (p_valid >= p_thresh) | (t_valid >= t_thresh)
 
             if topK_mask.sum() == 0:
-                errors.append(torch.tensor(float("nan"), device=preds.device))
+                errors.append(torch.tensor(float("nan"), device=preds.device, dtype=preds.dtype))
                 continue
 
             p_topK = p_valid[topK_mask]
