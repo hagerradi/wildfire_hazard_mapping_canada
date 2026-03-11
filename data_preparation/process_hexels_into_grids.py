@@ -31,7 +31,8 @@ def get_split_hexel_window(
     hex_id: str,
     win_h: int = 128,
     win_w: int = 128,
-    overlap_ratio: float = 0.2,
+    overlap_ratio: float | None = 0.2,
+    overlap_with_halo: float | None = None,
 ):
     """
     Split the hexel using sliding windows for inp to the model
@@ -44,7 +45,7 @@ def get_split_hexel_window(
     rasterizer = FireCountRasterizer(shp_paths, None)
     total_unique_iters = rasterizer.get_num_unique_iters(season=None, cause=None)
     num_season_cause, H, W, _ = season_cause_stacked_feats.shape
-    pad_top, pad_bot, pad_left, pad_right, stride_h, stride_w = get_padding_params(H, W, win_h, win_w, overlap_ratio)
+    pad_top, pad_bot, pad_left, pad_right, stride_h, stride_w = get_padding_params(H, W, win_h, win_w, overlap_ratio, overlap_with_halo)
 
     # Apply the calculated padding
     season_cause_stacked_feats_padded = np.pad(
@@ -122,7 +123,8 @@ def generate_data_samples(
     output_type: str = "count",
     win_h: int = 128,
     win_w: int = 128,
-    overlap_ratio: float = 0.2,
+    overlap_ratio: float | None = 0.2,
+    overlap_with_halo: float | None = None,
     weather_sampling: str = "dist",
     is_array_job: bool = False,
     task_id: int = 0,
@@ -181,6 +183,7 @@ def generate_data_samples(
             win_h=win_h,
             win_w=win_w,
             overlap_ratio=overlap_ratio,
+            overlap_with_halo=overlap_with_halo,
         )
         print(f"======Processed Hex ID: {hex_id}==========")
 
@@ -195,6 +198,12 @@ def main():
     parser.add_argument("--win_h", type=int, help="Height of the window", default=128)
     parser.add_argument("--win_w", type=int, help="Height of the window", default=128)
     parser.add_argument("--overlap_ratio", type=float, help="Overlap ratio between windows", default=0.2)
+    parser.add_argument(
+        "--overlap_with_halo",
+        type=float,
+        help="Overlap with halo only used when doing center crop stitching for inference (set overlap_ratio to None)",
+        default=None,
+    )
     parser.add_argument(
         "--weather_sampling",
         type=str,
@@ -222,6 +231,7 @@ def main():
         win_h=args.win_h,
         win_w=args.win_w,
         overlap_ratio=args.overlap_ratio,
+        overlap_with_halo=args.overlap_with_halo,
         output_type=args.output_type,
         weather_sampling=args.weather_sampling,
         is_array_job=args.is_array_job,

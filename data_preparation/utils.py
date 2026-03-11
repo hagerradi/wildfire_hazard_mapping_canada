@@ -187,8 +187,22 @@ def get_processed_hex_ids(folder_path: str) -> list:
     return hex_ids
 
 
-def get_padding_params(H: int, W: int, win_h: int, win_w: int, overlap_ratio: float) -> tuple[int, int, int, int, int, int]:
-    if overlap_ratio <= 1.0:
+def get_padding_params(
+    H: int, W: int, win_h: int, win_w: int, overlap_ratio: float | None = None, overlap_with_halo: float | None = None
+) -> tuple[int, int, int, int, int, int]:
+    if overlap_ratio is None and overlap_with_halo is None:
+        raise ValueError(
+            "Atleast one of the overlap_ratio or overlap_with_halo should be not None."
+            "Help: you should use overlap_with_halo for inference data splitting when using centre crop as stitching method with value as int "
+            "you should use overlap_ratio for training data and this hould be a float [0,1]"
+        )
+    if overlap_ratio is not None and overlap_with_halo is not None:
+        raise ValueError(
+            "Atleast one of the overlap_ratio or overlap_with_halo should be None."
+            "Help: you should use overlap_with_halo for inference data splitting when using centre crop as stitching method with value as int "
+            "you should use overlap_ratio for training data and this hould be a float [0,1]"
+        )
+    if overlap_ratio is not None:
         stride_h = max(1, int(win_h * (1 - overlap_ratio)))  # n_rows = (H-win_h)//stride_h + 1
         stride_w = max(1, int(win_w * (1 - overlap_ratio)))
 
@@ -197,9 +211,9 @@ def get_padding_params(H: int, W: int, win_h: int, win_w: int, overlap_ratio: fl
         pad_bot = stride_h - (H - win_h) % stride_h if (H - win_h) % stride_h != 0 else 0
         pad_right = stride_w - (W - win_w) % stride_w if (W - win_w) % stride_w != 0 else 0
 
-    else:
+    if overlap_with_halo is not None:
         # Halo padding logic for center-crop stitching
-        overlap_ratio = int(overlap_ratio)
+        overlap_ratio = int(overlap_with_halo)
         stride_h = overlap_ratio
         stride_w = overlap_ratio
 
@@ -214,7 +228,7 @@ def get_padding_params(H: int, W: int, win_h: int, win_w: int, overlap_ratio: fl
         pad_top, pad_bot = halo_h, halo_h + pad_h_extra
         pad_left, pad_right = halo_w, halo_w + pad_w_extra
 
-    return pad_top, pad_bot, pad_left, pad_right, stride_h, stride_w
+    return pad_top, pad_bot, pad_left, pad_right, stride_h, stride_w  # type: ignore
 
 
 def plot_split_window_hexel(windows, channel_index=0, max_cols=5, figsize=(15, 15)):
