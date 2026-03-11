@@ -81,7 +81,7 @@ class Trainer:
                 auxiliary_input_dims=self.auxiliary_input_dims,
                 auxiliary_hidden_dims=self.config.model.auxiliary_hidden_dims,
                 auxiliary_embed_dims=self.config.model.auxiliary_embed_dims,
-                auxiliary_feature_encoder_poolings=self.config.model.auxiliary_poolings,
+                auxiliary_feature_encoder_poolings=self.config.model.auxiliary_feature_encoder_poolings,
             )
         # Single-source path: spatial grids only.
         else:

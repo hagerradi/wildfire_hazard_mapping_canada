@@ -19,7 +19,7 @@ model:
     weather: 128
     fire_size: 16
 
-  auxiliary_poolings:
+  auxiliary_feature_encoder_poolings:
     weather: "max" # max, mean, attention
     fire_size: "max" # max, mean, attention
 

@@ -17,7 +17,7 @@ model:
   auxiliary_embed_dims:
     weather: 128
 
-  auxiliary_poolings:
+  auxiliary_feature_encoder_poolings:
     weather: "max" # max, mean, attention
 
 optimizer:

@@ -28,7 +28,7 @@ class ModelConfig(BaseModel):
     # specific to auxiliary model
     auxiliary_hidden_dims: dict[str, list[int] | dict[str, list[int]]] = {"weather": [32, 64]}
     auxiliary_embed_dims: dict[str, int] = {"weather": 128}
-    auxiliary_poolings: dict[str, str] = {"weather": "max"}
+    auxiliary_feature_encoder_poolings: dict[str, str] = {"weather": "max"}
 
 
 class OptimizerConfig(BaseModel):
