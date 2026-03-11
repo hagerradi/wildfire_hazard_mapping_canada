@@ -12,6 +12,7 @@ from src.metrics import (
     compute_spearman,
     compute_ssim,
     compute_topK_iou,
+    compute_topK_mae,
 )
 
 
@@ -337,3 +338,52 @@ def test_kl_divergence_performance():
     expected = (expected_0 + expected_1) / 2.0
 
     assert torch.isclose(kl, expected, atol=1e-6)
+
+
+def test_topK_mae_perfect_match(dummy_data):
+    _, targets = dummy_data
+    mae = compute_topK_mae(targets, targets, percentile=0.90)
+    assert torch.isclose(mae, torch.tensor(0.0))
+
+
+def test_topK_mae_perfect_match_with_mask(dummy_data, dummy_mask):
+    _, targets = dummy_data
+    mae = compute_topK_mae(targets, targets, mask=dummy_mask, percentile=0.90)
+    assert torch.isclose(mae, torch.tensor(0.0))
+
+
+def test_topK_mae_is_non_negative(dummy_data):
+    preds, targets = dummy_data
+    mae = compute_topK_mae(preds, targets, percentile=0.90)
+    assert mae >= 0
+    assert isinstance(mae, torch.Tensor)
+
+
+def test_topK_mae_empty_mask_edge_case(dummy_data):
+    preds, targets = dummy_data
+    empty_mask = torch.zeros_like(targets)
+    mae = compute_topK_mae(preds, targets, mask=empty_mask)
+    assert torch.isnan(mae)
+
+
+def test_topK_mae_known_values():
+    """
+    Manually verify the math for the TopK union masking and MAE calculation.
+    """
+    targets = torch.tensor([[[[0.1, 0.2, 0.9, 1.0]]]])
+    preds = torch.tensor([[[[0.1, 0.2, 0.8, 0.8]]]])
+
+    mae = compute_topK_mae(preds, targets, percentile=0.50)
+    assert torch.isclose(mae, torch.tensor(0.15), atol=1e-5)
+
+
+def test_topK_mae_disjoint_topK_zones():
+    """
+    Test when the model completely misses the actual hotspot and predicts a false alarm elsewhere.
+    The metric should union the masks and penalize both the miss and the false alarm.
+    """
+    targets = torch.tensor([[[[0.0, 0.0, 1.0, 1.0]]]])  # Hotspot on the right
+    preds = torch.tensor([[[[1.0, 1.0, 0.0, 0.0]]]])  # False alarm on the left
+
+    mae = compute_topK_mae(preds, targets, percentile=0.50)
+    assert torch.isclose(mae, torch.tensor(1.0), atol=1e-5)
