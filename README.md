@@ -44,12 +44,11 @@ For all the data preparation steps, refer to [the following section](data_prepar
 ```python -m src.train --config=configs/default_v1.yaml```
 
 #### On the cluster:
-To launch a job on the cluster, use the script `run_files/run.sh`.
+To launch a job on the cluster, use the script `run_files/train.sh`.
 Steps:
 1. `export COMET_API_KEY=YOUR_KEY`
-2. Edit the config file name inside `run_files/run.sh`. By default, it uses `configs/default_v1.yaml`
-3. Run `uv sync`, if needed
-4. Run `sbatch run_files/train.sh`
+2. Run `uv sync`, if needed
+3. Run with the desired config filename `sbatch run_files/train.sh configs/default_v1_full_data.yaml`. By default, it uses `configs/default_v1.yaml`.
 
 ### Inference
 

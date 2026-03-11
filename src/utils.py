@@ -1,15 +1,25 @@
 import os
 import random
+from collections.abc import Callable
 from functools import partial
-from typing import Callable
 
 import numpy as np
 import torch
 from matplotlib import pyplot as plt
 from torch.utils.data import DataLoader
 
-from losses import BCELoss, BernoulliKLLoss, DiceLoss, FocalLoss, MAELoss, MSELoss
-from src.metrics import compute_auc_iou, compute_bias, compute_mae, compute_mse, compute_spearman, compute_ssim, compute_topK_iou
+from src.losses import BCELoss, BernoulliKLLoss, DiceLoss, FocalLoss, MAELoss, MSELoss
+from src.metrics import (
+    compute_auc_iou,
+    compute_bias,
+    compute_ccc,
+    compute_kl_divergence,
+    compute_mae,
+    compute_mse,
+    compute_spearman,
+    compute_ssim,
+    compute_topK_iou,
+)
 
 AVAILABLE_METRICS: dict[str, Callable[..., torch.Tensor]] = {
     "mse": compute_mse,
@@ -17,6 +27,8 @@ AVAILABLE_METRICS: dict[str, Callable[..., torch.Tensor]] = {
     "spearman": compute_spearman,
     "ssim": compute_ssim,
     "bias": compute_bias,
+    "ccc": compute_ccc,
+    "kl_div": compute_kl_divergence,
     "iou_top10": partial(compute_topK_iou, percentile=0.90),
     "iou_top05": partial(compute_topK_iou, percentile=0.95),
     "iou_top02": partial(compute_topK_iou, percentile=0.98),
@@ -25,6 +37,7 @@ AVAILABLE_METRICS: dict[str, Callable[..., torch.Tensor]] = {
     "auc_iou_full": partial(compute_auc_iou, k_values=(0.01, 0.99), steps=99),  # AUC on full range of K (granularity 1%)
     "auc_iou_top10": partial(compute_auc_iou, k_values=(0.01, 0.10), steps=10),  # AUC for top 10% (granularity 1%)
 }
+
 
 AVAILABLE_LR_SCHEDULERS = ["onecycle", "cosine_warmup", "plateau", "multistep"]
 
