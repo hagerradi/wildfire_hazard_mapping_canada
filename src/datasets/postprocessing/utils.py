@@ -14,7 +14,12 @@ from data_preparation.paths import ELEVATION_GRID_PATH
 from data_preparation.utils import find_simulation_output_file
 from src.config import Config
 from src.datasets.postprocessing.stitch_hexel import stitch_windows
-from src.datasets.postprocessing.visualize_predictions import visualize_burn_prob_grids, visualize_hexel_iou
+from src.datasets.postprocessing.visualize_predictions import (
+    plot_hexbin_distribution,
+    plot_histogram_distribution,
+    visualize_burn_prob_grids,
+    visualize_hexel_iou,
+)
 from src.logger import CometLogger
 
 
@@ -259,6 +264,24 @@ def evaluate_and_visualize_hexels(
         grid_gt = load_output_burn_grid(fpath)
 
         visualize_burn_prob_grids(
+            gt_grid=grid_gt,
+            pred_grid=reconstructed_hexel_denorm,
+            hex_id=hex_id,
+            save_dir=config.save_dir,
+            experiment_logger=experiment_logger,
+        )
+
+        # plot and save hexbin figures (for calibration)
+        plot_hexbin_distribution(
+            gt_grid=grid_gt,
+            pred_grid=reconstructed_hexel_denorm,
+            hex_id=hex_id,
+            save_dir=config.save_dir,
+            experiment_logger=experiment_logger,
+        )
+
+        # plot and save hist. figures
+        plot_histogram_distribution(
             gt_grid=grid_gt,
             pred_grid=reconstructed_hexel_denorm,
             hex_id=hex_id,

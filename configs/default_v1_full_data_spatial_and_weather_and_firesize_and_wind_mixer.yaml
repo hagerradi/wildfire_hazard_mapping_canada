@@ -1,5 +1,5 @@
 # Where to save checkpoints
-save_dir: "experiments/unet_full_data_spatial_weather_firesize"
+save_dir: "experiments/unet_full_data_spatial_weather_firesize_wind"
 
 # approaches 1 or 2
 modelling_approach: "1"
@@ -14,10 +14,15 @@ model:
   auxiliary_hidden_dims:
     weather: [32, 64, 128]
     fire_size: [8, 16]
+    wind_grid:
+      mixer: [16]
+      local: [32,64,16] #kernel_sizes/strides/paddings/group_norm_kernel are hardcoded so need to change that in encoders.py
+      global: [16]
 
   auxiliary_embed_dims:
     weather: 128
     fire_size: 16
+    wind_grid: 16
 
   auxiliary_feature_encoder_poolings:
     weather: "max" # max, mean, attention
@@ -29,6 +34,11 @@ optimizer:
   loss: "kl" # or ["bce", "kl"], str for single loss or list for multiple weighted losses
   # loss_weights: {"bce": 0.8, "kl": 0.2} # use if loss is a list
 
+training:
+  max_epochs: 50
+  # Logging frequency in epochs
+  log_every_n_epoch: 1
+
 lr_scheduler:
   name: "cosine_warmup" # options: "cosine_warmup", "plateau", "onecycle", "multistep" (or null)
   warmup_epochs: 5 # if using cosine_warmup
@@ -36,11 +46,6 @@ lr_scheduler:
   # patience: 5 # if using plateau
   # factor: 0.1 # if using plateau or multistep
   # milestones: [30, 40] # if using multistep
-
-training:
-  max_epochs: 50
-  # Logging frequency in epochs
-  log_every_n_epoch: 1
 
 evaluation:
   best_ckpt_metrics: ["spearman"] # loss, ssim, mae, etc
@@ -85,14 +90,19 @@ data:
         num_samples_per_patch: 128
         transforms_list: []
         augmentation_prob: 0.0
+    - name: "wind_grid"
+      params:
+        feature_names_list: ["wind_grid"]
+        transforms_list: []
+        augmentation_prob: 0.0
 
 logger:
   enabled: True
   project_name: "nrcan-wildfireriskmapping"
   workspace: "mila-amlrt"
-  experiment_name: "unet_full_data_spatial_weather_firesize"
-  tags: ["baseline", "full_data", "modelling_approach=1", "fuel_one_hot_encoding", "KL-loss", "3inputfeatures", "weather-tabular", "firesize-tabular"]
+  experiment_name: "unet_full_data_spatial_weather_firesize_wind"
+  tags: ["baseline", "full_data", "modelling_approach=1", "fuel_one_hot_encoding", "KL-loss", "weather-tabular", "firesize-tabular", "wind-spatial"]
   # log loss and metrics on comet every n steps
-  log_every_n_step: 10
+  log_every_n_step: 5
 
 metrics: ["mse", "mae", "spearman", "bias", "ccc", "kl_div", "iou_top005", "iou_top01", "iou_top02", "iou_top05", "iou_top10", "auc_iou_top10", "auc_iou_full"]

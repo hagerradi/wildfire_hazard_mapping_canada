@@ -1,7 +1,18 @@
 import pytest
 import torch
+from torchmetrics.functional import concordance_corrcoef
 
-from src.metrics import compute_auc_iou, compute_bias, compute_mae, compute_mse, compute_spearman, compute_ssim, compute_topK_iou
+from src.metrics import (
+    compute_auc_iou,
+    compute_bias,
+    compute_ccc,
+    compute_kl_divergence,
+    compute_mae,
+    compute_mse,
+    compute_spearman,
+    compute_ssim,
+    compute_topK_iou,
+)
 
 
 @pytest.fixture
@@ -191,3 +202,138 @@ def test_auc_iou_invalid_k_values(dummy_data):
 
     with pytest.raises(ValueError):
         compute_auc_iou(preds, targets, k_values=[0.01, 0.10])  # type: ignore
+
+
+def test_ccc_perfect_agreement():
+    targets = torch.rand(4, 1, 16, 16)
+    ccc = compute_ccc(targets, targets)
+    assert torch.isclose(ccc, torch.tensor(1.0), atol=1e-5)
+
+
+def test_ccc_perfect_agreement_with_mask():
+    targets = torch.rand(4, 1, 16, 16)
+    mask = torch.ones_like(targets)
+    ccc = compute_ccc(targets, targets, mask=mask)
+    assert torch.isclose(ccc, torch.tensor(1.0), atol=1e-5)
+
+
+def test_ccc_range(dummy_data):
+    preds, targets = dummy_data
+    ccc = compute_ccc(preds, targets)
+    assert -1.0 <= ccc.item() <= 1.0
+
+
+def test_ccc_performance(dummy_data):
+    preds, targets = dummy_data
+    ccc = compute_ccc(preds, targets)
+    x = preds.reshape(preds.shape[0], -1)
+    y = targets.reshape(targets.shape[0], -1)
+
+    ccc_torch_samplewise = torch.stack([concordance_corrcoef(x[i], y[i]) for i in range(x.shape[0])]).mean()
+    assert torch.isclose(ccc, ccc_torch_samplewise, atol=1e-4)
+
+
+def test_ccc_range_with_mask(dummy_data, dummy_mask):
+    preds, targets = dummy_data
+    ccc = compute_ccc(preds, targets, mask=dummy_mask)
+    assert -1.0 <= ccc.item() <= 1.0
+
+
+def test_ccc_empty_mask_edge_case(dummy_data):
+    preds, targets = dummy_data
+    empty_mask = torch.zeros_like(targets)
+    ccc = compute_ccc(preds, targets, mask=empty_mask)
+    assert torch.isnan(ccc)
+
+
+def test_ccc_scaled_preds_less_than_one():
+    """CCC should be < 1 when preds are a scaled version of targets (not identical)."""
+    targets = torch.rand(4, 1, 16, 16)
+    preds = targets * 2.0
+    ccc = compute_ccc(preds, targets)
+    assert ccc.item() < 1.0
+
+
+def test_kl_divergence_zero_when_perfect_match(dummy_data):
+    _, targets = dummy_data
+    kl = compute_kl_divergence(targets, targets)
+    assert torch.isclose(kl, torch.tensor(0.0), atol=1e-6)
+
+
+def test_kl_divergence_zero_when_perfect_match_with_mask(dummy_data):
+    _, targets = dummy_data
+    mask = torch.ones_like(targets)
+    kl = compute_kl_divergence(targets, targets, mask=mask)
+    assert torch.isclose(kl, torch.tensor(0.0), atol=1e-6)
+
+
+def test_kl_divergence_is_non_negative(dummy_data):
+    preds, targets = dummy_data
+    kl = compute_kl_divergence(preds, targets)
+    assert torch.isclose(kl, torch.tensor(0.0), atol=1e-6) or kl > 0
+    assert isinstance(kl, torch.Tensor)
+
+
+def test_kl_divergence_is_non_negative_with_mask(dummy_data, dummy_mask):
+    preds, targets = dummy_data
+    kl = compute_kl_divergence(preds, targets, mask=dummy_mask)
+    assert torch.isclose(kl, torch.tensor(0.0), atol=1e-6) or kl > 0
+    assert isinstance(kl, torch.Tensor)
+
+
+def test_kl_divergence_empty_mask_edge_case(dummy_data):
+    preds, targets = dummy_data
+    empty_mask = torch.zeros_like(targets)
+    kl = compute_kl_divergence(preds, targets, mask=empty_mask)
+    assert torch.isnan(kl)
+
+
+def test_kl_divergence_ignores_masked_out_regions():
+    targets = torch.zeros(1, 1, 1, 4)
+    preds = torch.zeros(1, 1, 1, 4)
+    mask = torch.zeros(1, 1, 1, 4)
+
+    # valid region
+    targets[..., 0] = 1.0
+    preds[..., 0] = 1.0
+    mask[..., 0] = 1.0
+
+    # invalid region with very different values that should be ignored
+    targets[..., 1:] = torch.tensor([0.0, 0.0, 100.0])
+    preds[..., 1:] = torch.tensor([100.0, 0.0, 0.0])
+
+    kl = compute_kl_divergence(preds, targets, mask=mask)
+    assert torch.isclose(kl, torch.tensor(0.0), atol=1e-6)
+
+
+def test_kl_divergence_is_asymmetric():
+    targets = torch.tensor([[[[0.5, 0.5]]]])
+    preds = torch.tensor([[[[0.25, 0.75]]]])
+
+    kl_pt = compute_kl_divergence(preds, targets)
+    kl_tp = compute_kl_divergence(targets, preds)
+
+    assert not torch.isclose(kl_pt, kl_tp, atol=1e-6)
+
+
+def test_kl_divergence_performance():
+    preds = torch.tensor(
+        [
+            [[[0.25, 0.75]]],
+            [[[0.60, 0.40]]],
+        ]
+    )
+    targets = torch.tensor(
+        [
+            [[[0.50, 0.50]]],
+            [[[0.50, 0.50]]],
+        ]
+    )
+
+    kl = compute_kl_divergence(preds, targets)
+
+    expected_0 = torch.sum(torch.tensor([0.5, 0.5]) * torch.log(torch.tensor([0.5, 0.5]) / torch.tensor([0.25, 0.75])))
+    expected_1 = torch.sum(torch.tensor([0.5, 0.5]) * torch.log(torch.tensor([0.5, 0.5]) / torch.tensor([0.6, 0.4])))
+    expected = (expected_0 + expected_1) / 2.0
+
+    assert torch.isclose(kl, expected, atol=1e-6)

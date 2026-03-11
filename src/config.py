@@ -25,10 +25,10 @@ class ModelConfig(BaseModel):
     use_transpose_conv: bool = False
     use_activation_after_upsampling: bool = False
 
-    # specific to tabular model
-    tabular_hidden_dims: dict[str, list[int]] = {"weather": [32, 64]}
-    tabular_embed_dims: dict[str, int] = {"weather": 128}
-    tabular_poolings: dict[str, str] = {"weather": "max"}
+    # specific to auxiliary model
+    auxiliary_hidden_dims: dict[str, list[int] | dict[str, list[int]]] = {"weather": [32, 64]}
+    auxiliary_embed_dims: dict[str, int] = {"weather": 128}
+    auxiliary_feature_encoder_poolings: dict[str, str] = {"weather": "max"}
 
 
 class OptimizerConfig(BaseModel):
