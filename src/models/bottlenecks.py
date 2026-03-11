@@ -18,13 +18,20 @@ class MultiSourceBottleneck(nn.Module):
             nn.Conv2d(total_depth, out_channels, kernel_size=1), nn.BatchNorm2d(out_channels), nn.ReLU(inplace=True)
         )
 
-    def forward(self, x: torch.Tensor, x_tabular: torch.Tensor | None = None) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, x_tabular: torch.Tensor | None = None, x_wind: torch.Tensor | None = None) -> torch.Tensor:
         x = self.spatial_conv(x)
-        if x_tabular is None:
+        if x_tabular is None and x_wind is None:
             return x
         B, C, H, W = x.shape
-        # Tile: (B, D) -> (B, D, 1, 1) -> (B, D, H, W)
-        x_tab_tiled = x_tabular.view(B, -1, 1, 1).expand(-1, -1, H, W)
+        concat_list = [x]
+        if x_tabular is not None:
+            # Tile: (B, D) -> (B, D, 1, 1) -> (B, D, H, W)
+            x_tab_tiled = x_tabular.view(B, -1, 1, 1).expand(-1, -1, H, W)
+            concat_list.append(x_tab_tiled)
         # Concatenate along the channel dimension (dim=1)
-        x_fused = torch.cat([x, x_tab_tiled], dim=1)
+        if x_wind is not None:
+            concat_list.append(x_wind)
+
+        x_fused = torch.cat(concat_list, dim=1)
+
         return self.fusion_projector(x_fused)

@@ -9,15 +9,15 @@ deterministic: True
 
 model:
   num_classes: 1
-  input_feature_list: ["spatial", "tabular"]
+  input_feature_list: ["spatial", "auxiliary"]
 
   tabular_hidden_dims:
     weather: [32, 64, 128]
 
-  tabular_embed_dims:
+  auxiliary_embed_dims:
     weather: 128
 
-  tabular_poolings:
+  auxiliary_feature_encoder_poolings:
     weather: "max" # max, mean, attention
 
 optimizer:
