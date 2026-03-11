@@ -45,8 +45,11 @@ class TabularSource(DataSource):
         # Pre-compute the column index for the bias feature
         self.bias_col_idx: int | None = None
         if self.sampling_bias is not None:
-            if self.feature_to_bias is None:
-                raise ValueError("feature_to_bias must be set when sampling_bias is not None")
+            if self.feature_to_bias not in self.feature_names_list:
+                raise ValueError(
+                    f"feature_to_bias '{self.feature_to_bias}' not found in feature_names_list. "
+                    f"Valid features are: {self.feature_names_list}"
+                )
             self.bias_col_idx = self.feature_names_list.index(self.feature_to_bias)
 
         self.df = pd.read_csv(os.path.join(self.root_dir, self.csv_name))
@@ -80,7 +83,7 @@ class TabularSource(DataSource):
             weights = None
         elif (
             self.zone_selection_approach == "weighted"
-        ):  # Selects candidates from all zones in the patch, but weights them according to their frequency in the patch
+        ):  # Selects candidates from all zones in the patch, with probability proportional to their frequency
             all_candidates = []
             probs = []
             for val, count in zip(values, counts):
@@ -95,6 +98,8 @@ class TabularSource(DataSource):
                 candidates = np.concatenate(all_candidates)
                 weights = np.concatenate(probs)
                 weights /= weights.sum()
+        else:
+            raise ValueError(f"Unknown zone_selection_approach: {self.zone_selection_approach}")
 
         # 2. If sampling bias for a feature is specified, adjust weights accordingly
         if self.sampling_bias is not None and candidates is not None and len(candidates) > 0:
@@ -103,8 +108,10 @@ class TabularSource(DataSource):
                 bias_weights = np.clip(bias_values, 0.0, None)  # Clamp negatives to 0
             elif self.sampling_bias == "low":
                 bias_weights = 1.0 / (np.abs(bias_values) + 1e-6)
-            else:
+            elif not self.sampling_bias:
                 bias_weights = None
+            else:
+                raise ValueError(f"Unknown sampling_bias: {self.sampling_bias}")
 
             if bias_weights is not None:
                 bias_sum = bias_weights.sum()
@@ -116,7 +123,7 @@ class TabularSource(DataSource):
                         weights /= weights.sum()
                     else:
                         weights = bias_weights
-                # else: all-zero bias → fall back to existing weights (uniform or zone-based)
+                # else: all-zero bias → fall back to existing weights
 
         # 3. Perform actual sampling
         if candidates is not None and len(candidates) > 0:
