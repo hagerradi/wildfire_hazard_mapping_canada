@@ -39,6 +39,7 @@ AVAILABLE_METRICS: dict[str, Callable[..., torch.Tensor]] = {
     "auc_iou_top10": partial(compute_auc_iou, k_values=(0.01, 0.10), steps=10),  # AUC for top 10% (granularity 1%)
     "mae_top10": partial(compute_topK_mae, percentile=0.90),
     "mae_top05": partial(compute_topK_mae, percentile=0.95),
+    "mae_top02": partial(compute_topK_mae, percentile=0.98),
     "mae_top01": partial(compute_topK_mae, percentile=0.99),
 }
 
