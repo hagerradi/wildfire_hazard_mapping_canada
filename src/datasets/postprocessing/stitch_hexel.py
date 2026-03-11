@@ -7,7 +7,7 @@ def stitch_windows(
     coords: list[tuple],
     masks: list[np.ndarray],
     original_shape: tuple,
-    mode: str = "mean",
+    stitch_mode: str = "mean",
     window_size: int = 128,
     center_crop_size: int = 64,
 ) -> np.ndarray:
@@ -25,8 +25,9 @@ def stitch_windows(
     """
     dtype = np.float64
 
-    if mode == "mean":
-        # --- AVERAGE MODE ---
+    if stitch_mode == "mean":
+        # --- AVERAGE stich_mode ---
+        print("==========Stitch mode is Average===============")
         accumulator = np.zeros(original_shape, dtype=dtype)
         counter = np.zeros(original_shape, dtype=dtype)
 
@@ -51,9 +52,10 @@ def stitch_windows(
 
         return reconstructed
 
-    elif mode == "max":
-        # --- MAX MODE ---
+    elif stitch_mode == "max":
+        # --- MAX stitch_mode ---
         # Initialize with negative infinity so any real data (even negative) will override it
+        print("==========Stitch mode is Max===============")
         accumulator = np.full(original_shape, -np.inf, dtype=dtype)
 
         for window, mask, (r, c) in zip(windows, masks, coords):
@@ -76,8 +78,8 @@ def stitch_windows(
 
         return accumulator
 
-    elif mode == "center_crop":
-        print("==========Stitch model is center crop===============")
+    elif stitch_mode == "center_crop":
+        print("==========Stitch mode is center crop===============")
         H, W = original_shape[:2]
         accumulator = np.zeros(original_shape, dtype=dtype)
         halo = (window_size - center_crop_size) // 2
@@ -91,4 +93,4 @@ def stitch_windows(
         return accumulator
 
     else:
-        raise ValueError(f"Unknown mode: {mode}")
+        raise ValueError(f"Unknown mode: {stitch_mode}")

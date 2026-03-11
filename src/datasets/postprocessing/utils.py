@@ -60,7 +60,7 @@ def get_stitched_windows(
         all_data_points.append(predictions[start_idx + i].reshape((win_h, win_w)))
         all_locations.append((data[5], data[6]))
         all_masks.append(mask.reshape((win_h, win_w)))
-    reconstructed_hexel = stitch_windows(all_data_points, all_locations, all_masks, gt_shape, mode=stitch_mode)
+    reconstructed_hexel = stitch_windows(all_data_points, all_locations, all_masks, gt_shape, stitch_mode=stitch_mode)
     return reconstructed_hexel  # gt_shape
 
 
