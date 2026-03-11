@@ -170,9 +170,9 @@ def plot_hexbin_distribution(
         max_limit = 0.15
 
     fig, ax = plt.subplots(figsize=(8, 6))
-    hb = ax.hexbin(gt_vals, pred_vals, gridsize=100, cmap="inferno", bins="log", mincnt=1)
+    hb = ax.hexbin(gt_vals, pred_vals, gridsize=100, cmap="inferno_r", bins="log", mincnt=1)
 
-    ax.plot([0, max_limit], [0, max_limit], color="black", linestyle="--", linewidth=2, label="Perfect Alignment")
+    ax.plot([0, max_limit], [0, max_limit], color="red", linestyle="--", linewidth=2, label="Perfect Alignment")
 
     ax.set_title(f"Probabilities Distribution: Preds vs Targets (GT) - Hex {hex_id_str}")
     ax.set_xlabel("Ground Truth Probability")
