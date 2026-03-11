@@ -76,7 +76,7 @@ def main() -> None:
 
     # Get all data sources from the test dataset
     spatial_channels, auxiliary_input_dims = get_dataset_dimensions(test_loader.dataset)
-    print(f"Detected Data Dimensions: Spatial={spatial_channels} | Auxilary={auxiliary_input_dims}")
+    print(f"Detected Data Dimensions: Spatial={spatial_channels} | Auxiliary={auxiliary_input_dims}")
 
     trainer = Trainer(config, spatial_input_channels=spatial_channels, auxiliary_input_dims=auxiliary_input_dims)
 

@@ -52,7 +52,7 @@ class UNetBase(nn.Module, ABC):
         self.decoder = self.build_decoder()
 
     @abstractmethod
-    def forward(self, x: torch.Tensor, x_auxilary: dict[str, torch.Tensor] | None = None) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, x_auxiliary: dict[str, torch.Tensor] | None = None) -> torch.Tensor:
         raise NotImplementedError
 
 
@@ -102,7 +102,7 @@ class BaselineUNet(UNetBase):
         )
         return decoder
 
-    def forward(self, x: torch.Tensor, x_auxilary: dict[str, torch.Tensor] | None = None) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, x_auxiliary: dict[str, torch.Tensor] | None = None) -> torch.Tensor:
         x, skip_connections = self.encoder(x)
         x = self.bottleneck(x)
         x = self.decoder(x, skip_connections)
@@ -120,10 +120,10 @@ class MultiSourceUNet(UNetBase):
         use_skip_connections: bool = True,
         use_transpose_conv: bool = False,
         use_activation_after_upsampling: bool = False,
-        auxilary_input_dims: dict[str, int] | None = None,
-        auxilary_hidden_dims: dict[str, list[int] | dict[str, list[int]]] | None = None,
-        auxilary_embed_dims: dict[str, int] | None = None,
-        auxilary_feature_encoder_poolings: dict[str, str] | None = None,
+        auxiliary_input_dims: dict[str, int] | None = None,
+        auxiliary_hidden_dims: dict[str, list[int] | dict[str, list[int]]] | None = None,
+        auxiliary_embed_dims: dict[str, int] | None = None,
+        auxiliary_feature_encoder_poolings: dict[str, str] | None = None,
     ):
         super().__init__()
 
@@ -134,10 +134,10 @@ class MultiSourceUNet(UNetBase):
         self.use_skip_connections = use_skip_connections
         self.use_transpose_conv = use_transpose_conv
         self.use_activation_after_upsampling = use_activation_after_upsampling
-        self.auxilary_input_dims: dict[str, int] = auxilary_input_dims or {}
-        self.auxilary_hidden_dims: dict[str, list[int] | dict[str, list[int]]] = auxilary_hidden_dims or {}
-        self.auxilary_embed_dims: dict[str, int] = auxilary_embed_dims or {}
-        self.auxilary_feature_encoder_poolings: dict[str, str] = auxilary_feature_encoder_poolings or {}
+        self.auxiliary_input_dims: dict[str, int] = auxiliary_input_dims or {}
+        self.auxiliary_hidden_dims: dict[str, list[int] | dict[str, list[int]]] = auxiliary_hidden_dims or {}
+        self.auxiliary_embed_dims: dict[str, int] = auxiliary_embed_dims or {}
+        self.auxiliary_feature_encoder_poolings: dict[str, str] = auxiliary_feature_encoder_poolings or {}
         self._build_components()
         self.out_conv = nn.Conv2d(self.hidden_features[0], self.num_classes, kernel_size=1)
 
@@ -150,20 +150,20 @@ class MultiSourceUNet(UNetBase):
         if "spatial" in features:
             encoders["spatial"] = BaselineEncoder(in_channels=self.input_channels, hidden_features=self.hidden_features)
 
-        # Build encoders for each extra auxilary feature type.
-        if self.auxilary_input_dims:
-            for name, input_dim in self.auxilary_input_dims.items():
+        # Build encoders for each extra auxiliary feature type.
+        if self.auxiliary_input_dims:
+            for name, input_dim in self.auxiliary_input_dims.items():
                 if name == "wind_grid":
-                    hidden_dims = self.auxilary_hidden_dims.get(name, {"mixer": [16], "local": [32, 64, 16], "global": [16]})
+                    hidden_dims = self.auxiliary_hidden_dims.get(name, {"mixer": [16], "local": [32, 64, 16], "global": [16]})
                     if isinstance(hidden_dims, dict):
                         encoders[name] = WindFeatureEncoder(
-                            in_channels=input_dim, hidden_dims=hidden_dims, embed_dim=self.auxilary_embed_dims.get(name, 16)
+                            in_channels=input_dim, hidden_dims=hidden_dims, embed_dim=self.auxiliary_embed_dims.get(name, 16)
                         )
                     continue
                 # get the architectural values for each different auxillary encoder
-                hidden_dims = self.auxilary_hidden_dims.get(name, [32, 64])
-                embed_dim = self.auxilary_embed_dims.get(name, 64)
-                pool = self.auxilary_feature_encoder_poolings.get(name, "max")
+                hidden_dims = self.auxiliary_hidden_dims.get(name, [32, 64])
+                embed_dim = self.auxiliary_embed_dims.get(name, 64)
+                pool = self.auxiliary_feature_encoder_poolings.get(name, "max")
 
                 if isinstance(hidden_dims, list):
                     encoders[name] = TabularFeatureEncoder(
@@ -179,11 +179,11 @@ class MultiSourceUNet(UNetBase):
         if self.hidden_features is None:
             raise ValueError("Hidden features cannot be None.")
 
-        # Get the dims. of all extra auxilary features.
+        # Get the dims. of all extra auxiliary features.
         auxillary_dims: dict[str, int] = {}
-        if self.auxilary_input_dims:
-            for name in self.auxilary_input_dims.keys():
-                auxillary_dims[name] = self.auxilary_embed_dims.get(name, 64)
+        if self.auxiliary_input_dims:
+            for name in self.auxiliary_input_dims.keys():
+                auxillary_dims[name] = self.auxiliary_embed_dims.get(name, 64)
 
         return MultiSourceBottleneck(
             in_channels=self.hidden_features[-1], out_channels=self.hidden_features[-1] * 2, aux_dims=auxillary_dims
@@ -201,11 +201,11 @@ class MultiSourceUNet(UNetBase):
         )
         return decoder
 
-    def forward(self, x: torch.Tensor, x_auxilary: dict[str, torch.Tensor] | None = None) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, x_auxiliary: dict[str, torch.Tensor] | None = None) -> torch.Tensor:
         """
         Args:
             x: Spatial input (B, C, H, W) (torch.Tensor)
-            x_auxilary: Dict. of auxiliary inputs {'weather': (B, N, D), ...} (dict[str, torch.Tensor] | None)
+            x_auxiliary: Dict. of auxiliary inputs {'weather': (B, N, D), ...} (dict[str, torch.Tensor] | None)
         """
 
         skip_connections = []
@@ -215,13 +215,13 @@ class MultiSourceUNet(UNetBase):
         if "spatial" in self.encoder:  # type: ignore
             x, skip_connections = self.encoder["spatial"](x)  # type: ignore
 
-        # Extra auxilary encoders path.
+        # Extra auxiliary encoders path.
         x_wind = None
-        if self.auxilary_input_dims and x_auxilary is not None:
-            for name in self.auxilary_input_dims.keys():
-                if name in x_auxilary:
+        if self.auxiliary_input_dims and x_auxiliary is not None:
+            for name in self.auxiliary_input_dims.keys():
+                if name in x_auxiliary:
                     encoder_aux = self.encoder[name]  # type: ignore
-                    encoder_emb = encoder_aux(x_auxilary[name])
+                    encoder_emb = encoder_aux(x_auxiliary[name])
                     if name == "wind_grid":
                         # print("====================in wind grid==================")
                         x_wind = encoder_emb
