@@ -6,6 +6,7 @@ from src.metrics import (
     compute_auc_iou,
     compute_bias,
     compute_ccc,
+    compute_kl_divergence,
     compute_mae,
     compute_mse,
     compute_spearman,
@@ -251,3 +252,88 @@ def test_ccc_scaled_preds_less_than_one():
     preds = targets * 2.0
     ccc = compute_ccc(preds, targets)
     assert ccc.item() < 1.0
+
+
+def test_kl_divergence_zero_when_perfect_match(dummy_data):
+    _, targets = dummy_data
+    kl = compute_kl_divergence(targets, targets)
+    assert torch.isclose(kl, torch.tensor(0.0), atol=1e-6)
+
+
+def test_kl_divergence_zero_when_perfect_match_with_mask(dummy_data):
+    _, targets = dummy_data
+    mask = torch.ones_like(targets)
+    kl = compute_kl_divergence(targets, targets, mask=mask)
+    assert torch.isclose(kl, torch.tensor(0.0), atol=1e-6)
+
+
+def test_kl_divergence_is_non_negative(dummy_data):
+    preds, targets = dummy_data
+    kl = compute_kl_divergence(preds, targets)
+    assert kl >= 0
+    assert isinstance(kl, torch.Tensor)
+
+
+def test_kl_divergence_is_non_negative_with_mask(dummy_data, dummy_mask):
+    preds, targets = dummy_data
+    kl = compute_kl_divergence(preds, targets, mask=dummy_mask)
+    assert kl >= 0
+    assert isinstance(kl, torch.Tensor)
+
+
+def test_kl_divergence_empty_mask_edge_case(dummy_data):
+    preds, targets = dummy_data
+    empty_mask = torch.zeros_like(targets)
+    kl = compute_kl_divergence(preds, targets, mask=empty_mask)
+    assert torch.isnan(kl)
+
+
+def test_kl_divergence_ignores_masked_out_regions():
+    targets = torch.zeros(1, 1, 1, 4)
+    preds = torch.zeros(1, 1, 1, 4)
+    mask = torch.zeros(1, 1, 1, 4)
+
+    # valid region
+    targets[..., 0] = 1.0
+    preds[..., 0] = 1.0
+    mask[..., 0] = 1.0
+
+    # invalid region with very different values that should be ignored
+    targets[..., 1:] = torch.tensor([0.0, 0.0, 100.0])
+    preds[..., 1:] = torch.tensor([100.0, 0.0, 0.0])
+
+    kl = compute_kl_divergence(preds, targets, mask=mask)
+    assert torch.isclose(kl, torch.tensor(0.0), atol=1e-6)
+
+
+def test_kl_divergence_is_asymmetric():
+    targets = torch.tensor([[[[0.5, 0.5]]]])
+    preds = torch.tensor([[[[0.25, 0.75]]]])
+
+    kl_pt = compute_kl_divergence(preds, targets)
+    kl_tp = compute_kl_divergence(targets, preds)
+
+    assert not torch.isclose(kl_pt, kl_tp, atol=1e-6)
+
+
+def test_kl_divergence_performance():
+    preds = torch.tensor(
+        [
+            [[[0.25, 0.75]]],
+            [[[0.60, 0.40]]],
+        ]
+    )
+    targets = torch.tensor(
+        [
+            [[[0.50, 0.50]]],
+            [[[0.50, 0.50]]],
+        ]
+    )
+
+    kl = compute_kl_divergence(preds, targets)
+
+    expected_0 = torch.sum(torch.tensor([0.5, 0.5]) * torch.log(torch.tensor([0.5, 0.5]) / torch.tensor([0.25, 0.75])))
+    expected_1 = torch.sum(torch.tensor([0.5, 0.5]) * torch.log(torch.tensor([0.5, 0.5]) / torch.tensor([0.6, 0.4])))
+    expected = (expected_0 + expected_1) / 2.0
+
+    assert torch.isclose(kl, expected, atol=1e-6)
