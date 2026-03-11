@@ -7,7 +7,6 @@ from src.metrics import (
     compute_ccc,
     compute_mae,
     compute_mse,
-    compute_ncc,
     compute_spearman,
     compute_ssim,
     compute_topK_iou,
@@ -241,37 +240,3 @@ def test_ccc_scaled_preds_less_than_one():
     preds = targets * 2.0
     ccc = compute_ccc(preds, targets)
     assert ccc.item() < 1.0
-
-
-def test_ncc_perfect_correlation():
-    targets = torch.rand(4, 1, 16, 16)
-    preds = targets * 2.0 + 1.0  # linear transform preserves Pearson correlation
-    score = compute_ncc(preds, targets)
-    assert torch.isclose(score, torch.tensor(1.0), atol=1e-4)
-
-
-def test_ncc_perfect_correlation_with_mask():
-    targets = torch.rand(4, 1, 16, 16)
-    preds = targets * 2.0 + 1.0
-    mask = torch.ones_like(targets)
-    score = compute_ncc(preds, targets, mask=mask)
-    assert torch.isclose(score, torch.tensor(1.0), atol=1e-4)
-
-
-def test_ncc_range(dummy_data):
-    preds, targets = dummy_data
-    score = compute_ncc(preds, targets)
-    assert -1.0 <= score.item() <= 1.0
-
-
-def test_ncc_range_with_mask(dummy_data, dummy_mask):
-    preds, targets = dummy_data
-    score = compute_ncc(preds, targets, mask=dummy_mask)
-    assert -1.0 <= score.item() <= 1.0
-
-
-def test_ncc_empty_mask_edge_case(dummy_data):
-    preds, targets = dummy_data
-    empty_mask = torch.zeros_like(targets)
-    score = compute_ncc(preds, targets, mask=empty_mask)
-    assert torch.isnan(score)

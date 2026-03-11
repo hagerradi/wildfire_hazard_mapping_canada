@@ -287,51 +287,6 @@ def compute_ccc(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor =
     return torch.nanmean(torch.stack(cccs))
 
 
-def compute_ncc(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None, eps: float = 1e-8) -> torch.Tensor:
-    """
-    Computes Normalized Cross-Correlation (NCC) per sample, then averages.
-    NCC is equivalent to the Pearson correlation coefficient computed over pixel values.
-    Optionally uses a mask to restrict computation to valid pixels.
-    """
-    batch_size = preds.size(0)
-    flat_preds = preds.reshape(batch_size, -1).float()
-    flat_targets = targets.reshape(batch_size, -1).float()
-    min_valid = 2
-    nccs = []
-    if mask is None:
-        for i in range(batch_size):
-            p = flat_preds[i]
-            t = flat_targets[i]
-            if p.numel() < min_valid:
-                nccs.append(torch.tensor(float("nan"), device=preds.device))
-                continue
-            p_mean = p.mean()
-            t_mean = t.mean()
-            p_centered = p - p_mean
-            t_centered = t - t_mean
-            numer = (p_centered * t_centered).sum()
-            denom = torch.sqrt((p_centered**2).sum() * (t_centered**2).sum()).clamp_min(eps)
-            nccs.append(numer / denom)
-    else:
-        valid_mask = mask.bool().reshape(batch_size, -1)
-        for i in range(batch_size):
-            sample_valid_mask = valid_mask[i]
-            n_valid = sample_valid_mask.sum()
-            if n_valid < min_valid:
-                nccs.append(torch.tensor(float("nan"), device=preds.device))
-                continue
-            p_valid = flat_preds[i][sample_valid_mask]
-            t_valid = flat_targets[i][sample_valid_mask]
-            p_mean = p_valid.mean()
-            t_mean = t_valid.mean()
-            p_centered = p_valid - p_mean
-            t_centered = t_valid - t_mean
-            numer = (p_centered * t_centered).sum()
-            denom = torch.sqrt((p_centered**2).sum() * (t_centered**2).sum()).clamp_min(eps)
-            nccs.append(numer / denom)
-    return torch.nanmean(torch.stack(nccs))
-
-
 def compute_kl_divergence(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None, eps: float = 1e-10) -> torch.Tensor:
     """
     Computes the Kullback-Leibler (KL) Divergence, optionally using a mask.
