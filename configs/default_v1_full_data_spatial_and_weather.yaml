@@ -11,7 +11,7 @@ model:
   num_classes: 1
   input_feature_list: ["spatial", "auxiliary"]
 
-  tabular_hidden_dims:
+  auxiliary_hidden_dims:
     weather: [32, 64, 128]
 
   auxiliary_embed_dims:
