@@ -104,9 +104,9 @@ class TabularSource(DataSource):
         # 2. If sampling bias for a feature is specified, adjust weights accordingly
         if self.sampling_bias is not None and candidates is not None and len(candidates) > 0:
             bias_values = candidates[:, self.bias_col_idx]
-            if self.sampling_bias == "high_values":
+            if self.sampling_bias == "high_values":  # Bias towards higher values of the feature
                 bias_weights = np.clip(bias_values, 0.0, None)  # Clamp negatives to 0
-            elif not self.sampling_bias:
+            elif not self.sampling_bias:  # No bias, uniform sampling among candidates
                 bias_weights = None
             else:
                 raise ValueError(f"Unknown sampling_bias: {self.sampling_bias}")
