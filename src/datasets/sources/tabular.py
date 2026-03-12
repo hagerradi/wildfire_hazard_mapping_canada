@@ -37,7 +37,7 @@ class TabularSource(DataSource):
         self.csv_name = params.csv_name
         self.feature_names_list = params.feature_names_list
         self.fire_weather_zone_id_col = params.fire_weather_zone_id_col
-        self.zone_selection_approach = params.zone_selection_approach
+        self.fire_weather_zone_selection_approach = params.fire_weather_zone_selection_approach
         self.sampling_bias = params.sampling_bias
         self.feature_to_bias = params.feature_to_bias
         self.num_samples_per_patch = params.num_samples_per_patch
@@ -77,12 +77,12 @@ class TabularSource(DataSource):
         values, counts = np.unique(zone_arr, return_counts=True)
 
         # 1. Select candidates depending on sampling approach
-        if self.zone_selection_approach == "mode":  # Selects the candidates from the most common zone in the patch
+        if self.fire_weather_zone_selection_approach == "mode":  # Selects the candidates from the most common zone in the patch
             mode_zone = int(values[np.argmax(counts)])
             candidates = self.lut.get(mode_zone)
             weights = None
         elif (
-            self.zone_selection_approach == "weighted"
+            self.fire_weather_zone_selection_approach == "weighted"
         ):  # Selects candidates from all zones in the patch, with probability proportional to their frequency
             all_candidates = []
             probs = []
@@ -99,15 +99,13 @@ class TabularSource(DataSource):
                 weights = np.concatenate(probs)
                 weights /= weights.sum()
         else:
-            raise ValueError(f"Unknown zone_selection_approach: {self.zone_selection_approach}")
+            raise ValueError(f"Unknown zone_selection_approach: {self.fire_weather_zone_selection_approach}")
 
         # 2. If sampling bias for a feature is specified, adjust weights accordingly
         if self.sampling_bias is not None and candidates is not None and len(candidates) > 0:
             bias_values = candidates[:, self.bias_col_idx]
-            if self.sampling_bias == "high":
+            if self.sampling_bias == "high_values":
                 bias_weights = np.clip(bias_values, 0.0, None)  # Clamp negatives to 0
-            elif self.sampling_bias == "low":
-                bias_weights = 1.0 / (np.abs(bias_values) + 1e-6)
             elif not self.sampling_bias:
                 bias_weights = None
             else:
