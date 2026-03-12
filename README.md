@@ -60,7 +60,7 @@ If we want to use center crop for stitching of our predictions run the following
 
 #### Data Preparation
 
-```python -m data_preparation.process_hexels_into_grids --root_dir="/network/projects/amlrt/nrcan_wildfires/full_data/yan_bp3" --modelling_approach=1 --output_type="count" --win_h=128 --win_w=128 --overlap_ratio=64 --hex_ids 01 12 16 39 49```
+```python -m data_preparation.process_hexels_into_grids --root_dir="/network/projects/amlrt/nrcan_wildfires/full_data/yan_bp3" --modelling_approach=1 --output_type="count" --win_h=128 --win_w=128 --overlap_with_halo=64 --hex_ids 01 12 16 39 49```
 
 #### Inference
 
