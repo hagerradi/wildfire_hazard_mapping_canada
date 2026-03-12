@@ -108,7 +108,7 @@ def test_multi_source_integration(temp_data_dir):
         csv_name=weather_csv,
         feature_names_list=weather_feats,
         fire_weather_zone_id_col="wx_zone",
-        zone_selection_approach="mode",
+        fire_weather_zone_selection_approach="mode",
         num_samples_per_patch=2,
     )
 
@@ -116,7 +116,7 @@ def test_multi_source_integration(temp_data_dir):
         csv_name=fire_size_csv,
         feature_names_list=fire_size_feats,
         fire_weather_zone_id_col="grid_code",
-        zone_selection_approach="mode",
+        fire_weather_zone_selection_approach="mode",
         num_samples_per_patch=2,
     )
 
@@ -306,7 +306,7 @@ def test_tabular_weighted_sampling(temp_data_dir):
         csv_name=fire_size_csv,
         feature_names_list=fire_size_feats,
         fire_weather_zone_id_col="grid_code",
-        zone_selection_approach="weighted",
+        fire_weather_zone_selection_approach="weighted",
         num_samples_per_patch=2,
     )
 
