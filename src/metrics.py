@@ -5,7 +5,7 @@ from torchmetrics.functional.image import structural_similarity_index_measure
 from torchmetrics.functional.regression import spearman_corrcoef
 
 
-def compute_mse(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None, eps: float = 1e-8) -> torch.Tensor:
+def compute_mse(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor | None = None, eps: float = 1e-8) -> torch.Tensor:
     """Computes Mean Squared Error (MSE), optionally using a mask."""
     if mask is None:
         return F.mse_loss(preds, targets, reduction="mean")
@@ -19,7 +19,7 @@ def compute_mse(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor =
     return loss.sum() / denom
 
 
-def compute_mae(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None, eps: float = 1e-8) -> torch.Tensor:
+def compute_mae(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor | None = None, eps: float = 1e-8) -> torch.Tensor:
     """Computes Mean Absolute Error (MAE), optionally using a mask."""
     if mask is None:
         return F.l1_loss(preds, targets, reduction="mean")
@@ -33,7 +33,7 @@ def compute_mae(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor =
     return loss.sum() / denom
 
 
-def compute_spearman(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None) -> torch.Tensor:
+def compute_spearman(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor | None = None) -> torch.Tensor:
     """
     Computes Spearman correlation per sample, then averages. Optionally uses a mask.
     """
@@ -155,7 +155,7 @@ def compute_topK_iou(
 def compute_auc_iou(
     preds: torch.Tensor,
     targets: torch.Tensor,
-    mask: torch.Tensor = None,
+    mask: torch.Tensor | None = None,
     k_values: tuple[float, float] = (0.01, 0.99),
     steps: int = 99,
     eps: float = 1e-8,
@@ -241,7 +241,7 @@ def compute_auc_iou(
     return torch.nanmean(torch.stack(aucs))
 
 
-def compute_ccc(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None, eps: float = 1e-8) -> torch.Tensor:
+def compute_ccc(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor | None = None, eps: float = 1e-8) -> torch.Tensor:
     """
     Computes the Concordance Correlation Coefficient (CCC), optionally using a mask.
 
@@ -287,7 +287,7 @@ def compute_ccc(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor =
     return torch.nanmean(torch.stack(cccs))
 
 
-def compute_kl_divergence(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None, eps: float = 1e-10) -> torch.Tensor:
+def compute_kl_divergence(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor | None = None, eps: float = 1e-10) -> torch.Tensor:
     """
     Computes the Kullback-Leibler (KL) Divergence, optionally using a mask.
     The tensors are normalized per-sample to form a valid probability distribution.
@@ -325,3 +325,64 @@ def compute_kl_divergence(preds: torch.Tensor, targets: torch.Tensor, mask: torc
         kl_divs.append(kl)
 
     return torch.nanmean(torch.stack(kl_divs))
+
+
+def compute_topK_mae(
+    preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor | None = None, percentile: float = 0.90
+) -> torch.Tensor:
+    """
+    Computes the MAE specifically for the Top-K probability pixels.
+    """
+    batch_size = preds.size(0)
+    flat_preds = preds.reshape(batch_size, -1)
+    flat_targets = targets.reshape(batch_size, -1)
+
+    errors = []
+
+    if mask is None:
+        for i in range(batch_size):
+            p = flat_preds[i]
+            t = flat_targets[i]
+
+            p_thresh = torch.quantile(p.float(), percentile)
+            t_thresh = torch.quantile(t.float(), percentile)
+
+            topK_mask = (p >= p_thresh) | (t >= t_thresh)
+
+            if topK_mask.sum() == 0:
+                errors.append(torch.tensor(float("nan"), device=preds.device, dtype=preds.dtype))
+                continue
+
+            p_topK = p[topK_mask]
+            t_topK = t[topK_mask]
+
+            mae = compute_mae(preds=p_topK, targets=t_topK, mask=None)
+            errors.append(mae)
+    else:
+        valid_mask = mask.bool().reshape(batch_size, -1)
+        for i in range(batch_size):
+            sample_valid_mask = valid_mask[i]
+
+            if sample_valid_mask.sum() == 0:
+                errors.append(torch.tensor(float("nan"), device=preds.device, dtype=preds.dtype))
+                continue
+
+            p_valid = flat_preds[i][sample_valid_mask]
+            t_valid = flat_targets[i][sample_valid_mask]
+
+            p_thresh = torch.quantile(p_valid.float(), percentile)
+            t_thresh = torch.quantile(t_valid.float(), percentile)
+
+            topK_mask = (p_valid >= p_thresh) | (t_valid >= t_thresh)
+
+            if topK_mask.sum() == 0:
+                errors.append(torch.tensor(float("nan"), device=preds.device, dtype=preds.dtype))
+                continue
+
+            p_topK = p_valid[topK_mask]
+            t_topK = t_valid[topK_mask]
+
+            mae = compute_mae(preds=p_topK, targets=t_topK, mask=None)
+            errors.append(mae)
+
+    return torch.nanmean(torch.stack(errors))
