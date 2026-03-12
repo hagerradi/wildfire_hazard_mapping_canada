@@ -35,7 +35,8 @@ def parse_args() -> argparse.Namespace:
         "--stitch_mode",
         type=str,
         default="mean",
-        help="How to stitch the hexel",
+        choices=["mean", "max", "center_crop"],
+        help="How to stitch the hexel from overlapping windows: 'mean', 'max', or 'center_crop'.",
     )
     parser.add_argument(
         "--window_size",
