@@ -197,7 +197,7 @@ def main():
     parser.add_argument("--output_type", type=str, help="output type as prob or count", default="count")
     parser.add_argument("--win_h", type=int, help="Height of the window", default=128)
     parser.add_argument("--win_w", type=int, help="Height of the window", default=128)
-    parser.add_argument("--overlap_ratio", type=float, help="Overlap ratio between windows", default=0.2)
+    parser.add_argument("--overlap_ratio", type=float, help="Overlap ratio between windows", default=None)
     parser.add_argument(
         "--overlap_with_halo",
         type=float,
