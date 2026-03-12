@@ -46,8 +46,8 @@ def get_stitched_windows(
     start_idx: int,
     gt_shape: tuple,
     stitch_mode: str = "mean",
-    win_h: int = 128,
-    win_w: int = 128,
+    window_size: int = 128,
+    center_crop_size: int = 64,
 ) -> np.ndarray:
     """
     Accumulate and stitch all the windows together to build the hexel
@@ -57,10 +57,18 @@ def get_stitched_windows(
         path = data[0]
         array = np.load(os.path.join(base_dir, path))[:, :, 0]
         mask = ~np.isnan(array)
-        all_data_points.append(predictions[start_idx + i].reshape((win_h, win_w)))
+        all_data_points.append(predictions[start_idx + i].reshape((window_size, window_size)))
         all_locations.append((data[5], data[6]))
-        all_masks.append(mask.reshape((win_h, win_w)))
-    reconstructed_hexel = stitch_windows(all_data_points, all_locations, all_masks, gt_shape, stitch_mode=stitch_mode)
+        all_masks.append(mask.reshape((window_size, window_size)))
+    reconstructed_hexel = stitch_windows(
+        all_data_points,
+        all_locations,
+        all_masks,
+        gt_shape,
+        stitch_mode=stitch_mode,
+        window_size=window_size,
+        center_crop_size=center_crop_size,
+    )
     return reconstructed_hexel  # gt_shape
 
 
@@ -75,8 +83,8 @@ def get_predicted_hexel(
     modelling_approach: str = "1",
     out_norm: str = "min_max",
     stitch_mode: str = "mean",
-    win_h: int = 128,
-    win_w: int = 128,
+    window_size: int = 128,
+    center_crop_size: int = 64,
 ) -> tuple[np.ndarray, Profile]:
     """
     Returns the reconstructed hexel
@@ -98,8 +106,8 @@ def get_predicted_hexel(
             start_idx=start_idx,
             gt_shape=tuple(gt_elevation_grid.data.shape),
             stitch_mode=stitch_mode,
-            win_h=win_h,
-            win_w=win_w,
+            window_size=window_size,
+            center_crop_size=center_crop_size,
         )
         reconstructed_hexel_denorm = denormalize_burn_prob(
             data=reconstructed_hexel, min_val=min_target_val, max_val=max_target_val, out_norm=out_norm
@@ -117,8 +125,8 @@ def get_predicted_hexel(
                 start_idx=start_idx,
                 gt_shape=tuple(gt_elevation_grid.data.shape),
                 stitch_mode=stitch_mode,
-                win_h=win_h,
-                win_w=win_w,
+                window_size=window_size,
+                center_crop_size=center_crop_size,
             )
             reconstructed_season_cause_hexel_denorm = denormalize_burn_count(
                 data=reconstructed_season_cause_hexel, min_val=min_target_val, max_val=max_target_val
@@ -203,6 +211,8 @@ def evaluate_and_visualize_hexels(
     experiment_logger: CometLogger | None = None,
     metric_functions: dict[str, Callable] | None = None,
     stitch_mode: str = "mean",
+    window_size: int = 128,
+    center_crop_size: int = 64,
 ) -> dict[str, float]:
     """
     A util function to re-construct predicted hexels out of test predictions, and visualize side-by-side with the Groundtruth.
@@ -254,8 +264,8 @@ def evaluate_and_visualize_hexels(
             modelling_approach=modelling_approach,
             out_norm=out_norm,
             stitch_mode=stitch_mode,
-            win_h=128,
-            win_w=128,
+            window_size=window_size,
+            center_crop_size=center_crop_size,
         )
         save_predicted_hexels(reconstructed_hexel_denorm, gt_elevation_grid_profile, hex_id, config.save_dir)
         # Save the hex as plt plot
