@@ -18,19 +18,10 @@ from src.config import (
 )
 from src.trainer import Trainer
 
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
-
 SPATIAL_CHANNELS = 1
 WEATHER_FEATS = 5
 FIRE_SIZE_FEATS = 3
 AUX_SAMPLES = 16  # tabular rows sampled per patch
-
-
-# ---------------------------------------------------------------------------
-# Dummy loss / metric helpers
-# ---------------------------------------------------------------------------
 
 
 class DummyLoss(torch.nn.Module):
@@ -42,13 +33,8 @@ def dummy_metric(predictions, targets, masks):
     return torch.tensor(0.5)
 
 
-# ---------------------------------------------------------------------------
-# Dict-based datasets (match the {'grid': ..., 'weather': ...} batch format)
-# ---------------------------------------------------------------------------
-
-
 class GridDataset(torch.utils.data.Dataset):
-    """Spatial-only dataset — yields {'grid': (inputs, targets, masks)}."""
+    """Spatial-only dataset —> yields {'grid': (inputs, targets, masks)}."""
 
     def __init__(self, size: int = 4, channels: int = 1, height: int = 32, width: int = 32):
         self.size = size
@@ -88,11 +74,6 @@ class MultiAuxDataset(GridDataset):
         return item
 
 
-# ---------------------------------------------------------------------------
-# Config factory
-# ---------------------------------------------------------------------------
-
-
 def _make_config(
     tmp_path,
     *,
@@ -102,6 +83,7 @@ def _make_config(
     auxiliary_embed_dims: dict | None = None,
     auxiliary_feature_encoder_poolings: dict | None = None,
 ) -> Config:
+    """Config. factory"""
     if input_feature_list is None:
         input_feature_list = ["spatial"]
 
@@ -109,7 +91,7 @@ def _make_config(
         save_dir=str(tmp_path),
         model=ModelConfig(
             num_classes=1,
-            hidden_features=[8, 16],  # small for test speed
+            hidden_features=[8, 16],
             input_feature_list=input_feature_list,
             auxiliary_hidden_dims=auxiliary_hidden_dims or {"weather": [16, 32]},
             auxiliary_embed_dims=auxiliary_embed_dims or {"weather": 16},
@@ -143,11 +125,6 @@ def _make_config(
         ),
         metrics=["mse", "spearman"],
     )
-
-
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
 
 
 @pytest.fixture
@@ -215,11 +192,6 @@ def dummy_data_multi_aux():
     return DataLoader(ds, batch_size=2)
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
 def patch_trainer(trainer: Trainer) -> Trainer:
     """Replace loss and metrics with lightweight stubs for isolated testing."""
     trainer.loss_fn = DummyLoss()
@@ -227,11 +199,7 @@ def patch_trainer(trainer: Trainer) -> Trainer:
     return trainer
 
 
-# ---------------------------------------------------------------------------
 # Tests — baseline (spatial-only) Trainer
-# ---------------------------------------------------------------------------
-
-
 def test_trainer_uses_logger(dummy_config_with_logger, mock_comet_logger):
     Trainer(dummy_config_with_logger, spatial_input_channels=SPATIAL_CHANNELS)
     mock_comet_logger.log_params.assert_called()
@@ -307,11 +275,7 @@ def test_test_method(dummy_config, dummy_data):
     assert "dummy" in results
 
 
-# ---------------------------------------------------------------------------
 # Tests — multi-source Trainer with weather encoder
-# ---------------------------------------------------------------------------
-
-
 def test_auxiliary_trainer_setup(auxiliary_config):
     trainer = Trainer(
         auxiliary_config,
@@ -383,11 +347,7 @@ def test_auxiliary_run_training(auxiliary_config, dummy_data_weather):
     trainer.run_training(dummy_data_weather, dummy_data_weather)
 
 
-# ---------------------------------------------------------------------------
 # Tests — multi-source Trainer with weather + fire_size encoders
-# ---------------------------------------------------------------------------
-
-
 def test_multi_aux_trainer_setup(multi_aux_config):
     trainer = Trainer(
         multi_aux_config,
