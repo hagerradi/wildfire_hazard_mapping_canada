@@ -122,7 +122,7 @@ def find_simulation_output_file(root_dir: str, hex_id: str, output_type: str, se
 
 def find_hex_ids(root_dir: str) -> list:
     """
-        Find all the numerical hex ids
+    Find all the numerical hex ids
     """
     hex_ids = []
     try:
@@ -196,7 +196,7 @@ def get_padding_params(
     """
     Get the padding and strides for splitting a hexel into patches
     Args:
-        H (int): Height of the hexel
+        H (int): Height of the   hexel
         W (int): Width of the hexel
         win_h (int) : Height of the patch window
         win_w (int) : Width of the patch window
