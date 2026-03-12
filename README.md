@@ -56,15 +56,10 @@ To visualize predictions and/or save visualizations, add the optional flags `--v
 
 ```python -m src.evaluate_hexels --config=configs/default_v1.yaml```
 
-If we want to use center crop for stitching of our predictions run the following commands:
+If we want to use center crop for stitching predictions, make sure step 2 in data_preparation is run with `overlap_with_halo=64` and `overlap_ratio=None`
 
-#### Data Preparation
+Then, you should use `--stitch_mode=center_crop` to run `src.evaluate_hexels`
 
-```python -m data_preparation.process_hexels_into_grids --root_dir="/network/projects/amlrt/nrcan_wildfires/full_data/yan_bp3" --modelling_approach=1 --output_type="count" --win_h=128 --win_w=128 --overlap_with_halo=64 --hex_ids 01 12 16 39 49```
-
-#### Inference
-
-```python -m src.evaluate_hexels --config=configs/default_v1.yaml --stitch_mode=center_crop --visualize_predictions --save_visualizations```
 
 ### Generate full Canada map of hexels
 
