@@ -22,6 +22,9 @@ SPATIAL_CHANNELS = 1
 WEATHER_FEATS = 5
 FIRE_SIZE_FEATS = 3
 AUX_SAMPLES = 16  # tabular rows sampled per patch
+WIND_CHANNELS = 4
+WIND_HEIGHT = 128
+WIND_WIDTH = 128
 
 
 class DummyLoss(torch.nn.Module):
@@ -71,6 +74,28 @@ class MultiAuxDataset(GridDataset):
         torch.manual_seed(idx + 1000)
         item["weather"] = torch.rand(AUX_SAMPLES, WEATHER_FEATS)
         item["fire_size"] = torch.rand(AUX_SAMPLES, FIRE_SIZE_FEATS)
+        return item
+
+
+class WindGridDataset(GridDataset):
+    """Spatial + spatial wind grid dataset."""
+
+    def __getitem__(self, idx: int) -> dict:
+        item = super().__getitem__(idx)
+        torch.manual_seed(idx + 2000)
+        item["wind_grid"] = torch.rand(WIND_CHANNELS, WIND_HEIGHT, WIND_WIDTH)
+        return item
+
+
+class WindAndWeatherDataset(GridDataset):
+    """Spatial + spatial wind grid + weather tabular dataset."""
+
+    def __getitem__(self, idx: int) -> dict:
+        item = super().__getitem__(idx)
+        torch.manual_seed(idx + 2000)
+        item["wind_grid"] = torch.rand(WIND_CHANNELS, WIND_HEIGHT, WIND_WIDTH)
+        torch.manual_seed(idx + 3000)
+        item["weather"] = torch.rand(AUX_SAMPLES, WEATHER_FEATS)
         return item
 
 
@@ -160,10 +185,35 @@ def multi_aux_config(tmp_path):
 
 
 @pytest.fixture
+def wind_grid_config(tmp_path):
+    return _make_config(
+        tmp_path,
+        input_feature_list=["spatial", "auxiliary"],
+        auxiliary_hidden_dims={"wind_grid": {"mixer": [16], "local": [32, 64, 16], "global": [16]}},
+        auxiliary_embed_dims={"wind_grid": 16},
+        auxiliary_feature_encoder_poolings={"wind_grid": "max"},
+    )
+
+
+@pytest.fixture
+def wind_and_weather_config(tmp_path):
+    return _make_config(
+        tmp_path,
+        input_feature_list=["spatial", "auxiliary"],
+        auxiliary_hidden_dims={
+            "wind_grid": {"mixer": [16], "local": [32, 64, 16], "global": [16]},
+            "weather": [16, 32],
+        },
+        auxiliary_embed_dims={"wind_grid": 16, "weather": 16},
+        auxiliary_feature_encoder_poolings={"wind_grid": "max", "weather": "max"},
+    )
+
+
+@pytest.fixture
 def mock_comet_logger(monkeypatch):
     """
-    Mock the CometLogger inside src.trainer so no API key or network call is
-    needed. Apply this fixture explicitly to tests that enable the logger.
+    Mock the CometLogger inside src.trainer.
+    Apply this fixture explicitly to tests that enable the logger.
     """
     import src.trainer as trainer_module
 
@@ -189,6 +239,18 @@ def dummy_data_weather():
 @pytest.fixture
 def dummy_data_multi_aux():
     ds = MultiAuxDataset()
+    return DataLoader(ds, batch_size=2)
+
+
+@pytest.fixture
+def dummy_data_wind_grid():
+    ds = WindGridDataset()
+    return DataLoader(ds, batch_size=2)
+
+
+@pytest.fixture
+def dummy_data_wind_and_weather():
+    ds = WindAndWeatherDataset()
     return DataLoader(ds, batch_size=2)
 
 
@@ -381,3 +443,134 @@ def test_multi_aux_train_epoch_runs(multi_aux_config, dummy_data_multi_aux):
     results = trainer.train_epoch(dummy_data_multi_aux)
     assert "loss" in results
     assert "dummy" in results
+
+
+# Tests — multi-source Trainer with WindFeatureEncoder (spatial wind grid)
+def test_wind_grid_trainer_setup(wind_grid_config):
+    trainer = Trainer(
+        wind_grid_config,
+        spatial_input_channels=SPATIAL_CHANNELS,
+        auxiliary_input_dims={"wind_grid": WIND_CHANNELS},
+    )
+    assert trainer.auxiliary is True
+    assert trainer.model is not None
+    assert isinstance(trainer.optimizer, torch.optim.Optimizer)
+
+
+def test_wind_grid_trainer_step(wind_grid_config, dummy_data_wind_grid):
+    trainer = Trainer(
+        wind_grid_config,
+        spatial_input_channels=SPATIAL_CHANNELS,
+        auxiliary_input_dims={"wind_grid": WIND_CHANNELS},
+    )
+    patch_trainer(trainer)
+    batch = next(iter(dummy_data_wind_grid))
+    preds, loss, loss_parts, targets, masks = trainer._step(batch)
+    assert preds.shape == targets.shape
+    assert isinstance(loss, torch.Tensor)
+
+
+def test_wind_grid_train_epoch_runs(wind_grid_config, dummy_data_wind_grid):
+    trainer = Trainer(
+        wind_grid_config,
+        spatial_input_channels=SPATIAL_CHANNELS,
+        auxiliary_input_dims={"wind_grid": WIND_CHANNELS},
+    )
+    patch_trainer(trainer)
+    results = trainer.train_epoch(dummy_data_wind_grid)
+    assert "loss" in results
+    assert "dummy" in results
+
+
+def test_wind_grid_validate_runs(wind_grid_config, dummy_data_wind_grid):
+    trainer = Trainer(
+        wind_grid_config,
+        spatial_input_channels=SPATIAL_CHANNELS,
+        auxiliary_input_dims={"wind_grid": WIND_CHANNELS},
+    )
+    patch_trainer(trainer)
+    results = trainer.validate(dummy_data_wind_grid)
+    assert "loss" in results
+    assert "dummy" in results
+
+
+def test_wind_grid_validate_return_predictions(wind_grid_config, dummy_data_wind_grid):
+    trainer = Trainer(
+        wind_grid_config,
+        spatial_input_channels=SPATIAL_CHANNELS,
+        auxiliary_input_dims={"wind_grid": WIND_CHANNELS},
+    )
+    patch_trainer(trainer)
+    results, preds = trainer.validate(dummy_data_wind_grid, return_predictions=True)
+    assert "loss" in results
+    assert preds.shape[0] == 4  # dataset size
+    assert np.all((preds >= 0) & (preds <= 1)), "Predictions should be in [0, 1] range after sigmoid"
+
+
+def test_wind_grid_run_training(wind_grid_config, dummy_data_wind_grid):
+    trainer = Trainer(
+        wind_grid_config,
+        spatial_input_channels=SPATIAL_CHANNELS,
+        auxiliary_input_dims={"wind_grid": WIND_CHANNELS},
+    )
+    patch_trainer(trainer)
+    trainer.run_training(dummy_data_wind_grid, dummy_data_wind_grid)
+
+
+# Tests — multi-source Trainer with WindFeatureEncoder + TabularFeatureEncoder (wind_grid + weather)
+def test_wind_and_weather_trainer_setup(wind_and_weather_config):
+    trainer = Trainer(
+        wind_and_weather_config,
+        spatial_input_channels=SPATIAL_CHANNELS,
+        auxiliary_input_dims={"wind_grid": WIND_CHANNELS, "weather": WEATHER_FEATS},
+    )
+    assert trainer.auxiliary is True
+    assert trainer.model is not None
+    assert isinstance(trainer.optimizer, torch.optim.Optimizer)
+
+
+def test_wind_and_weather_trainer_step(wind_and_weather_config, dummy_data_wind_and_weather):
+    trainer = Trainer(
+        wind_and_weather_config,
+        spatial_input_channels=SPATIAL_CHANNELS,
+        auxiliary_input_dims={"wind_grid": WIND_CHANNELS, "weather": WEATHER_FEATS},
+    )
+    patch_trainer(trainer)
+    batch = next(iter(dummy_data_wind_and_weather))
+    preds, loss, loss_parts, targets, masks = trainer._step(batch)
+    assert preds.shape == targets.shape
+    assert isinstance(loss, torch.Tensor)
+
+
+def test_wind_and_weather_train_epoch_runs(wind_and_weather_config, dummy_data_wind_and_weather):
+    trainer = Trainer(
+        wind_and_weather_config,
+        spatial_input_channels=SPATIAL_CHANNELS,
+        auxiliary_input_dims={"wind_grid": WIND_CHANNELS, "weather": WEATHER_FEATS},
+    )
+    patch_trainer(trainer)
+    results = trainer.train_epoch(dummy_data_wind_and_weather)
+    assert "loss" in results
+    assert "dummy" in results
+
+
+def test_wind_and_weather_validate_runs(wind_and_weather_config, dummy_data_wind_and_weather):
+    trainer = Trainer(
+        wind_and_weather_config,
+        spatial_input_channels=SPATIAL_CHANNELS,
+        auxiliary_input_dims={"wind_grid": WIND_CHANNELS, "weather": WEATHER_FEATS},
+    )
+    patch_trainer(trainer)
+    results = trainer.validate(dummy_data_wind_and_weather)
+    assert "loss" in results
+    assert "dummy" in results
+
+
+def test_wind_and_weather_run_training(wind_and_weather_config, dummy_data_wind_and_weather):
+    trainer = Trainer(
+        wind_and_weather_config,
+        spatial_input_channels=SPATIAL_CHANNELS,
+        auxiliary_input_dims={"wind_grid": WIND_CHANNELS, "weather": WEATHER_FEATS},
+    )
+    patch_trainer(trainer)
+    trainer.run_training(dummy_data_wind_and_weather, dummy_data_wind_and_weather)
