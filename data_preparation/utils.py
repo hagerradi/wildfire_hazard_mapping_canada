@@ -121,6 +121,9 @@ def find_simulation_output_file(root_dir: str, hex_id: str, output_type: str, se
 
 
 def find_hex_ids(root_dir: str) -> list:
+    """
+        Find all the numerical hex ids
+    """
     hex_ids = []
     try:
         with os.scandir(root_dir) as entries:
@@ -190,6 +193,16 @@ def get_processed_hex_ids(folder_path: str) -> list:
 def get_padding_params(
     H: int, W: int, win_h: int, win_w: int, overlap_ratio: float | None = None, overlap_with_halo: float | None = None
 ) -> tuple[int, int, int, int, int, int]:
+    """
+    Get the padding and strides for splitting a hexel into patches
+    Args:
+        H (int): Height of the hexel
+        W (int): Width of the hexel
+        win_h (int) : Height of the patch window
+        win_w (int) : Width of the patch window
+        overlap_ratio (float) : % overlap among patches for the split (used normally)
+        overlap_with_halo (float) : Int overlap with halo among the patches (used only for center_crop stitching)
+    """
     if overlap_ratio is None and overlap_with_halo is None:
         raise ValueError(
             "Atleast one of the overlap_ratio or overlap_with_halo should be not None."
