@@ -78,10 +78,14 @@ class TabularParams(BaseModel):
     csv_name: str = "weather_table.csv"
     feature_names_list: list[str]
     fire_weather_zone_id_col: str = "wx_zone"
-    sampling_approach: str = "mode"  # mode or weighted
+    fire_weather_zone_selection_approach: str = "mode"  # Selection method to determine weather zone to be used for the patch: "mode" (for most common zone) or "weighted" (for frequency-weighted sampling)
     num_samples_per_patch: int = 256
     transforms_list: list[str] = Field(default_factory=list)
     augmentation_prob: float = 0.0
+    sampling_bias: str | None = (
+        None  # Whether to bias sampling towards high or low values of the feature of interest, or no bias (None, "high_values")
+    )
+    feature_to_bias: str | None = None  # The feature to bias sampling towards if sampling_bias is not None
 
 
 class DataSourceConfig(BaseModel):
