@@ -16,10 +16,9 @@ from tqdm import tqdm
 from data_preparation.hexel_loader import load_features_per_hexel
 from data_preparation.process_hexels_into_grids import get_split_hexel_window
 from data_preparation.process_tabular_data import build_weather_table, process_fire_size_distribution_table
-from src.datasets.dataset import MultiSourceDataset
-from src.datasets.utils import get_dataset_dimensions, get_data_source_class, get_data_source_param_class
-
 from inference.predictor import BurnRiskPredictor
+from src.datasets.dataset import MultiSourceDataset
+from src.datasets.utils import get_data_source_class, get_data_source_param_class, get_dataset_dimensions
 
 logging.basicConfig(
     level=logging.INFO,
@@ -31,6 +30,7 @@ logging.basicConfig(
     force=True,
 )
 logger = logging.getLogger(__name__)
+
 
 def prepare_hexel_data(
     data_dir: Path,
@@ -45,9 +45,9 @@ def prepare_hexel_data(
 ) -> Path:
     """
     Prepare data patches for a single hexel.
-    
+
     Handles all the CSV building, raw data loading, and patch splitting.
-    
+
     Args:
         data_dir: Directory containing hexel data.
         hex_id: Hexel ID to process (e.g., "02").
@@ -58,7 +58,7 @@ def prepare_hexel_data(
         output_type: "count" or "prob" for fire output type.
         weather_sampling: Weather sampling strategy.
         prepare_tabular: Whether to prepare weather and fire size tables.
-        
+
     Returns:
         Path to the output directory containing patches and metadata CSV.
     """
@@ -94,6 +94,8 @@ def prepare_hexel_data(
 
     if stacked_feats is None:
         raise ValueError(f"Failed to load features for hexel {hex_id}")
+    if mask is None:
+        raise ValueError(f"Failed to load mask for hexel {hex_id}")
 
     # Split into patches
     logger.info(f"Splitting hexel {hex_id} into {win_h}x{win_w} patches...")
@@ -116,12 +118,12 @@ def prepare_hexel_data(
 def create_dataset(processed_data_dir: Path, hex_id: str, config_dict: dict) -> MultiSourceDataset:
     """
     Build the PyTorch Dataset based on the saved checkpoint config.
-    
+
     Args:
         processed_data_dir: Directory containing processed data.
         hex_id: Hexel ID.
         config_dict: Checkpoint config dict.
-        
+
     Returns:
         MultiSourceDataset ready for inference.
     """
@@ -130,9 +132,7 @@ def create_dataset(processed_data_dir: Path, hex_id: str, config_dict: dict) -> 
         source_name = source["name"]
         source_class = get_data_source_class(source_name)
         source_param_class = get_data_source_param_class(source_name)
-        sources[source_name] = source_class(
-            root_dir=processed_data_dir, params=source_param_class(**source["params"])
-        )
+        sources[source_name] = source_class(root_dir=processed_data_dir, params=source_param_class(**source["params"]))
 
     return MultiSourceDataset(
         csv_name=f"meta_hex_{hex_id}.csv",
@@ -158,7 +158,7 @@ def run_pipeline(
 ) -> np.ndarray:
     """
     Orchestrate the end-to-end inference flow for a specific hexel.
-    
+
     Args:
         checkpoint_path: Path to trained model checkpoint.
         data_dir: Directory containing hexel data.
@@ -173,7 +173,7 @@ def run_pipeline(
         output_type: "count" or "prob" for fire output.
         weather_sampling: Weather sampling strategy.
         save_path: If provided, save predictions to this path.
-        
+
     Returns:
         Predictions as numpy array of shape (N, C, H, W).
     """
@@ -197,12 +197,16 @@ def run_pipeline(
     # Step 2: Load checkpoint once (on CPU to save on GPU until needed)
     logger.info("Step 2: Loading checkpoint and config...")
     checkpoint = torch.load(checkpoint_path, map_location="cpu")
-    data_config_dict = checkpoint["config"]["data"] # Dict containing data config used during training. We will use this to build the dataset correctly 
+    data_config_dict = checkpoint["config"][
+        "data"
+    ]  # Dict containing data config used during training. We will use this to build the dataset correctly
 
     # Step 3: Build Dataset
     logger.info("Step 3: Building Dataset...")
     dataset = create_dataset(processed_data_dir, hex_id, data_config_dict)
     spatial_channels, auxiliary_input_dims = get_dataset_dimensions(dataset)
+    if spatial_channels is None:
+        raise ValueError("Could not determine spatial channels from dataset")
     logger.info(f"Dataset: {len(dataset)} samples | Spatial channels: {spatial_channels} | Auxiliary dims: {auxiliary_input_dims}")
     dataloader = DataLoader(
         dataset,
@@ -215,17 +219,15 @@ def run_pipeline(
     # Step 4: Instantiate the Predictor (pass pre-loaded checkpoint)
     logger.info("Step 4: Initializing Model Predictor...")
     predictor = BurnRiskPredictor.from_checkpoint(
-        checkpoint_path=checkpoint_path,
-        spatial_channels=spatial_channels,
-        auxiliary_input_dims=auxiliary_input_dims
+        checkpoint_path=checkpoint_path, spatial_channels=spatial_channels, auxiliary_input_dims=auxiliary_input_dims
     )
 
     # Step 5: Run Inference Loop
     logger.info("Step 5: Running Inference...")
     all_predictions = []
     for batch in tqdm(dataloader, desc="Predicting Batches"):
-        spatial_inputs = batch["grid"][0] # Obtains just the input array
-        batch_preds = predictor(spatial_inputs, auxiliary_inputs=batch) # Predictor handles device placement internally
+        spatial_inputs = batch["grid"][0]  # Obtains just the input array
+        batch_preds = predictor(spatial_inputs, auxiliary_inputs=batch)  # Predictor handles device placement internally
         all_predictions.append(batch_preds)
 
     final_output = torch.cat(all_predictions, dim=0).numpy()

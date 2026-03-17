@@ -1,6 +1,7 @@
 import argparse
 import os
 from pathlib import Path
+
 import numpy as np
 import pandas as pd
 
@@ -17,9 +18,7 @@ def save_split_hexel_windows(
     filename = f"numpy_files/hex_{hex_id}_{str(win_id)}_{season}_{cause}.{format}"
     numpy_file_path = os.path.join(out_dir, filename)
     Path(numpy_file_path).parent.mkdir(parents=True, exist_ok=True)
-    np.save(numpy_file_path, valid_window) if format == "npy" else np.savez_compressed(
-        numpy_file_path, arr=valid_window
-    )
+    np.save(numpy_file_path, valid_window) if format == "npy" else np.savez_compressed(numpy_file_path, arr=valid_window)
     return filename
 
 

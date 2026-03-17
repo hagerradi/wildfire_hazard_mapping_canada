@@ -35,7 +35,7 @@ inference/
 # Run inference with no overrides
 python -m inference.run_hexel_inference --config=inference/config.yaml
 
-# Override hexel ID and data preparation 
+# Override hexel ID and data preparation
 python -m inference.run_hexel_inference --config=inference/config.yaml --hex_id=05 --prepare_data=False
 ```
 
@@ -87,7 +87,7 @@ win_w: 128               # Patch width
 overlap_ratio: 0.2       # Overlap between patches
 ```
 
-Note: `modelling_approach`, `win_h`, `win_w`, and `overlap_ratio` has to be consistent with training configuration. 
+Note: `modelling_approach`, `win_h`, `win_w`, and `overlap_ratio` has to be consistent with training configuration.
 
 ## CLI Arguments
 

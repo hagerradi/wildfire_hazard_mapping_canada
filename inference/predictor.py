@@ -13,13 +13,14 @@ from src.models.unet import BaselineUNet, MultiSourceUNet
 
 logger = logging.getLogger(__name__)
 
+
 class BurnRiskPredictor:
     """
     Pure inference class for wildfire burn risk prediction.
     Wraps the PyTorch model and handles tensor-in, tensor-out operations.
-    
+
     This class is focusses only on model operations.
-    
+
     Example:
         >>> predictor = BurnRiskPredictor.from_checkpoint(
         ...     checkpoint_path="models/best.pth",
@@ -37,9 +38,9 @@ class BurnRiskPredictor:
     ):
         """
         Initialize with an already-built model.
-        
+
         For typical usage, prefer the `from_checkpoint` classmethod.
-        
+
         Args:
             model: A PyTorch model (BaselineUNet or MultiSourceUNet).
             device: Device the model is on.
@@ -60,13 +61,13 @@ class BurnRiskPredictor:
     ) -> "BurnRiskPredictor":
         """
         Create a predictor from a saved checkpoint file.
-        
+
         Args:
             checkpoint_path: Path to the trained model checkpoint (.pth file). Must contain 'model_state' and 'config'.
             spatial_channels: Number of input channels for spatial data.
             auxiliary_input_dims: Dict mapping auxiliary source names to their dimensions.
             device: Device to run inference on. If None, auto-detects GPU/CPU.
-            
+
         Returns:
             BurnRiskPredictor instance ready for inference.
         """
@@ -75,7 +76,7 @@ class BurnRiskPredictor:
         checkpoint = torch.load(checkpoint_path, map_location=device)
 
         logger.info(f"Loading checkpoint from {checkpoint_path} on {device}")
-        
+
         config = checkpoint["config"]
         model_config = config["model"]
 
@@ -83,7 +84,7 @@ class BurnRiskPredictor:
         model = cls._build_model(
             model_config=model_config,
             spatial_channels=spatial_channels,
-            auxiliary_input_dims=auxiliary_input_dims,
+            auxiliary_input_dims=auxiliary_input_dims or {},
         )
 
         # Load weights
@@ -137,11 +138,11 @@ class BurnRiskPredictor:
     ) -> torch.Tensor:
         """
         Run a single batch through the model.
-        
+
         Args:
             spatial_inputs: Spatial grid tensor of shape (B, C, H, W).
             auxiliary_inputs: Optional dict of auxiliary tensors.
-            
+
         Returns:
             Predictions tensor of shape (B, num_classes, H, W) on CPU.
         """
@@ -149,12 +150,10 @@ class BurnRiskPredictor:
 
         if auxiliary_inputs:
             # Remove 'grid' from auxiliary inputs if present, as it's already passed as spatial_inputs
-            auxiliary_inputs = {
-                k: v.to(self.device) for k, v in auxiliary_inputs.items() if k != "grid"
-            }
+            auxiliary_inputs = {k: v.to(self.device) for k, v in auxiliary_inputs.items() if k != "grid"}
 
         predictions = self.model(spatial_inputs, auxiliary_inputs if auxiliary_inputs else None)
-        
+
         # Move predictions to CPU before returning
         return predictions.cpu()
 

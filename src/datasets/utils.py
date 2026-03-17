@@ -21,6 +21,7 @@ def get_data_source_class(name: str):
     else:
         raise ValueError(f"Unknown data source type: {name}. Available: {AVAILABLE_DATA_SOURCES}")
 
+
 def get_data_source_param_class(name: str):
     """
     Returns the param class dynamically to avoid circular imports.
@@ -35,6 +36,7 @@ def get_data_source_param_class(name: str):
         return TabularParams
     else:
         raise ValueError(f"Unknown data source type: {name}. Available: {AVAILABLE_DATA_SOURCES}")
+
 
 def get_dataset_dimensions(dataset) -> tuple[int | None, dict[str, int]]:
     """

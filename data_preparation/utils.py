@@ -25,6 +25,7 @@ feature_count_map = {
     "out_burn_prob": 1,
 }
 
+
 def find_file_path(filename: str, *search_dirs: Path) -> Path:
     """Searches for a file in multiple directories and returns the path if found."""
     for d in search_dirs:
