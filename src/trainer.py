@@ -386,6 +386,7 @@ class Trainer:
             "optimizer_state": self.optimizer.state_dict(),
             "epoch": epoch,
             "metric_value": metric_value,
+            "config": self.config.model_dump(),
         }
         torch.save(payload, path)
         return path
