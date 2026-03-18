@@ -10,7 +10,7 @@ This saves the rasters in the original data folders under `outputs`
 
 Step 2: Process hexel data into multiple square windows, which will be our data samples:
 
-By default, this runs with `overlap_ratio` of `0.2`. If you want to eventually use center_crop stitching for evaluation, you should use `overlap_with_halo=0.5`, and pass `overlap_ratio=None`.
+By default, this runs with `overlap_ratio` of `0.2`. If you want to eventually use center_crop stitching for evaluation, you should use `overlap_with_halo=64`, and pass `overlap_ratio=None`.
 
 Note: If you want to run this in the cluster using SLURM array jobs, you can modify the `run_files/generate_grid.sh` by changing the save directory path, `overlap_ratio/overlap_with_halo` and run the following in the terminal (from the main directory)
 
