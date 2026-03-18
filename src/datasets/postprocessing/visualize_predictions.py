@@ -4,7 +4,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.colors import TwoSlopeNorm
 from matplotlib.patches import Patch
-from scipy.ndimage import binary_dilation
 
 from src.logger import CometLogger
 
@@ -137,21 +136,11 @@ def visualize_hexel_iou(
 
     # get topK contours for visualization
     axes[2, 0].imshow(pred_grid, cmap="viridis", origin="upper", vmin=0, vmax=inferred_vmax)
-    pred_bool = np.nan_to_num(pred_bin).astype(bool)
-    pred_edges = binary_dilation(pred_bool) & ~pred_bool
-
-    p_edge_overlay = np.zeros((*pred_grid.shape, 4))
-    p_edge_overlay[pred_edges] = [1.0, 0.0, 0.0, 0.8]
-    axes[2, 0].imshow(p_edge_overlay, origin="upper")
+    axes[2, 0].contour(np.nan_to_num(pred_bin), levels=[0.5], colors="red", linewidths=0.3, alpha=0.7)
     axes[2, 0].set_title(f"Prediction with Top {top_pct_str}% Contours")
 
     axes[2, 1].imshow(gt_grid, cmap="viridis", origin="upper", vmin=0, vmax=inferred_vmax)
-    gt_bool = np.nan_to_num(gt_bin).astype(bool)
-    gt_edges = binary_dilation(gt_bool) & ~gt_bool
-
-    t_edge_overlay = np.zeros((*gt_grid.shape, 4))
-    t_edge_overlay[gt_edges] = [1.0, 0.0, 0.0, 0.8]
-    axes[2, 1].imshow(t_edge_overlay, origin="upper")
+    axes[2, 1].contour(np.nan_to_num(gt_bin), levels=[0.5], colors="red", linewidths=0.3, alpha=0.7)
     axes[2, 1].set_title(f"Ground Truth with Top {top_pct_str}% Contours")
 
     # overlap visuals
@@ -184,7 +173,7 @@ def visualize_hexel_iou(
             ax.set_xlabel("Easting (m)")
             ax.set_ylabel("Northing (m)")
 
-    plt.savefig(out_path, dpi=300, bbox_inches="tight")
+    plt.savefig(out_path, dpi=200, bbox_inches="tight")
     plt.close(fig)
 
 
