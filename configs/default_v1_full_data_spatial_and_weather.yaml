@@ -68,9 +68,11 @@ data:
       params:
         csv_name: "weather_table_processed.csv"
         feature_names_list: ["temp", "rh", "prec", "ffmc", "dmc", "dc", "isi", "bui", "fwi", "ws"] # other options: "wd", "ws", "fwi"
-        fire_weather_zone_id_col: "wx_zone"
-        sampling_approach: "mode" # "mode" or "weighted"
+        fire_weather_zone_selection_approach: "wx_zone"
+        zone_selection_approach: "mode" # "mode" or "weighted"
         num_samples_per_patch: 256
+        sampling_bias: "high_values" # null, "high_values"
+        feature_to_bias: "NORM_LOG_SIZE_HA"
         transforms_list: []
         augmentation_prob: 0.0
 

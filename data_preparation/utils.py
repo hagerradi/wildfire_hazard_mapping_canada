@@ -45,6 +45,13 @@ def process_fire_size_df(df_fire_size: pd.DataFrame) -> pd.DataFrame:
             f"Available columns: {list(df_fire_size.columns)}"
         )
     df_fire_size = df_fire_size[FIRE_SIZE_FEATURE_COLS]  # Remove unnamed column
+    zone_36 = {"GRIDCODE": 36, "SIZE_HA": 0}  # Consulted with experts and concluded that imputing with 0 is most reasonable
+    if 36 not in df_fire_size["GRIDCODE"].values:
+        df_fire_size = pd.concat(
+            [df_fire_size, pd.DataFrame([zone_36])],
+            ignore_index=True,
+        )  # Only append synthetic zone 36 if it is not already present, and avoid duplicate indices
+
     df_fire_size["LOG_SIZE_HA"] = np.log10(df_fire_size["SIZE_HA"] + 1)
     min_val = df_fire_size["LOG_SIZE_HA"].min()
     max_val = df_fire_size["LOG_SIZE_HA"].max()
