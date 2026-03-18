@@ -137,11 +137,11 @@ def visualize_hexel_iou(
     # get topK contours for visualization
     axes[2, 0].imshow(pred_grid, cmap="viridis", origin="upper", vmin=0, vmax=inferred_vmax)
     axes[2, 0].contour(np.nan_to_num(pred_bin), levels=[0.5], colors="red", linewidths=0.3, alpha=0.7)
-    axes[2, 0].set_title("Prediction with Top {top_pct_str}% Contours")
+    axes[2, 0].set_title(f"Prediction with Top {top_pct_str}% Contours")
 
     axes[2, 1].imshow(gt_grid, cmap="viridis", origin="upper", vmin=0, vmax=inferred_vmax)
     axes[2, 1].contour(np.nan_to_num(gt_bin), levels=[0.5], colors="red", linewidths=0.3, alpha=0.7)
-    axes[2, 1].set_title("Ground Truth with Top {top_pct_str}% Contours")
+    axes[2, 1].set_title(f"Ground Truth with Top {top_pct_str}% Contours")
 
     # overlap visuals
     h, w = gt_grid.shape
@@ -157,7 +157,7 @@ def visualize_hexel_iou(
     rgb_overlap[nan_mask] = [1.0, 1.0, 1.0]
 
     axes[3, 0].imshow(rgb_overlap, origin="upper")
-    axes[3, 0].set_title("Top {top_pct_str}% IoU Overlap Composite")
+    axes[3, 0].set_title(f"Top {top_pct_str}% IoU Overlap Composite")
 
     legend_elements = [
         Patch(facecolor="magenta", edgecolor="black", label="Intersection"),
