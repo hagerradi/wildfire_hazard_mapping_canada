@@ -20,10 +20,10 @@ Orchestrates the full pipeline:
 
 ```
 inference/
-├── predictor.py           # Pure ML engine (tensor-in, tensor-out)
-├── run_hexel_inference.py # Orchestration (data prep, dataset, prediction loop)
-├── config.yaml            # Configuration file
-└── inference.log          # Output logs
+├── predictor.py              # Pure ML engine (tensor-in, tensor-out)
+├── run_hexel_inference.py    # Orchestration (data prep, dataset, prediction loop)
+├── config.yaml               # Configuration file
+└── run_hexel_inference.log   # Output logs
 ```
 
 
@@ -47,10 +47,10 @@ from inference import BurnRiskPredictor, run_pipeline
 # Option 1: Full end-to-end pipeline
 predictions = run_pipeline(
     checkpoint_path="experiments/best_model/best.pth",
-    root_dir="data/",
+    data_dir="data/",
     hex_id="02",
     prepare_data=True,
-    save_path="outputs/predictions.npy",
+    save_dir="outputs/",  # Saves as predictions_hexel_02.npy
 )
 
 # Option 2: Just the predictor (for custom pipelines or serving)
@@ -70,7 +70,7 @@ Edit `config.yaml`:
 # Paths
 data_dir: "/path/to/hexel/data"
 checkpoint_path: "/path/to/model/best.pth"
-output_path: "/path/to/predictions.npy"
+save_dir: "/path/to/output/"  # Predictions saved as predictions_hexel_{hex_id}.npy
 
 # Hexel configuration
 hex_id: "02"
@@ -87,7 +87,7 @@ win_w: 128               # Patch width
 overlap_ratio: 0.2       # Overlap between patches
 ```
 
-Note: `modelling_approach`, `win_h`, `win_w`, and `overlap_ratio` has to be consistent with training configuration.
+Note: `modelling_approach`, `win_h`, `win_w`, and `overlap_ratio` must be consistent with training configuration.
 
 ## CLI Arguments
 
@@ -101,8 +101,8 @@ Note: `modelling_approach`, `win_h`, `win_w`, and `overlap_ratio` has to be cons
 
 ## Output
 
-- **Predictions**: Saved as `.npy` file at `output_path` with shape `(N, C, H, W)`
-- **Logs**: Written to both console and `inference/inference.log`
+- **Predictions**: Saved as `.npy` file at `save_dir/predictions_hexel_{hex_id}.npy` with shape `(N, C, H, W)`
+- **Logs**: Written to both console and `inference/run_hexel_inference.log`
 
 ## Data Requirements
 

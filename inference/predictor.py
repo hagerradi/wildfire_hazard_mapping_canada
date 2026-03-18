@@ -22,11 +22,14 @@ class BurnRiskPredictor:
     This class is focusses only on model operations.
 
     Example:
-        >>> predictor = BurnRiskPredictor.from_checkpoint(
-        ...     checkpoint_path="models/best.pth",
-        ...     spatial_channels=10,
-        ...     auxiliary_input_dims={"weather": 7, "fire_size": 5}
-        ... )
+        # Assuming you have a trained model checkpoint and prepared input tensors:
+        >>> predictor = BurnRiskPredictor.from_checkpoint(checkpoint_path="models/best.pth", spatial_channels=10, auxiliary_input_dims={"weather": 7, "fire_size": 5})
+        >>> predictions = predictor(spatial_batch, auxiliary_batch)
+
+        # Assuming you loaded model and config separately (not most common usage):
+        >>> loaded_model = ... # load model state dict and build model architecture
+        >>> loaded_config = ... # load config dict from checkpoint
+        >>> predictor = BurnRiskPredictor(model=loaded_model, device="cuda", config=loaded_config)
         >>> predictions = predictor(spatial_batch, auxiliary_batch)
     """
 

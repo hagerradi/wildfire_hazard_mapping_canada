@@ -25,7 +25,7 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[
         logging.StreamHandler(),
-        logging.FileHandler("inference/inference.log"),
+        logging.FileHandler("inference/run_hexel_inference.log"),
     ],
     force=True,
 )
@@ -154,7 +154,7 @@ def run_pipeline(
     modelling_approach: int = 1,
     output_type: str = "prob",
     weather_sampling: str = "weather_zone_id",
-    save_path: Path | None = None,
+    save_dir: Path | None = None,
 ) -> np.ndarray:
     """
     Orchestrate the end-to-end inference flow for a specific hexel.
@@ -172,7 +172,7 @@ def run_pipeline(
         modelling_approach: 1 for joint season-cause, 2 for separate.
         output_type: "count" or "prob" for fire output.
         weather_sampling: Weather sampling strategy.
-        save_path: If provided, save predictions to this path.
+        save_dir: If provided, save predictions to this directory.
 
     Returns:
         Predictions as numpy array of shape (N, C, H, W).
@@ -234,8 +234,8 @@ def run_pipeline(
     logger.info(f"Inference complete. Output shape: {final_output.shape}")
 
     # Step 6: Save Results
-    if save_path:
-        save_path = Path(save_path)
+    if save_dir is not None:
+        save_path = Path(save_dir) / f"predictions_hexel_{hex_id}.npy"
         save_path.parent.mkdir(parents=True, exist_ok=True)
         np.save(save_path, final_output)
         logger.info(f"Step 6: Saved predictions to {save_path}")
@@ -247,7 +247,7 @@ def main():
     parser = argparse.ArgumentParser(description="Run end-to-end inference on a single hexel.")
     parser.add_argument("--config", type=str, default="inference/config.yaml", help="Path to YAML config file.")
     parser.add_argument("--hex_id", type=str, default=None, help="Hexel ID (overrides config).")
-    parser.add_argument("--prepare_data", choices=["True", "False"], default="True", help="Run data preparation step (overrides config).")
+    parser.add_argument("--prepare_data", type=str, default=None, help="Whether to prepare data (overrides config).")
     parser.add_argument("--batch_size", type=int, default=None, help="Batch size (overrides config).")
     parser.add_argument("--num_workers", type=int, default=None, help="Dataloader workers (overrides config).")
 
@@ -273,7 +273,7 @@ def main():
         win_w=config["win_w"],
         overlap_ratio=config["overlap_ratio"],
         modelling_approach=config["modelling_approach"],
-        save_path=config["save_path"],
+        save_dir=config["save_dir"],
     )
 
 

@@ -1,6 +1,6 @@
-data_dir: "/home/mila/o/oseaj/projects/nrcan_wildfireriskmapping/inference/data_dir"
-checkpoint_path: "/home/mila/o/oseaj/projects/nrcan_wildfireriskmapping/experiments_v1/unet_full_data_spatial_weather_firesize_wind/best.pth"
-save_path: "/home/mila/o/oseaj/projects/nrcan_wildfireriskmapping/inference/predictions.npy"
+data_dir: "./inference/data_dir"
+checkpoint_path: "./experiments/unet_full_data_spatial_weather_firesize_wind/best.pth"
+save_dir: "./inference/predictions"
 
 # Hexel configuration
 hex_id: "02"
@@ -10,7 +10,7 @@ batch_size: 32
 num_workers: 4
 
 # Data preparation settings
-prepare_data: False  # [True or False], Set to true if data needs to be prepared first
+prepare_data: True  # [True or False], Set to true if data needs to be prepared first
 modelling_approach: 1
 win_h: 128
 win_w: 128
