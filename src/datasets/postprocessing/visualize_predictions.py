@@ -119,11 +119,11 @@ def visualize_hexel_iou(
 
     # get topK contours for visualization
     _ = axes[0, 0].imshow(pred_grid, cmap="viridis", origin="upper", vmin=0, vmax=inferred_vmax)
-    axes[0, 0].contour(np.nan_to_num(pred_bin), levels=[0.5], colors="white", linewidths=0.3, alpha=0.7)
+    axes[0, 0].contour(np.nan_to_num(pred_bin), levels=[0.5], colors="magenta", linewidths=0.4, alpha=0.7)
     axes[0, 0].set_title(f"Prediction with Top {top_pct_str}% Contours")
 
     im2 = axes[0, 1].imshow(gt_grid, cmap="viridis", origin="upper", vmin=0, vmax=inferred_vmax)
-    axes[0, 1].contour(np.nan_to_num(gt_bin), levels=[0.5], colors="white", linewidths=0.3, alpha=0.7)
+    axes[0, 1].contour(np.nan_to_num(gt_bin), levels=[0.5], colors="magenta", linewidths=0.4, alpha=0.7)
     axes[0, 1].set_title(f"Ground Truth with Top {top_pct_str}% Contours")
 
     fig.colorbar(im2, ax=axes[0, 1], label="Burn Probability", shrink=0.8)
