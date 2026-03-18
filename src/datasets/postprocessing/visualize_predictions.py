@@ -114,8 +114,8 @@ def visualize_hexel_iou(
 
     inferred_vmax = max(np.nanmax(gt_grid), np.nanmax(pred_grid))
 
-    fig, axes = plt.subplots(4, 2, figsize=(14, 24))
-    fig.suptitle(f"Top {top_pct_str}% Burn Probability Hotspots - Hex {hex_id}", fontsize=20, y=0.92)
+    fig, axes = plt.subplots(4, 2, figsize=(14, 24), layout="constrained")
+    fig.suptitle(f"Top {top_pct_str}% Burn Probability Hotspots - Hex {hex_id}", fontsize=20)
 
     _ = axes[0, 0].imshow(pred_grid, cmap="viridis", origin="upper", vmin=0, vmax=inferred_vmax)
     axes[0, 0].set_title("Prediction")
@@ -173,7 +173,6 @@ def visualize_hexel_iou(
             ax.set_xlabel("Easting (m)")
             ax.set_ylabel("Northing (m)")
 
-    plt.tight_layout(rect=(0.0, 0.03, 1.0, 0.95))
     plt.savefig(out_path, dpi=300, bbox_inches="tight")
     plt.close(fig)
 
