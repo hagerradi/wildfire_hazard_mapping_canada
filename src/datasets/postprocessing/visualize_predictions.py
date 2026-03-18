@@ -114,25 +114,19 @@ def visualize_hexel_iou(
 
     inferred_vmax = max(np.nanmax(gt_grid), np.nanmax(pred_grid))
 
-    fig, axes = plt.subplots(3, 2, figsize=(14, 18), layout="constrained")
+    fig, axes = plt.subplots(2, 2, figsize=(14, 12), layout="constrained")
     fig.suptitle(f"Top {top_pct_str}% Burn Probability Hotspots - Hex {hex_id}", fontsize=20)
 
+    # get topK contours for visualization
     _ = axes[0, 0].imshow(pred_grid, cmap="viridis", origin="upper", vmin=0, vmax=inferred_vmax)
-    axes[0, 0].set_title("Prediction")
+    axes[0, 0].contour(np.nan_to_num(pred_bin), levels=[0.5], colors="red", linewidths=0.3, alpha=0.7)
+    axes[0, 0].set_title(f"Prediction with Top {top_pct_str}% Contours")
 
     im2 = axes[0, 1].imshow(gt_grid, cmap="viridis", origin="upper", vmin=0, vmax=inferred_vmax)
-    axes[0, 1].set_title("Ground Truth")
+    axes[0, 1].contour(np.nan_to_num(gt_bin), levels=[0.5], colors="red", linewidths=0.3, alpha=0.7)
+    axes[0, 1].set_title(f"Ground Truth with Top {top_pct_str}% Contours")
 
-    fig.colorbar(im2, ax=[axes[0, 0], axes[0, 1]], label="Burn Probability", shrink=0.6)
-
-    # get topK contours for visualization
-    axes[1, 0].imshow(pred_grid, cmap="viridis", origin="upper", vmin=0, vmax=inferred_vmax)
-    axes[1, 0].contour(np.nan_to_num(pred_bin), levels=[0.5], colors="red", linewidths=0.3, alpha=0.7)
-    axes[1, 0].set_title(f"Prediction with Top {top_pct_str}% Contours")
-
-    axes[1, 1].imshow(gt_grid, cmap="viridis", origin="upper", vmin=0, vmax=inferred_vmax)
-    axes[1, 1].contour(np.nan_to_num(gt_bin), levels=[0.5], colors="red", linewidths=0.3, alpha=0.7)
-    axes[1, 1].set_title(f"Ground Truth with Top {top_pct_str}% Contours")
+    fig.colorbar(im2, ax=axes[0, 1], label="Burn Probability", shrink=0.8)
 
     # overlap visuals
     h, w = gt_grid.shape
@@ -147,16 +141,16 @@ def visualize_hexel_iou(
     rgb_overlap[p_bool & t_bool] = [1.0, 0.0, 1.0]
     rgb_overlap[nan_mask] = [1.0, 1.0, 1.0]
 
-    axes[2, 0].imshow(rgb_overlap, origin="upper")
-    axes[2, 0].set_title(f"Top {top_pct_str}% IoU Overlap Composite")
+    axes[1, 0].imshow(rgb_overlap, origin="upper")
+    axes[1, 0].set_title(f"Top {top_pct_str}% IoU Overlap Composite")
 
     legend_elements = [
         Patch(facecolor="magenta", edgecolor="black", label="Intersection"),
         Patch(facecolor="red", edgecolor="black", label="Prediction Only"),
         Patch(facecolor="blue", edgecolor="black", label="Ground Truth Only"),
     ]
-    axes[2, 0].legend(handles=legend_elements, loc="upper right", framealpha=0.9, fontsize=10)
-    axes[2, 1].axis("off")
+    axes[1, 0].legend(handles=legend_elements, loc="upper right", framealpha=0.9, fontsize=10)
+    axes[1, 1].axis("off")
 
     for ax in axes.flat:
         if ax.has_data():
