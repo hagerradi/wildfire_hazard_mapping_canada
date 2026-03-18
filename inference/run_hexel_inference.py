@@ -25,7 +25,7 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[
         logging.StreamHandler(),
-        logging.FileHandler("inference/run_hexel_inference.log"),
+        logging.FileHandler("inference/run_hexel_inference.log", mode="w"),
     ],
     force=True,
 )
@@ -127,6 +127,8 @@ def create_dataset(processed_data_dir: Path, hex_id: str, config_dict: dict) -> 
     Returns:
         MultiSourceDataset ready for inference.
     """
+    filename_col = config_dict["filename_col"]
+    valid_mask_threshold = config_dict["valid_mask_threshold"]
     sources = {}
     for source in config_dict["input_sources"]:
         source_name = source["name"]
@@ -138,6 +140,8 @@ def create_dataset(processed_data_dir: Path, hex_id: str, config_dict: dict) -> 
         csv_name=f"meta_hex_{hex_id}.csv",
         root_dir=str(processed_data_dir),
         sources=sources,
+        filename_col=filename_col,
+        valid_mask_threshold=valid_mask_threshold,
     )
 
 
