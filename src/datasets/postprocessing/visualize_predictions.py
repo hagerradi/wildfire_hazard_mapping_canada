@@ -114,7 +114,7 @@ def visualize_hexel_iou(
 
     inferred_vmax = max(np.nanmax(gt_grid), np.nanmax(pred_grid))
 
-    fig, axes = plt.subplots(4, 2, figsize=(14, 24), layout="constrained")
+    fig, axes = plt.subplots(3, 2, figsize=(14, 18), layout="constrained")
     fig.suptitle(f"Top {top_pct_str}% Burn Probability Hotspots - Hex {hex_id}", fontsize=20)
 
     _ = axes[0, 0].imshow(pred_grid, cmap="viridis", origin="upper", vmin=0, vmax=inferred_vmax)
@@ -125,23 +125,14 @@ def visualize_hexel_iou(
 
     fig.colorbar(im2, ax=[axes[0, 0], axes[0, 1]], label="Burn Probability", shrink=0.6)
 
-    gt_bin_viz = np.where(np.isnan(gt_grid), np.nan, gt_bin.astype(float))
-    pred_bin_viz = np.where(np.isnan(pred_grid), np.nan, pred_bin.astype(float))
-
-    _ = axes[1, 0].imshow(pred_bin_viz, cmap="Reds", origin="upper", vmin=0, vmax=1)
-    axes[1, 0].set_title(f"Prediction (Top {top_pct_str}%)")
-
-    _ = axes[1, 1].imshow(gt_bin_viz, cmap="Reds", origin="upper", vmin=0, vmax=1)
-    axes[1, 1].set_title(f"Ground Truth (Top {top_pct_str}%)")
-
     # get topK contours for visualization
-    axes[2, 0].imshow(pred_grid, cmap="viridis", origin="upper", vmin=0, vmax=inferred_vmax)
-    axes[2, 0].contour(np.nan_to_num(pred_bin), levels=[0.5], colors="red", linewidths=0.3, alpha=0.7)
-    axes[2, 0].set_title(f"Prediction with Top {top_pct_str}% Contours")
+    axes[1, 0].imshow(pred_grid, cmap="viridis", origin="upper", vmin=0, vmax=inferred_vmax)
+    axes[1, 0].contour(np.nan_to_num(pred_bin), levels=[0.5], colors="red", linewidths=0.3, alpha=0.7)
+    axes[1, 0].set_title(f"Prediction with Top {top_pct_str}% Contours")
 
-    axes[2, 1].imshow(gt_grid, cmap="viridis", origin="upper", vmin=0, vmax=inferred_vmax)
-    axes[2, 1].contour(np.nan_to_num(gt_bin), levels=[0.5], colors="red", linewidths=0.3, alpha=0.7)
-    axes[2, 1].set_title(f"Ground Truth with Top {top_pct_str}% Contours")
+    axes[1, 1].imshow(gt_grid, cmap="viridis", origin="upper", vmin=0, vmax=inferred_vmax)
+    axes[1, 1].contour(np.nan_to_num(gt_bin), levels=[0.5], colors="red", linewidths=0.3, alpha=0.7)
+    axes[1, 1].set_title(f"Ground Truth with Top {top_pct_str}% Contours")
 
     # overlap visuals
     h, w = gt_grid.shape
@@ -156,24 +147,23 @@ def visualize_hexel_iou(
     rgb_overlap[p_bool & t_bool] = [1.0, 0.0, 1.0]
     rgb_overlap[nan_mask] = [1.0, 1.0, 1.0]
 
-    axes[3, 0].imshow(rgb_overlap, origin="upper")
-    axes[3, 0].set_title(f"Top {top_pct_str}% IoU Overlap Composite")
+    axes[2, 0].imshow(rgb_overlap, origin="upper")
+    axes[2, 0].set_title(f"Top {top_pct_str}% IoU Overlap Composite")
 
     legend_elements = [
         Patch(facecolor="magenta", edgecolor="black", label="Intersection"),
         Patch(facecolor="red", edgecolor="black", label="Prediction Only"),
         Patch(facecolor="blue", edgecolor="black", label="Ground Truth Only"),
     ]
-    axes[3, 0].legend(handles=legend_elements, loc="upper right", framealpha=0.9, fontsize=10)
-
-    axes[3, 1].axis("off")
+    axes[2, 0].legend(handles=legend_elements, loc="upper right", framealpha=0.9, fontsize=10)
+    axes[2, 1].axis("off")
 
     for ax in axes.flat:
         if ax.has_data():
             ax.set_xlabel("Easting (m)")
             ax.set_ylabel("Northing (m)")
 
-    plt.savefig(out_path, dpi=200, bbox_inches="tight")
+    plt.savefig(out_path, dpi=300, bbox_inches="tight")
     plt.close(fig)
 
 
