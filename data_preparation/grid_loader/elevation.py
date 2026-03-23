@@ -2,15 +2,14 @@ import os
 
 import numpy as np
 
-from data_preparation.grid_loader.utils import ELEV_NATIONAL_MAX, ELEV_NATIONAL_MIN, NODATA, load_raster, visualize_elevation_grid
+from data_preparation.grid_loader.utils import NODATA, load_raster, visualize_elevation_grid
 
 
 def load_elevation_grid(path: str) -> np.ndarray:
     """Load elevation grid and normalize values."""
-    elevation_grid = load_raster(path)
-    # normalize elevation grid data
-    elevation_grid = (elevation_grid - ELEV_NATIONAL_MIN) / (ELEV_NATIONAL_MAX - ELEV_NATIONAL_MIN)
-    elevation_grid = elevation_grid.filled(NODATA)
+    masked_grid = load_raster(path)
+    float_masked_grid = masked_grid.astype(np.float32)
+    elevation_grid = np.ma.filled(float_masked_grid, fill_value=NODATA)
     return elevation_grid
 
 
