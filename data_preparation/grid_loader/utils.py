@@ -137,7 +137,6 @@ def get_range_elevation(data_path: str) -> tuple[float, float]:
     """Get the global range of elevation for normalization"""
     all_hex_ids = find_hex_ids(data_path)
     min_elevation, max_elevation = np.inf, -np.inf
-    print(all_hex_ids)
     for hex_id in all_hex_ids:
         if hex_id in HEX_ID_NA:
             print(f"======Skipping hex{hex_id} since NA =========")

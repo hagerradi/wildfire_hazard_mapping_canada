@@ -73,7 +73,7 @@ class GridSource(DataSource):
                         + list(range(self.fuel_feat_index, self.fuel_feat_index + num_classes))
                         + [i + num_classes - 1 for i in self.input_channel_indices[idx_fuel_feats:]]
                     )
-        # 3. normalization for evelvation grid
+        # 3. normalization for elevation grid
         self.ELEVATION_MAX, self.ELEVATION_MIN = get_range_elevation(os.path.dirname(self.root_dir))
 
     def get_sample(self, patch_info: dict):
