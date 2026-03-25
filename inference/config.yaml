@@ -1,17 +1,13 @@
 data_dir: "./inference/data_dir"
 checkpoint_path: "./experiments/unet_full_data_spatial_weather_firesize_wind/best.pth"
-save_dir: "./inference/predictions"
+save_dir: "./inference/outputs"
 
 # Hexel configuration
-hex_id: "02"
+hex_id: "all" # options: ["##", "all"] where ## is the hexel id (e.g., "01", "02", etc.) and "all" means all hexels in data_dir
+
+# Data preparation settings
+prepare_data: False  # [True or False], Set to true if data needs to be prepared first
 
 # Inference settings
 batch_size: 32
 num_workers: 4
-
-# Data preparation settings
-prepare_data: True  # [True or False], Set to true if data needs to be prepared first
-modelling_approach: 1
-win_h: 128
-win_w: 128
-overlap_ratio: 0.2

@@ -45,9 +45,9 @@ class BurnRiskPredictor:
         For typical usage, prefer the `from_checkpoint` classmethod.
 
         Args:
-            model: A PyTorch model (BaselineUNet or MultiSourceUNet).
-            device: Device the model is on.
-            config: Optional config dict for reference.
+            model (torch.nn.Module): A PyTorch model (BaselineUNet or MultiSourceUNet).
+            device (str | torch.device): Device the model is on.
+            config (dict[str, Any] | None): Optional config dict for reference.
         """
         self.model = model
         self.device = device
@@ -66,10 +66,10 @@ class BurnRiskPredictor:
         Create a predictor from a saved checkpoint file.
 
         Args:
-            checkpoint_path: Path to the trained model checkpoint (.pth file). Must contain 'model_state' and 'config'.
-            spatial_channels: Number of input channels for spatial data.
-            auxiliary_input_dims: Dict mapping auxiliary source names to their dimensions.
-            device: Device to run inference on. If None, auto-detects GPU/CPU.
+            checkpoint_path (str | Path): Path to the trained model checkpoint (.pth file). Must contain 'model_state' and 'config'.
+            spatial_channels (int): Number of input channels for spatial data.
+            auxiliary_input_dims (dict[str, int] | None): Dict mapping auxiliary source names to their dimensions.
+            device (str | torch.device | None): Device to run inference on. If None, auto-detects GPU/CPU.
 
         Returns:
             BurnRiskPredictor instance ready for inference.
@@ -143,11 +143,11 @@ class BurnRiskPredictor:
         Run a single batch through the model.
 
         Args:
-            spatial_inputs: Spatial grid tensor of shape (B, C, H, W).
-            auxiliary_inputs: Optional dict of auxiliary tensors.
+            spatial_inputs (torch.Tensor): Spatial grid tensor of shape (B, C, H, W).
+            auxiliary_inputs (dict[str, torch.Tensor] | None): Optional dict of auxiliary tensors.
 
         Returns:
-            Predictions tensor of shape (B, num_classes, H, W) on CPU.
+            torch.Tensor: Predictions tensor of shape (B, num_classes, H, W) on CPU.
         """
         spatial_inputs = spatial_inputs.to(self.device)
 
@@ -158,7 +158,7 @@ class BurnRiskPredictor:
         predictions = self.model(spatial_inputs, auxiliary_inputs if auxiliary_inputs else None)
 
         # Move predictions to CPU before returning
-        return predictions.cpu()
+        return torch.sigmoid(predictions).cpu()
 
     def __call__(
         self,
