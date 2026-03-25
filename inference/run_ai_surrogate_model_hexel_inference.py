@@ -14,17 +14,15 @@ import yaml
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
+from data_preparation.grid_loader.output import load_output_burn_grid
 from data_preparation.hexel_loader import load_features_per_hexel
 from data_preparation.process_hexels_into_grids import get_split_hexel_window
 from data_preparation.process_tabular_data import build_weather_table, process_fire_size_distribution_table
-from data_preparation.utils import find_hex_ids
+from data_preparation.utils import find_hex_ids, find_simulation_output_file
 from inference.predictor import BurnRiskPredictor
 from src.datasets.dataset import MultiSourceDataset
-from src.datasets.utils import get_data_source_class, get_data_source_param_class, get_dataset_dimensions
-
 from src.datasets.postprocessing.utils import get_predicted_hexel, save_predicted_hexels, visualize_burn_prob_grids
-from data_preparation.grid_loader.output import load_output_burn_grid
-from data_preparation.utils import find_simulation_output_file
+from src.datasets.utils import get_data_source_class, get_data_source_param_class, get_dataset_dimensions
 
 logging.basicConfig(
     level=logging.INFO,
@@ -36,7 +34,6 @@ logging.basicConfig(
     force=True,
 )
 logger = logging.getLogger(__name__)
-
 
 
 def prepare_hexel_data(
@@ -181,12 +178,12 @@ def run_single_hexel_pipeline(
     Returns:
         Reconstructed hexel grid of burn probabilities (denormalized), and the ground truth elevation grid profile (for visualization).
     """
-    # Step 1: Load checkpoint 
+    # Step 1: Load checkpoint
     logger.info("Step 1: Loading checkpoint and config...")
     checkpoint = torch.load(checkpoint_path, map_location="cpu")
     data_config = checkpoint["config"]["data"]  # We use this to build dataset class
-    data_prep_config = checkpoint["config"]["data_prep"] # We use this to prepare data
-    
+    data_prep_config = checkpoint["config"]["data_prep"]  # We use this to prepare data
+
     # Step 2: Prepare the Data (if requested)
     if prepare_data:
         logger.info("Step 2: Preparing Hexel Data...")
@@ -237,7 +234,7 @@ def run_single_hexel_pipeline(
     logger.info(f"Inference complete. Output shape: {predictions.shape}")
 
     # Step 6: Save patch predictions
-    save_pred_path = Path(save_dir) / "predictions_patches" / f"predictions_hexel_{hex_id}.npy"
+    save_pred_path = Path(save_dir) / "predicted_patches" / f"hexel_{hex_id}.npy"
     save_pred_path.parent.mkdir(parents=True, exist_ok=True)
     np.save(save_pred_path, predictions)
     logger.info(f"Step 6: Saved predictions patches to {save_pred_path}")
@@ -251,31 +248,20 @@ def run_single_hexel_pipeline(
         predictions=predictions,
         min_target_val=dataset.sources["grid"].BURN_PROB_MIN.item(),
         max_target_val=dataset.sources["grid"].BURN_PROB_MAX.item(),
-        hex_id=hex_id
+        hex_id=hex_id,
     )
 
     # Step 8: Save reconstructed hexel and visualization
     save_predicted_hexels(
-        predicted_hexel = reconstructed_hexel_denorm,
-        hexel_profile=gt_elevation_grid_profile,
-        hex_id=hex_id,
-        save_dir=save_dir
+        predicted_hexel=reconstructed_hexel_denorm, hexel_profile=gt_elevation_grid_profile, hex_id=hex_id, save_dir=save_dir
     )
     hex_dir = data_dir / f"hex{hex_id}"
     gt_path = find_simulation_output_file(hex_dir, hex_id, output_type=data_prep_config["output_type"])
     gt_grid = load_output_burn_grid(gt_path)
-    visualize_burn_prob_grids(
-        gt_grid=gt_grid,
-        pred_grid=reconstructed_hexel_denorm,
-        hex_id=hex_id,
-        save_dir=save_dir
-    )
+    visualize_burn_prob_grids(gt_grid=gt_grid, pred_grid=reconstructed_hexel_denorm, hex_id=hex_id, save_dir=save_dir)
     logger.info(f"Step 8: Saved reconstructed hexel and visualization for hexel {hex_id} in {save_dir}")
-    
-    
-    
+
     return reconstructed_hexel_denorm, gt_elevation_grid_profile
-    
 
 
 def main():
@@ -297,11 +283,11 @@ def main():
     # CLI args override config (use 'is not None' to allow falsy values like 0)
     data_dir = args.data_dir if args.data_dir is not None else config["data_dir"]
     checkpoint_path = args.checkpoint_path if args.checkpoint_path is not None else config["checkpoint_path"]
+    save_dir = args.save_dir if args.save_dir is not None else config["save_dir"]
     hex_id = args.hex_id if args.hex_id is not None else config["hex_id"]
+    prepare_data = (args.prepare_data == "True") if args.prepare_data else config["prepare_data"]
     batch_size = args.batch_size if args.batch_size is not None else config["batch_size"]
     num_workers = args.num_workers if args.num_workers is not None else config["num_workers"]
-    prepare_data = (args.prepare_data == "True") if args.prepare_data else config["prepare_data"]
-    save_dir = args.save_dir if args.save_dir is not None else config["save_dir"]
 
     # Resolve "all" into the list of available hex IDs
     if hex_id == "all":
@@ -326,6 +312,7 @@ def main():
 
     elapsed_time = time.time() - start_time
     logger.info(f"Pipeline completed in {elapsed_time:.2f} seconds ({elapsed_time/60:.2f} minutes)")
+
 
 if __name__ == "__main__":
     main()

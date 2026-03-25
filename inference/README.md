@@ -39,12 +39,27 @@ Note: All arguments follow values from `config.yaml` but if CLI arguments are pr
 
 ## Output
 
-Note: We assume `save_dir` is set to `outputs/` for the following paths.
+We assume `save_dir` is set to `outputs/` for the following paths. For each hexel, all the outputs are saved under corresponding subdirectories in `outputs/` with the hexel ID in the filename. For example, for hexel "02", the predicted patches will be saved as `outputs/predicted_patches/hexel_02.npy`.
 
-- **Normalized Patch Predictions**: Saved as `.npy` file at `outputs/predictions_patches/predictions_hexel_{hex_id}.npy` with shape `(N, C, H, W)`
-- **Reconstructed Hexel**: Post-processed reconstructed hexel grid of predicted burn probabilities and geospatial profile from ground truth saved as GeoTIFF at `outputs/`
-- **Visualizations**: Comparison plots of ground truth vs predictions for each hexel saved at `outputs/predicted_hexel/`
-- **Logs**: Written to both console and `inference/run_hexel_inference.log`
+````
+inference/
+└── outputs/
+    ├── predicted_hexels/                    # Reconstructed hexel grid of predicted burn probabilities and geospatial profile from ground truth as GeoTIFF files
+    ├── predicted_hexels_plot/               # Visualizations comparing ground truth vs predictions for each hexel
+    └── predicted_patches/                   # Normalized patch predictions (N, C, H, W) as .npy files
+````
+
+## Folder Structure
+
+```
+inference/
+├── data_dir/                                 # Hexel data directory (raw hexel data, fire size distribution)
+├── outputs/                                  # Output directory for predictions, visualizations, and logs (appears after running)
+├── predictor.py                              # Pure ML engine (tensor-in, tensor-out)
+├── run_ai_surrogate_model_hexel_inference.py # Orchestration (data prep, dataset, prediction loop, post-processing)
+├── config.yaml                               # Configuration file
+└── run_hexel_inference.log                   # Output logs
+```
 
 ## Configuration
 
@@ -66,6 +81,7 @@ prepare_data: True      # Set true to run data prep
 batch_size: 32
 num_workers: 4
 ```
+
 
 ## Components
 
@@ -104,17 +120,6 @@ predictor = BurnRiskPredictor.from_checkpoint(
     auxiliary_input_dims={"weather": 7, "fire_size": 5},
 )
 predicted_hexel_grid, grid_profile = predictor(spatial_batch, auxiliary_batch)
-```
-
-### Folder Structure
-
-```
-inference/
-├── data_dir/                                 # Hexel data directory (raw hexel data, fire size distribution)
-├── predictor.py                              # Pure ML engine (tensor-in, tensor-out)
-├── run_ai_surrogate_model_hexel_inference.py # Orchestration (data prep, dataset, prediction loop, post-processing)
-├── config.yaml                               # Configuration file
-└── run_hexel_inference.log                   # Output logs
 ```
 
 ## Data Requirements
