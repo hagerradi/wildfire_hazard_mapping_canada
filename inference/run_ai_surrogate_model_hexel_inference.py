@@ -7,6 +7,7 @@ import argparse
 import logging
 import time
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import torch
@@ -156,7 +157,7 @@ def run_single_hexel_pipeline(
     num_workers: int = 4,
     prepare_data: bool = False,
     save_dir: Path = Path("outputs"),
-) -> np.ndarray:
+) -> tuple[np.ndarray, Any]:
     """
     Orchestrate the end-to-end (data preparation + inference + post-processing) for one specific hexel.
 
@@ -224,13 +225,13 @@ def run_single_hexel_pipeline(
 
     # Step 5: Run Inference Loop
     logger.info("Step 5: Running Inference...")
-    predictions = []
+    predictions_list = []
     for batch in tqdm(dataloader, desc="Predicting Batches"):
         spatial_inputs = batch["grid"][0]
         batch_preds = predictor(spatial_inputs, auxiliary_inputs=batch)  # Predictor handles device placement internally
-        predictions.append(batch_preds)
+        predictions_list.append(batch_preds)
 
-    predictions = torch.cat(predictions, dim=0).numpy()
+    predictions = torch.cat(predictions_list, dim=0).numpy()
     logger.info(f"Inference complete. Output shape: {predictions.shape}")
 
     # Step 6: Save patch predictions
@@ -241,24 +242,25 @@ def run_single_hexel_pipeline(
 
     # Step 7: Post-process predictions back to denormalized hexel
     logger.info("Step 7: Post-processing prediction patches into denormalized hexel...")
+    grid_source = dataset.sources["grid"]
     reconstructed_hexel_denorm, gt_elevation_grid_profile = get_predicted_hexel(
-        base_dir=processed_data_dir,
-        raw_data_dir=data_dir,
+        base_dir=str(processed_data_dir),
+        raw_data_dir=str(data_dir),
         test_df=dataset.metadata,
         predictions=predictions,
-        min_target_val=dataset.sources["grid"].BURN_PROB_MIN.item(),
-        max_target_val=dataset.sources["grid"].BURN_PROB_MAX.item(),
+        min_target_val=grid_source.BURN_PROB_MIN.item(),  # type: ignore[attr-defined]
+        max_target_val=grid_source.BURN_PROB_MAX.item(),  # type: ignore[attr-defined]
         hex_id=hex_id,
     )
 
     # Step 8: Save reconstructed hexel and visualization
     save_predicted_hexels(
-        predicted_hexel=reconstructed_hexel_denorm, hexel_profile=gt_elevation_grid_profile, hex_id=hex_id, save_dir=save_dir
+        predicted_hexel=reconstructed_hexel_denorm, hexel_profile=gt_elevation_grid_profile, hex_id=hex_id, save_dir=str(save_dir)
     )
     hex_dir = data_dir / f"hex{hex_id}"
-    gt_path = find_simulation_output_file(hex_dir, hex_id, output_type=data_prep_config["output_type"])
+    gt_path = find_simulation_output_file(str(hex_dir), hex_id, output_type=data_prep_config["output_type"])
     gt_grid = load_output_burn_grid(gt_path)
-    visualize_burn_prob_grids(gt_grid=gt_grid, pred_grid=reconstructed_hexel_denorm, hex_id=hex_id, save_dir=save_dir)
+    visualize_burn_prob_grids(gt_grid=gt_grid, pred_grid=reconstructed_hexel_denorm, hex_id=hex_id, save_dir=str(save_dir))
     logger.info(f"Step 8: Saved reconstructed hexel and visualization for hexel {hex_id} in {save_dir}")
 
     return reconstructed_hexel_denorm, gt_elevation_grid_profile
