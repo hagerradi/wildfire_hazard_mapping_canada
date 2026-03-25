@@ -7,6 +7,8 @@ End-to-end inference pipeline for wildfire risk prediction on hexels.
 
 ### Command Line
 
+Please run this from the root of the repository to ensure correct paths to data and checkpoints. The CLI accepts arguments that override values in `config.yaml` for flexibility. Below are example commands for different use cases:
+
 ```bash
 # Option 1: Run inference using values from config.yaml
 python -m inference.run_ai_surrogate_model_hexel_inference
