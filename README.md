@@ -61,3 +61,11 @@ To visualize predictions and/or save visualizations, add the optional flags `--v
 To generate the full Canada hexel map of targets and/or predictions, run the following script (see --help for more args. information):
 
 ```python -m src.datasets.postprocessing.full_map.generate_full_hexel_map --data-dir data/ --scale "log" --show_hex_borders --output "experiments/full_canada_map.png"```
+
+For example, to generate the full maps of ground truth targets on the cluster:
+
+```python -m src.datasets.postprocessing.full_map.generate_full_hexel_map --data-dir /network/projects/amlrt/nrcan_wildfires/full_data/yan_bp3/ --scale "log" --show_hex_borders --output "experiments/full_canada_map_targets.png"```
+
+To generate the full maps of obtained predictions from an AI surrogate model on the cluster:
+
+```python -m src.datasets.postprocessing.full_map.generate_full_hexel_map --data-dir experiments/final_model_outputs/predicted_hexels/ --pattern "*_predicted.tif" --scale "log" --show_hex_borders --output "experiments/full_canada_map_preds.png"```
