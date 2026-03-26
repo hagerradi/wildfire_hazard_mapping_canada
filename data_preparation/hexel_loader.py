@@ -180,7 +180,10 @@ def load_features_per_hexel(
         )
 
         weather_grid = load_weather_grid(
-            weather_list_file_path=weather_list_file_path, zone_grid_file_path=os.path.join(root_dir, FIRE_ZONE_GRID_PATH), season=season
+            weather_list_file_path=weather_list_file_path,
+            zone_grid_file_path=os.path.join(root_dir, FIRE_ZONE_GRID_PATH),
+            season=season,
+            sampling=weather_sampling,
         )
 
         # for approach 2, we use the season-cause rasters

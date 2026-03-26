@@ -75,7 +75,7 @@ class GridParams(BaseModel):
 class TabularParams(BaseModel):
     """Specific parameters for any tabular source relying on mapped weather zone id"""
 
-    csv_name: str = "weather_table.csv"
+    csv_name: str = "weather_table_processed.csv"
     feature_names_list: list[str]
     fire_weather_zone_id_col: str = "wx_zone"
     fire_weather_zone_selection_approach: str = "mode"  # Selection method to determine weather zone to be used for the patch: "mode" (for most common zone) or "weighted" (for frequency-weighted sampling)
@@ -103,9 +103,18 @@ class DataConfig(BaseModel):
     val_split: str
     test_split: str
     filename_col: str = "filename"
-    valid_mask_threshold: float = 0.0
+    valid_mask_threshold: float = 0.01
 
     input_sources: list[DataSourceConfig]
+
+
+class DataPrepConfig(BaseModel):
+    modelling_approach: int = 1
+    win_h: int = 128
+    win_w: int = 128
+    overlap_ratio: float = 0.2
+    output_type: str = "prob"  # "count", "prob"
+    weather_sampling: str = "weather_zone_id"  # "weather_zone_id", "dist"
 
 
 class Config(BaseModel):
@@ -122,3 +131,4 @@ class Config(BaseModel):
     data: DataConfig
     logger: LoggerConfig
     metrics: list[str] = ["mse", "mae", "spearman", "ssim"]
+    data_prep: DataPrepConfig = Field(default_factory=DataPrepConfig)
