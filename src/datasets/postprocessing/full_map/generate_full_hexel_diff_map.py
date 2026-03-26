@@ -131,7 +131,9 @@ def generate_diff_map(
 
     ax.set_aspect("equal")
     ax.axis("off")
-    plt.title(title, fontsize=18)
+
+    if title:
+        plt.title(title, fontsize=18)
 
     if im:
         cbar = plt.colorbar(im, ax=ax, fraction=0.02, pad=0.04)

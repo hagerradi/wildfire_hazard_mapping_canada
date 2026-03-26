@@ -143,7 +143,9 @@ def generate_stitched_map(
 
     ax.set_aspect("equal")
     ax.axis("off")
-    plt.title(title, fontsize=18)
+
+    if title:
+        plt.title(title, fontsize=18)
 
     if im:
         cbar = plt.colorbar(im, ax=ax, fraction=0.02, pad=0.04)
@@ -176,7 +178,7 @@ def main():
 
     parser.add_argument("--show_hex_borders", action="store_true", help="Show red hexel borders in the map.")
 
-    parser.add_argument("--title", type=str, default="Canada Burn Probability Map", help="Custom plot title.")
+    parser.add_argument("--title", type=str, default=None, help="Custom plot title.")
 
     parser.add_argument("--output", type=str, default="experiments/full_map.png", help="Save to file instead of showing.")
 
