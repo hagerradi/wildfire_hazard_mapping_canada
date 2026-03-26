@@ -225,14 +225,15 @@ def run_single_hexel_pipeline(
 
     # Step 5: Run Inference Loop
     logger.info("Step 5: Running Inference...")
+    pred_start_time = time.time()
     predictions_list = []
     for batch in tqdm(dataloader, desc="Predicting Batches"):
         spatial_inputs = batch["grid"][0]
         batch_preds = predictor(spatial_inputs, auxiliary_inputs=batch)  # Predictor handles device placement internally
         predictions_list.append(batch_preds)
-
+    pred_time = time.time() - pred_start_time
+    logger.info(f"TIME - Inference completed in {pred_time:.2f} seconds for {len(predictions_list)} batches.")
     predictions = torch.cat(predictions_list, dim=0).numpy()
-    logger.info(f"Inference complete. Output shape: {predictions.shape}")
 
     # Step 6: Save patch predictions
     save_pred_path = Path(save_dir) / "predicted_patches" / f"hexel_{hex_id}.npy"
@@ -301,7 +302,7 @@ def main():
     start_time = time.time()
 
     for hid in hex_ids_to_run:
-        logger.info(f"\n========== Hexel {hid} ==========\n")
+        logger.info(f"\n\n========== Hexel {hid} ==========\n")
         run_single_hexel_pipeline(
             checkpoint_path=Path(config["checkpoint_path"]),
             data_dir=Path(config["data_dir"]),
@@ -313,7 +314,9 @@ def main():
         )
 
     elapsed_time = time.time() - start_time
-    logger.info(f"Pipeline completed in {elapsed_time:.2f} seconds ({elapsed_time/60:.2f} minutes)")
+    logger.info(
+        f"TIME - Pipeline for {len(hex_ids_to_run)} hexels processed. Total elapsed time: {elapsed_time:.2f} seconds ({elapsed_time/60:.2f} minutes)"
+    )
 
 
 if __name__ == "__main__":
