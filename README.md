@@ -69,3 +69,7 @@ For example, to generate the full maps of ground truth targets on the cluster:
 To generate the full maps of obtained predictions from an AI surrogate model on the cluster:
 
 ```python -m src.datasets.postprocessing.full_map.generate_full_hexel_map --data-dir experiments/final_model_outputs/predicted_hexels/ --pattern "*_predicted.tif" --scale "log" --show_hex_borders --output "experiments/full_canada_map_preds.png"```
+
+To generate the map of residuals (preds - targets) on the cluster:
+
+```python -m src.datasets.postprocessing.full_map.generate_full_hexel_diff_map --target-dir /network/projects/amlrt/nrcan_wildfires/full_data/yan_bp3/ --target-pattern hex*/outputs/*_iter_bp.tif --pred-dir experiments/unet_full_data_spatial_weather_new_config/predicted_hexels/ --pred-pattern "*_predicted.tif" --output "full_canada_map_diffs.png"```
