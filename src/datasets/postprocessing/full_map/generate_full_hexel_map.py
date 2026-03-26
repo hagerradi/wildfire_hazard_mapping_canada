@@ -27,6 +27,8 @@ def generate_stitched_map(
     scale: str = "linear",
     show_hex_borders: bool = True,
     output_path: str = None,
+    vmin: float = None,
+    vmax: float = None,
 ):
     """
     Main function to generate the stiched full Canada map of hexels.
@@ -54,6 +56,12 @@ def generate_stitched_map(
 
     # get the min and max ranges for plotting
     pos_min, global_max = calculate_global_stats(file_map)
+
+    # use min and max if provided
+    if vmin is not None:
+        pos_min = vmin
+    if vmax is not None:
+        global_max = vmax
 
     # Get scale type selection for plotting
     norm = get_scale_settings(scale, pos_min, global_max)
@@ -172,6 +180,10 @@ def main():
 
     parser.add_argument("--output", type=str, default="experiments/full_map.png", help="Save to file instead of showing.")
 
+    parser.add_argument("--vmin", type=float, default=None, help="Force minimum value for the color scale.")
+
+    parser.add_argument("--vmax", type=float, default=None, help="Force maximum value for the color scale.")
+
     args = parser.parse_args()
 
     generate_stitched_map(
@@ -182,6 +194,8 @@ def main():
         scale=args.scale,
         show_hex_borders=args.show_hex_borders,
         output_path=args.output,
+        vmin=args.vmin,
+        vmax=args.vmax,
     )
 
 
