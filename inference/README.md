@@ -51,18 +51,6 @@ inference/
     └── predicted_patches/                   # Normalized patch predictions (N, C, H, W) as .npy files
 ````
 
-## Folder Structure
-
-```
-inference/
-├── data_dir/                                 # Hexel data directory (raw hexel data, fire size distribution)
-├── outputs/                                  # Output directory for predictions, visualizations, and logs (appears after running)
-├── predictor.py                              # Pure ML engine (tensor-in, tensor-out)
-├── run_ai_surrogate_model_hexel_inference.py # Orchestration (data prep, dataset, prediction loop, post-processing)
-├── config.yaml                               # Configuration file
-└── run_hexel_inference.log                   # Output logs
-```
-
 ## Configuration
 
 Edit `config.yaml`:
@@ -84,7 +72,32 @@ batch_size: 32
 num_workers: 4
 ```
 
+## Data Requirements
 
+The `data_dir` should contain:
+- `hex{hex_id}/` - Raw hexel data directory
+- `df_fire_fru.csv` - Fire size distribution
+
+If `prepare_data=True`, the pipeline will:
+
+1. Build weather tables
+2. Process fire size distributions
+3. Split hexel into patches
+4. Generate metadata CSV
+
+Note: The data preparation has to be done at least once before running inference, as it creates the necessary datasets for the prediction loop. If you have already prepared the data, you can set `prepare_data=False` to skip this step in subsequent runs. If you add more hexels later, you can run with `prepare_data=True` with the `hex_id` set to the new hexel to prepare just that hexel's data.
+
+## Folder Structure
+
+```
+inference/
+├── data_dir/                                 # Hexel data directory (raw hexel data, fire size distribution)
+├── outputs/                                  # Output directory for predictions, visualizations, and logs (appears after running)
+├── predictor.py                              # Pure ML engine (tensor-in, tensor-out)
+├── run_ai_surrogate_model_hexel_inference.py # Orchestration (data prep, dataset, prediction loop, post-processing)
+├── config.yaml                               # Configuration file
+└── run_hexel_inference.log                   # Output logs
+```
 ## Components
 
 The module is split into two components:
@@ -123,16 +136,3 @@ predictor = BurnRiskPredictor.from_checkpoint(
 )
 predicted_hexel_grid, grid_profile = predictor(spatial_batch, auxiliary_batch)
 ```
-
-## Data Requirements
-
-The `data_dir` should contain:
-- `hex{hex_id}/` - Raw hexel data directory
-- `df_fire_fru.csv` - Fire size distribution
-
-If `prepare_data=True`, the pipeline will:
-
-1. Build weather tables
-2. Process fire size distributions
-3. Split hexel into patches
-4. Generate metadata CSV

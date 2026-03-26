@@ -19,7 +19,7 @@ class BurnRiskPredictor:
     Pure inference class for wildfire burn risk prediction.
     Wraps the PyTorch model and handles tensor-in, tensor-out operations.
 
-    This class is focusses only on model operations.
+    This class focuses only on model operations.
 
     Example:
         # Assuming you have a trained model checkpoint and prepared input tensors:
