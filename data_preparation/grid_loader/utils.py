@@ -17,10 +17,6 @@ from data_preparation.utils import HEX_ID_NA, find_hex_ids
 # value for nodata in the rasters
 NODATA = np.nan
 
-# normalization values for elevation (on national scale)
-ELEV_NATIONAL_MAX = 5855
-ELEV_NATIONAL_MIN = -158
-
 # Max wind velocity (TODO: need to modify when we have the remaining dataset)
 MAX_WIND_VELOCITY = 16.170000076293945
 
@@ -135,6 +131,24 @@ def get_max_wind_velocity(data_path: str) -> float:
             wind_velocity_grid = load_raster(str(file_name))
             global_max_wind_velocity = max(global_max_wind_velocity, wind_velocity_grid.data.max())
     return float(global_max_wind_velocity)
+
+
+def get_range_elevation(data_path: str) -> tuple[float, float]:
+    """Get the global range of elevation for normalization"""
+    all_hex_ids = find_hex_ids(data_path)
+    min_elevation, max_elevation = np.inf, -np.inf
+    for hex_id in all_hex_ids:
+        if hex_id in HEX_ID_NA:
+            print(f"======Skipping hex{hex_id} since NA =========")
+            continue
+        path_elev_grids = f"{data_path}/hex{hex_id}/mapped_inputs"
+        all_elevation_files = list(Path(path_elev_grids).glob("elev.asc"))
+        for file_name in all_elevation_files:
+            elevation_grid = load_raster(str(file_name))
+            masked_data = np.ma.masked_equal(elevation_grid, -9999)
+            max_elevation = max(max_elevation, masked_data.max())
+            min_elevation = min(min_elevation, masked_data.min())
+    return float(max_elevation), float(min_elevation)
 
 
 def get_range_output_fire_intensity(data_path: str) -> tuple[float, float]:
