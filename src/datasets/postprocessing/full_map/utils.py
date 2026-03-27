@@ -111,10 +111,24 @@ def find_hex_files(folder: Path, pattern: str) -> dict[int, Path]:
     """Scans a folder for files matching the pattern."""
     files = list(folder.glob(pattern))
     file_map = {}
+
     for f in files:
-        match = re.search(r"hex_?(\d+)", f.parent.parent.name)
+        # option that matches the predictions format
+        match = re.search(r"hexel_(\d+)", f.name)
+
+        # option for the original data folder (targets)
+        if not match and len(f.parents) >= 2:
+            match = re.search(r"hex_?(\d+)", f.parent.parent.name)
+
+        # looks for any other potential matches
+        if not match:
+            match = re.search(r"hex(?:el)?_?(\d+)", str(f))
+
         if match:
             file_map[int(match.group(1))] = f
+        else:
+            print(f"Warning: Could not extract hex ID from path {f}.")
+
     return file_map
 
 

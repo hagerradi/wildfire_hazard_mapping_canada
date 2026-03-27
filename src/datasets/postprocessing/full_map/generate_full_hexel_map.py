@@ -27,6 +27,8 @@ def generate_stitched_map(
     scale: str = "linear",
     show_hex_borders: bool = True,
     output_path: str = None,
+    vmin: float = None,
+    vmax: float = None,
 ):
     """
     Main function to generate the stiched full Canada map of hexels.
@@ -54,6 +56,12 @@ def generate_stitched_map(
 
     # get the min and max ranges for plotting
     pos_min, global_max = calculate_global_stats(file_map)
+
+    # use min and max if provided
+    if vmin is not None:
+        pos_min = vmin
+    if vmax is not None:
+        global_max = vmax
 
     # Get scale type selection for plotting
     norm = get_scale_settings(scale, pos_min, global_max)
@@ -135,7 +143,9 @@ def generate_stitched_map(
 
     ax.set_aspect("equal")
     ax.axis("off")
-    plt.title(title, fontsize=18)
+
+    if title:
+        plt.title(title, fontsize=18)
 
     if im:
         cbar = plt.colorbar(im, ax=ax, fraction=0.02, pad=0.04)
@@ -168,9 +178,13 @@ def main():
 
     parser.add_argument("--show_hex_borders", action="store_true", help="Show red hexel borders in the map.")
 
-    parser.add_argument("--title", type=str, default="Canada Burn Probability Map", help="Custom plot title.")
+    parser.add_argument("--title", type=str, default=None, help="Custom plot title.")
 
     parser.add_argument("--output", type=str, default="experiments/full_map.png", help="Save to file instead of showing.")
+
+    parser.add_argument("--vmin", type=float, default=None, help="Force minimum value for the color scale.")
+
+    parser.add_argument("--vmax", type=float, default=None, help="Force maximum value for the color scale.")
 
     args = parser.parse_args()
 
@@ -182,6 +196,8 @@ def main():
         scale=args.scale,
         show_hex_borders=args.show_hex_borders,
         output_path=args.output,
+        vmin=args.vmin,
+        vmax=args.vmax,
     )
 
 
