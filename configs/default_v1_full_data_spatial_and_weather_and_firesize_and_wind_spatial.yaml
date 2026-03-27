@@ -32,7 +32,7 @@ optimizer:
   # loss_weights: {"bce": 0.8, "kl": 0.2} # use if loss is a list
 
 training:
-  max_epochs: 1
+  max_epochs: 50
   # Logging frequency in epochs
   log_every_n_epoch: 1
 
