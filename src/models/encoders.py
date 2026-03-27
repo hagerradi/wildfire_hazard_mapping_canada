@@ -133,7 +133,7 @@ class TabularFeatureEncoder(nn.Module):
         return self.projector(x_pooled)  # (B, embed_dim)
 
 
-class WindFeatureEncoder(nn.Module):
+class WindFeatureEncoderMixer(nn.Module):
     def __init__(self, in_channels: int = 16, hidden_dims: dict[str, list[int]] | None = None, embed_dim: int = 16):
         super().__init__()
 
@@ -184,3 +184,37 @@ class WindFeatureEncoder(nn.Module):
         global_feat = self.global_path(x)  # (B, 16, 8, 8)
         combined = torch.cat([local_feat, global_feat], dim=1)  # (B, 32, 8, 8)
         return self.fusion(combined) * self.scale
+
+
+class WindFeatureEncoderSpatial(nn.Module):
+    def __init__(self, in_channels=2, hidden_dims=None, embed_dim=64):
+        """
+        Encodes 128x128x16 wind grids down to 8x8xembed_dim.
+        Assuming input shape is (Batch, Channels, Height, Width) -> (B, 16, 128, 128)
+        """
+        super(WindFeatureEncoderSpatial, self).__init__()
+
+        if hidden_dims is None:
+            raise ValueError("Hidden Dim for Wind Encoder cannot be None")
+        self.hidden_dims = hidden_dims
+
+        self.layers = nn.ModuleList()
+        in_ch = in_channels
+        for h_feature in self.hidden_dims:  # 16,32, 64
+            self.layers.append(self._conv_block(in_ch, h_feature))
+            in_ch = h_feature
+        self.feature_extractor = nn.Sequential(*self.layers)
+        # Step 4: 16x16 -> 8x8
+        self.projector = self._conv_block(self.hidden_dims[-1], embed_dim)
+
+    def _conv_block(self, in_channels: int, out_channels: int) -> nn.Sequential:
+        return nn.Sequential(
+            nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=2, padding=1),
+            nn.BatchNorm2d(out_channels),
+            nn.LeakyReLU(0.2, inplace=True),
+        )
+
+    def forward(self, x):
+        x = self.feature_extractor(x)
+        x = self.projector(x)
+        return x  # Output is (B, embed_dim, 8, 8)
