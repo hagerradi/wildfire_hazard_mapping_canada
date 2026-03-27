@@ -2,7 +2,7 @@ import numpy as np
 
 from data_preparation.grid_loader.utils import fuel_ranking
 
-AVAILABLE_DATA_SOURCES = ["grid", "weather", "fire_size", "wind_grid"]
+AVAILABLE_DATA_SOURCES = ["grid", "weather", "fire_size", "wind_grid_mixer", "wind_grid_spatial"]
 MAX_FUEL_GRID = float(max(fuel_ranking.values()))
 
 
@@ -10,7 +10,7 @@ def get_data_source_class(name: str):
     """
     Returns the source class dynamically to avoid circular imports.
     """
-    if name in ["grid", "wind_grid"]:
+    if name in ["grid", "wind_grid_mixer", "wind_grid_spatial"]:
         from src.datasets.sources import GridSource
 
         return GridSource
