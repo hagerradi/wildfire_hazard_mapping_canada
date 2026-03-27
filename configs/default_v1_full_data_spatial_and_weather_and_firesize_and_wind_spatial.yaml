@@ -45,12 +45,12 @@ lr_scheduler:
   # milestones: [30, 40] # if using multistep
 
 evaluation:
-  best_ckpt_metrics: ["spearman"] # loss, ssim, mae, etc
+  best_ckpt_metrics: ["ccc"] # loss, ssim, mae, etc
   best_ckpt_metrics_mode: ["max"] # max, or min
   checkpoint_filename: "best.pth" # option to load best or last
 
 data:
-  root_dir: "/network/projects/amlrt/nrcan_wildfires/full_data/yan_bp3/data_samples_approach_1_weather"
+  root_dir: "/network/projects/amlrt/nrcan_wildfires/full_data/yan_bp3/data_samples_approach_1_final"
   raw_data_dir: "/network/projects/amlrt/nrcan_wildfires/full_data/yan_bp3"
 
   train_split: "train_indices.csv"
@@ -102,7 +102,7 @@ logger:
   project_name: "nrcan-wildfireriskmapping"
   workspace: "mila-amlrt"
   experiment_name: "unet_full_data_spatial_weather_firesize_wind_spatial"
-  tags: ["baseline", "full_data", "modelling_approach=1", "fuel_one_hot_encoding", "KL-loss", "weather-tabular", "firesize-tabular", "wind-spatial"]
+  tags: ["full_data", "modelling_approach=1", "final_experiment", "ignition", "elevation", "fuel", "weather", "fire_size", "wind_spatial"]
   # log loss and metrics on comet every n steps
   log_every_n_step: 5
 
