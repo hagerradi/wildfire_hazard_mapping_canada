@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from src.models.utils import double_conv_block
+from src.models.utils import conv_block, double_conv_block
 
 
 class EncoderBase(nn.Module, ABC):
@@ -187,12 +187,13 @@ class WindFeatureEncoderMixer(nn.Module):
 
 
 class WindFeatureEncoderSpatial(nn.Module):
-    def __init__(self, in_channels=2, hidden_dims=None, embed_dim=64):
-        """
-        Encodes 128x128x16 wind grids down to 8x8xembed_dim.
-        Assuming input shape is (Batch, Channels, Height, Width) -> (B, 16, 128, 128)
-        """
-        super(WindFeatureEncoderSpatial, self).__init__()
+    """
+    Encodes 128x128 wind grids with `in_channels` channels down to 8x8x`embed_dim`.
+    Assuming input shape is (Batch, Channels, Height, Width) -> (B, in_channels, 128, 128).
+    """
+
+    def __init__(self, in_channels=16, hidden_dims=None, embed_dim=64):
+        super().__init__()
 
         if hidden_dims is None:
             raise ValueError("Hidden Dim for Wind Encoder cannot be None")
@@ -201,20 +202,13 @@ class WindFeatureEncoderSpatial(nn.Module):
         self.layers = nn.ModuleList()
         in_ch = in_channels
         for h_feature in self.hidden_dims:  # 16,32, 64
-            self.layers.append(self._conv_block(in_ch, h_feature))
+            self.layers.append(conv_block(in_ch, h_feature))
             in_ch = h_feature
         self.feature_extractor = nn.Sequential(*self.layers)
         # Step 4: 16x16 -> 8x8
-        self.projector = self._conv_block(self.hidden_dims[-1], embed_dim)
+        self.projector = conv_block(self.hidden_dims[-1], embed_dim)
 
-    def _conv_block(self, in_channels: int, out_channels: int) -> nn.Sequential:
-        return nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=2, padding=1),
-            nn.BatchNorm2d(out_channels),
-            nn.LeakyReLU(0.2, inplace=True),
-        )
-
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.feature_extractor(x)
         x = self.projector(x)
         return x  # Output is (B, embed_dim, 8, 8)

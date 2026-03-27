@@ -160,6 +160,10 @@ class MultiSourceUNet(UNetBase):
                         encoders[name] = WindFeatureEncoderMixer(
                             in_channels=input_dim, hidden_dims=hidden_dims, embed_dim=self.auxiliary_embed_dims.get(name, 16)
                         )
+                    else:
+                        raise ValueError(
+                            """For the spatial wind encoder the hidden_dims should be a dict, eg {"mixer": [16], "local": [32, 64, 16], "global": [16]}"""
+                        )
                     continue
                 if name == "wind_grid_spatial":
                     hidden_dims = self.auxiliary_hidden_dims.get(name, [16, 32, 64])
@@ -168,6 +172,8 @@ class MultiSourceUNet(UNetBase):
                         encoders[name] = WindFeatureEncoderSpatial(
                             in_channels=input_dim, hidden_dims=hidden_dims, embed_dim=self.auxiliary_embed_dims.get(name, 16)
                         )
+                    else:
+                        raise ValueError("For the spatial wind encoder the hidden_dims should be a list, eg: [16, 32, 64]")
                     continue
                 # get the architectural values for each different auxillary encoder
                 hidden_dims = self.auxiliary_hidden_dims.get(name, [32, 64])

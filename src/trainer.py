@@ -64,7 +64,7 @@ class Trainer:
 
         # Multi-source path: spatial grids + auxiliary data.
         if self.auxiliary:
-            if not self.auxiliary:
+            if not self.auxiliary_input_dims:
                 raise ValueError("Config requests auxiliary features, but no auxiliary dim. were detected.")
 
             print(f"[Trainer] Mode: Multi-Source (Spatial + auxiliary)")

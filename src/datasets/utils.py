@@ -26,7 +26,7 @@ def get_data_source_param_class(name: str):
     """
     Returns the param class dynamically to avoid circular imports.
     """
-    if name in ["grid", "wind_grid"]:
+    if name in ["grid", "wind_grid_mixer", "wind_grid_spatial"]:
         from src.config import GridParams
 
         return GridParams

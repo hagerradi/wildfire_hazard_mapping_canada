@@ -105,7 +105,7 @@ logger:
   project_name: "nrcan-wildfireriskmapping"
   workspace: "mila-amlrt"
   experiment_name: "unet_full_data_spatial_weather_firesize_wind_mixer"
-  tags: ["baseline", "full_data", "modelling_approach=1", "fuel_one_hot_encoding", "KL-loss", "weather-tabular", "firesize-tabular", "wind-spatial"]
+  tags: ["baseline", "full_data", "modelling_approach=1", "fuel_one_hot_encoding", "KL-loss", "weather-tabular", "firesize-tabular", "wind-mixer"]
   # log loss and metrics on comet every n steps
   log_every_n_step: 5
 
