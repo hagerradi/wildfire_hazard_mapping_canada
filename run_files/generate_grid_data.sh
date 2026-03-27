@@ -4,7 +4,7 @@
 #SBATCH --array=0-52 # hard-coded since we know there's 53 hexel subdirs
 #SBATCH --ntasks=1
 #SBATCH --time=00:30:00
-#SBATCH --mem=16G
+#SBATCH --mem=32G
 #SBATCH --cpus-per-task=2
 
 mkdir -p logs
@@ -21,9 +21,10 @@ fi
 
 echo "Starting Worker $TASK_ID / $NUM_TASKS"
 
+# If save_dir is kept as None, the grids will be saved to 'data_samples_modelling_approach_<VERSION_NUMBER_HERE>/' directory in the `root_dir/`
 python -m data_preparation.process_hexels_into_grids \
     --root_dir="/network/projects/amlrt/nrcan_wildfires/full_data/yan_bp3" \
-    --save_dir=None \   # If this is kept as None, the grids will be saved to 'data_samples_modelling_approach_<VERSION_NUMBER_HERE>/' directory in the `root_dir/`
+    --save_dir=None \
     --modelling_approach=1 \
     --output_type="prob" \
     --win_h=128 \

@@ -31,12 +31,12 @@ training:
   log_every_n_epoch: 1
 
 evaluation:
-  best_ckpt_metrics: ["spearman"] # loss, ssim, mae, etc
+  best_ckpt_metrics: ["ccc"] # loss, ssim, mae, etc
   best_ckpt_metrics_mode: ["max"] # max, or min
   checkpoint_filename: "best.pth" # option to load best or last
 
 data:
-  root_dir: "/network/projects/amlrt/nrcan_wildfires/full_data/yan_bp3/data_samples_approach_1_weather"
+  root_dir: "/network/projects/amlrt/nrcan_wildfires/full_data/yan_bp3/data_samples_approach_1_final"
   raw_data_dir: "/network/projects/amlrt/nrcan_wildfires/full_data/yan_bp3"
 
   train_split: "train_indices.csv"

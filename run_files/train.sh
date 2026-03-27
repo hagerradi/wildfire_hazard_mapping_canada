@@ -9,7 +9,7 @@
 #SBATCH --time=05:59:00
 #SBATCH --mem-per-cpu=10Gb
 #SBATCH --cpus-per-task=2
-#SBATCH --gres=gpu:1
+#SBATCH --gres=gpu:a100:1
 
 # Capture the first argument, default to 'configs/default_v1.yaml' if empty
 CONFIG_FILE=${1:-configs/default_v1.yaml}
