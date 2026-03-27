@@ -1,5 +1,5 @@
 # Where to save checkpoints
-save_dir: "experiments/unet_full_data_spatial_weather_firesize_wind_mixer"
+save_dir: "experiments/unet_full_data_spatial_weather_firesize_wind_spatial"
 
 # approaches 1 or 2
 modelling_approach: "1"
@@ -14,15 +14,12 @@ model:
   auxiliary_hidden_dims:
     weather: [32, 64, 128]
     fire_size: [8, 16]
-    wind_grid_mixer:
-        mixer: [16]
-        local: [32,64,16] #kernel_sizes/strides/paddings/group_norm_kernel are hardcoded so need to change that in encoders.py
-        global: [16]
+    wind_grid_spatial: [16,32,64]
 
   auxiliary_embed_dims:
     weather: 128
     fire_size: 16
-    wind_grid_mixer: 16
+    wind_grid_spatial: 16
 
   auxiliary_feature_encoder_poolings:
     weather: "max" # max, mean, attention
@@ -94,7 +91,7 @@ data:
         feature_to_bias: "NORM_LOG_SIZE_HA"
         transforms_list: []
         augmentation_prob: 0.0
-    - name: "wind_grid_mixer"
+    - name: "wind_grid_spatial"
       params:
         feature_names_list: ["wind_grid"]
         transforms_list: []
@@ -104,8 +101,8 @@ logger:
   enabled: True
   project_name: "nrcan-wildfireriskmapping"
   workspace: "mila-amlrt"
-  experiment_name: "unet_full_data_spatial_weather_firesize_wind_mixer"
-  tags: ["baseline", "full_data", "modelling_approach=1", "fuel_one_hot_encoding", "KL-loss", "weather-tabular", "firesize-tabular", "wind-mixer"]
+  experiment_name: "unet_full_data_spatial_weather_firesize_wind_spatial"
+  tags: ["baseline", "full_data", "modelling_approach=1", "fuel_one_hot_encoding", "KL-loss", "weather-tabular", "firesize-tabular", "wind-spatial"]
   # log loss and metrics on comet every n steps
   log_every_n_step: 5
 

@@ -27,3 +27,11 @@ def double_conv_block(in_channels: int, out_channels: int) -> nn.Sequential:
         nn.BatchNorm2d(out_channels),
         nn.LeakyReLU(inplace=True),
     )
+
+
+def conv_block(in_channels: int, out_channels: int) -> nn.Sequential:
+    return nn.Sequential(
+        nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=2, padding=1),
+        nn.BatchNorm2d(out_channels),
+        nn.LeakyReLU(0.2, inplace=True),
+    )

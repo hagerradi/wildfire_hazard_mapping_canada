@@ -5,7 +5,7 @@ import torch.nn as nn
 
 from src.models.bottlenecks import MultiSourceBottleneck
 from src.models.decoders import BaselineDecoder
-from src.models.encoders import BaselineEncoder, TabularFeatureEncoder, WindFeatureEncoder
+from src.models.encoders import BaselineEncoder, TabularFeatureEncoder, WindFeatureEncoderMixer, WindFeatureEncoderSpatial
 from src.models.utils import double_conv_block
 
 
@@ -153,12 +153,27 @@ class MultiSourceUNet(UNetBase):
         # Build encoders for each extra auxiliary feature type.
         if self.auxiliary_input_dims:
             for name, input_dim in self.auxiliary_input_dims.items():
-                if name == "wind_grid":
+                if name == "wind_grid_mixer":
                     hidden_dims = self.auxiliary_hidden_dims.get(name, {"mixer": [16], "local": [32, 64, 16], "global": [16]})
                     if isinstance(hidden_dims, dict):
-                        encoders[name] = WindFeatureEncoder(
+                        # WindFeatureEncoderSpatial, WindFeatureEncoderMixer
+                        encoders[name] = WindFeatureEncoderMixer(
                             in_channels=input_dim, hidden_dims=hidden_dims, embed_dim=self.auxiliary_embed_dims.get(name, 16)
                         )
+                    else:
+                        raise ValueError(
+                            """For the spatial wind encoder the hidden_dims should be a dict, eg {"mixer": [16], "local": [32, 64, 16], "global": [16]}"""
+                        )
+                    continue
+                if name == "wind_grid_spatial":
+                    hidden_dims = self.auxiliary_hidden_dims.get(name, [16, 32, 64])
+                    if isinstance(hidden_dims, list):
+                        # WindFeatureEncoderSpatial, WindFeatureEncoderMixer
+                        encoders[name] = WindFeatureEncoderSpatial(
+                            in_channels=input_dim, hidden_dims=hidden_dims, embed_dim=self.auxiliary_embed_dims.get(name, 16)
+                        )
+                    else:
+                        raise ValueError("For the spatial wind encoder the hidden_dims should be a list, eg: [16, 32, 64]")
                     continue
                 # get the architectural values for each different auxillary encoder
                 hidden_dims = self.auxiliary_hidden_dims.get(name, [32, 64])
@@ -222,7 +237,7 @@ class MultiSourceUNet(UNetBase):
                 if name in x_auxiliary:
                     encoder_aux = self.encoder[name]  # type: ignore
                     encoder_emb = encoder_aux(x_auxiliary[name])
-                    if name == "wind_grid":
+                    if name == "wind_grid_mixer" or name == "wind_grid_spatial":
                         # print("====================in wind grid==================")
                         x_wind = encoder_emb
                         continue
