@@ -71,12 +71,10 @@ def aggregate_csv_by_pattern(root_dir: Path, pattern: str, load_function: Callab
     files = sorted(root_dir.glob(pattern))
     if not files:
         raise FileNotFoundError(f"No files found matching pattern '{pattern}' in {root_dir}...")
-    print(f"Found {len(files)} files to process.")
 
     # 2. Load (with option to use feature specific loader function) and stack all dataframes
     data_frames = []
     for f in files:
-        print(f"Loading file {f}")
         if load_function:
             df = load_function(f)
         else:
@@ -85,7 +83,6 @@ def aggregate_csv_by_pattern(root_dir: Path, pattern: str, load_function: Callab
             data_frames.append(df)
 
     full_df = pd.concat(data_frames, ignore_index=True)
-    print(f"Aggregated raw shape: {full_df.shape}")
 
     return full_df
 
@@ -190,7 +187,6 @@ def get_processed_hex_ids(folder_path: str) -> list:
         extracted_id = filename_no_ext.removeprefix("meta_hex_")
 
         hex_ids.append(extracted_id)
-
     return hex_ids
 
 

@@ -22,6 +22,22 @@ def get_data_source_class(name: str):
         raise ValueError(f"Unknown data source type: {name}. Available: {AVAILABLE_DATA_SOURCES}")
 
 
+def get_data_source_param_class(name: str):
+    """
+    Returns the param class dynamically to avoid circular imports.
+    """
+    if name in ["grid", "wind_grid"]:
+        from src.config import GridParams
+
+        return GridParams
+    elif name in ["weather", "fire_size"]:
+        from src.config import TabularParams
+
+        return TabularParams
+    else:
+        raise ValueError(f"Unknown data source type: {name}. Available: {AVAILABLE_DATA_SOURCES}")
+
+
 def get_dataset_dimensions(dataset) -> tuple[int | None, dict[str, int]]:
     """
     Extracts spatial and tabular dimensions from a MultiSourceDataset.
