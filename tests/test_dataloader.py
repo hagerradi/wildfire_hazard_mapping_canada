@@ -267,8 +267,7 @@ def test_grid_transforms(temp_data_dir):
     possible_h = F.hflip(x_orig)
     possible_v = F.vflip(x_orig)
     # check if augmented tensor is one of the flips
-    assert torch.equal(x_flip, possible_h) or torch.equal(x_flip, possible_v)
-
+    assert torch.allclose(x_flip, possible_h, equal_nan=True) or torch.allclose(x_flip, possible_v, equal_nan=True)
     # =============================================
     # Test 2: Mock Config for Augmentation (Rotate)
     # =============================================

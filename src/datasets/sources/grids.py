@@ -5,7 +5,7 @@ from collections.abc import Callable
 import numpy as np
 import torch
 
-from data_preparation.grid_loader.utils import BURN_COUNT_MAX, BURN_COUNT_MIN, fuel_ranking, get_range_burn_prob
+from data_preparation.grid_loader.utils import BURN_COUNT_MAX, BURN_COUNT_MIN, fuel_ranking, get_range_burn_prob, get_range_elevation
 from src.config import GridParams
 from src.datasets.sources.base import DataSource
 from src.datasets.utils import fill_nan_channel_mean_numpy, one_hot_encode, output_burn_prob_norm
@@ -73,6 +73,8 @@ class GridSource(DataSource):
                         + list(range(self.fuel_feat_index, self.fuel_feat_index + num_classes))
                         + [i + num_classes - 1 for i in self.input_channel_indices[idx_fuel_feats:]]
                     )
+        # 3. normalization for elevation grid
+        self.ELEVATION_MAX, self.ELEVATION_MIN = get_range_elevation(os.path.dirname(self.root_dir))
 
     def get_sample(self, patch_info: dict):
         if "data" in patch_info:
@@ -88,15 +90,21 @@ class GridSource(DataSource):
         assert np.all(np.isnan(input_arr) == np.isnan(input_arr[..., :1])), "NaN mask differs across channels!"
         mask = ~np.isnan(input_arr[:, :, 0])  # mask is True where not NaN, False where NaN
 
-        # 2. Processing one hot encoding
+        # 2. Normalize elevation (and any other input)
+        elev_feat_index = self.channel_feature_map["elevation_grid"][0]
+        input_arr[:, :, elev_feat_index] = (input_arr[:, :, elev_feat_index] - self.ELEVATION_MIN) / (
+            self.ELEVATION_MAX - self.ELEVATION_MIN + 1e-8
+        )
+
+        # 3. Processing one hot encoding
         if "fuel_grid" in self.feature_names_list and self.fuel_feats_encoding == "one_hot":  # (H,W,C+20)
             num_classes = int(self.max_fuel_grid + 1)
             input_arr = one_hot_encode(arr=input_arr, channel_idx=self.fuel_feat_index, num_classes=num_classes)
 
-        # 3. Mean Imputation
+        # 4. Mean Imputation
         input_arr = fill_nan_channel_mean_numpy(input_arr)
 
-        # 4. Process ordinal encoding norm (if not norm do nothing)
+        # 5. Process ordinal encoding norm (if not norm do nothing)
         if "fuel_grid" in self.feature_names_list and self.fuel_feats_encoding == "ordinal":
             input_arr[:, :, self.fuel_feat_index][~mask] = 0.0  # Nan is no fuel
             if self.normalize_fuel_feats_ordinal:
@@ -104,11 +112,11 @@ class GridSource(DataSource):
                     self.max_fuel_grid - self.min_fuel_grid
                 )
 
-        # 5. Filter to just chosen input channel indices or if no features selected just return None
+        # 6. Filter to just chosen input channel indices or if no features selected just return None
         if self.input_channel_indices is not None:
             input_arr = input_arr[:, :, self.input_channel_indices]
 
-        # 6. Perform output normalizations
+        # 7. Perform output normalizations
         if self.modelling_approach == "2":
             if self.out_norm == "min_max":
                 output_arr = (output_arr - BURN_COUNT_MIN) / (BURN_COUNT_MAX - BURN_COUNT_MIN)
