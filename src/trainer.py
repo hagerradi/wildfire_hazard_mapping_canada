@@ -68,7 +68,7 @@ class Trainer:
                 raise ValueError("Config requests auxiliary features, but no auxiliary dim. were detected.")
 
             print(f"[Trainer] Mode: Multi-Source (Spatial + auxiliary)")
-            print(f"[Trainer] Spatial Channels: {self.spatial_input_channels}, Auxiliary Dim: {self.auxiliary}")
+            print(f"[Trainer] Spatial Channels: {self.spatial_input_channels}, Auxiliary Dim: {self.auxiliary_input_dims}")
 
             self.model = MultiSourceUNet(
                 input_channels=self.spatial_input_channels,
