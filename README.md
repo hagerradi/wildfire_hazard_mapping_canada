@@ -62,6 +62,8 @@ To generate the full Canada hexel map of targets and/or predictions, run the fol
 
 ```python -m src.datasets.postprocessing.full_map.generate_full_hexel_map --data-dir data/ --scale "log" --show_hex_borders --output "experiments/full_canada_map.png"```
 
+Note that to generate full Canada maps, the `.tif` files of the hexels are required.
+
 For example, to generate the full maps of ground truth targets on the cluster:
 
 ```python -m src.datasets.postprocessing.full_map.generate_full_hexel_map --data-dir /network/projects/amlrt/nrcan_wildfires/full_data/yan_bp3/ --scale "log" --show_hex_borders --output "experiments/full_canada_map_targets.png"```
