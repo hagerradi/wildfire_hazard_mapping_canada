@@ -10,7 +10,9 @@ This saves the rasters in the original data folders under `outputs`
 
 Step 2: Process hexel data into multiple square windows, which will be our data samples:
 
-Note: If you want to run this in the cluster using SLURM array jobs, you can modify the `run_files/generate_grid.sh` by changing the save directory path and run the following in the terminal (from the main directory)
+By default, this runs with `overlap_ratio` of `0.2`. If you want to eventually use center_crop stitching for evaluation, you should use `overlap_with_halo=64`, and pass `overlap_ratio=None`.
+
+Note: If you want to run this in the cluster using SLURM array jobs, you can modify the `run_files/generate_grid.sh` by changing the save directory path, `overlap_ratio/overlap_with_halo` and run the following in the terminal (from the main directory)
 
 ```bash
 sbatch run_files/generate_grids.sh
@@ -18,7 +20,7 @@ sbatch run_files/generate_grids.sh
 
 Instead, you can run the following on an interactive node:
 ```bash
-python -m data_preparation.process_hexels_into_grids --root_dir="./network/projects/amlrt/nrcan_wildfires/full_data/yan_bp3"  --save_dir="/network/projects/amlrt/nrcan_wildfires/full_data/yan_bp3/data_samples_approach_1" --modelling_approach=1 --output_type="prob" --win_h=128 --win_w=128 --overlap_ratio=0 --weather_sampling="weather_zone_id"
+python -m data_preparation.process_hexels_into_grids --root_dir="/network/projects/amlrt/nrcan_wildfires/full_data/yan_bp3"  --save_dir="/network/projects/amlrt/nrcan_wildfires/full_data/yan_bp3/data_samples_approach_1" --modelling_approach=1 --output_type="prob" --win_h=128 --win_w=128 --overlap_ratio=0.2 --overlap_with_halo=None --weather_sampling="weather_zone_id"
 ```
 
 Step 3: Create training, validation and test splits.

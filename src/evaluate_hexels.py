@@ -32,6 +32,19 @@ def parse_args() -> argparse.Namespace:
         help="Path to YAML config file.",
     )
     parser.add_argument(
+        "--stitch_mode",
+        type=str,
+        default="mean",
+        choices=["mean", "max", "center_crop"],
+        help="How to stitch the hexel from overlapping windows: 'mean', 'max', or 'center_crop'.",
+    )
+    parser.add_argument(
+        "--window_size",
+        type=int,
+        default=128,
+        help="What is the window size of the patch",
+    )
+    parser.add_argument(
         "--visualize_predictions",
         action="store_true",
         help="Boolean flag to visualize some random predictions vs. targets",
@@ -140,6 +153,9 @@ def main() -> None:
             device=trainer.device,
             experiment_logger=None,
             metric_functions=trainer.metric_functions,
+            stitch_mode=args.stitch_mode,
+            window_size=int(args.window_size),
+            center_crop_size=int(args.window_size) // 2,
         )
 
         # print metrics in terminal and log into comet

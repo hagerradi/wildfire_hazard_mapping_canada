@@ -3,7 +3,13 @@ import pandas as pd
 
 
 def stitch_windows(
-    windows: list[np.ndarray], coords: list[tuple], masks: list[np.ndarray], original_shape: tuple, mode: str = "mean"
+    windows: list[np.ndarray],
+    coords: list[tuple],
+    masks: list[np.ndarray],
+    original_shape: tuple,
+    stitch_mode: str = "mean",
+    window_size: int = 128,
+    center_crop_size: int = 64,
 ) -> np.ndarray:
     """
     Reconstructs an image from overlapping windows using either averaging or maximization.
@@ -13,14 +19,15 @@ def stitch_windows(
         coords (list of tuples): List of (row, col) top-left coordinates for each window.
         masks (list of np.ndarray): List of masks for the windows. True if valid value
         original_shape (tuple): Shape of the target hexel (H, W, C).
-        mode (str): How to combine/stitch the windows (Options: mean, max)
+        mode (str): How to combine/stitch the windows (Options: mean, max, center_crop)
     Returns:
         np.array: The reconstructed image (Shape: original_shape, (H,W))
     """
     dtype = np.float64
 
-    if mode == "mean":
-        # --- AVERAGE MODE ---
+    if stitch_mode == "mean":
+        # --- AVERAGE stich_mode ---
+        print("==========Stitch mode is Average===============")
         accumulator = np.zeros(original_shape, dtype=dtype)
         counter = np.zeros(original_shape, dtype=dtype)
 
@@ -45,9 +52,10 @@ def stitch_windows(
 
         return reconstructed
 
-    elif mode == "max":
-        # --- MAX MODE ---
+    elif stitch_mode == "max":
+        # --- MAX stitch_mode ---
         # Initialize with negative infinity so any real data (even negative) will override it
+        print("==========Stitch mode is Max===============")
         accumulator = np.full(original_shape, -np.inf, dtype=dtype)
 
         for window, mask, (r, c) in zip(windows, masks, coords):
@@ -70,5 +78,19 @@ def stitch_windows(
 
         return accumulator
 
+    elif stitch_mode == "center_crop":
+        print("==========Stitch mode is center crop===============")
+        H, W = original_shape[:2]
+        accumulator = np.zeros(original_shape, dtype=dtype)
+        halo = (window_size - center_crop_size) // 2
+        for window, mask, (r, c) in zip(windows, masks, coords):
+            window[~mask] = 0.0
+            center_pred = window[halo : halo + center_crop_size, halo : halo + center_crop_size]
+            valid_h = min(center_crop_size, H - r)
+            valid_w = min(center_crop_size, W - c)
+            if valid_h > 0 and valid_w > 0:
+                accumulator[r : r + valid_h, c : c + valid_w] = center_pred[:valid_h, :valid_w]
+        return accumulator
+
     else:
-        raise ValueError(f"Unknown mode: {mode}")
+        raise ValueError(f"Unknown mode: {stitch_mode}")

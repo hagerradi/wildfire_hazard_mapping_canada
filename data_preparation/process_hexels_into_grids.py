@@ -8,7 +8,7 @@ import pandas as pd
 from data_preparation.generate_season_cause_output import FireCountRasterizer
 from data_preparation.grid_loader.utils import NODATA, load_fire_shapefiles
 from data_preparation.hexel_loader import load_features_per_hexel
-from data_preparation.utils import HEX_ID_NA, find_hex_ids, get_processed_hex_ids
+from data_preparation.utils import HEX_ID_NA, find_hex_ids, get_padding_params, get_processed_hex_ids
 
 
 def save_split_hexel_windows(
@@ -31,7 +31,8 @@ def get_split_hexel_window(
     hex_id: str,
     win_h: int = 128,
     win_w: int = 128,
-    overlap_ratio: float = 0.2,
+    overlap_ratio: float | None = 0.2,
+    overlap_with_halo: float | None = None,
 ):
     """
     Split the hexel using sliding windows for inp to the model
@@ -44,18 +45,19 @@ def get_split_hexel_window(
     rasterizer = FireCountRasterizer(shp_paths, None)
     total_unique_iters = rasterizer.get_num_unique_iters(season=None, cause=None)
     num_season_cause, H, W, _ = season_cause_stacked_feats.shape
-    stride_h = max(1, int(win_h * (1 - overlap_ratio)))  # n_rows = (H-win_h)//stride_h + 1
-    stride_w = max(1, int(win_w * (1 - overlap_ratio)))
+    pad_top, pad_bot, pad_left, pad_right, stride_h, stride_w = get_padding_params(H, W, win_h, win_w, overlap_ratio, overlap_with_halo)
 
-    # Adding padding for the edges
-    pad_h = stride_h - (H - win_h) % stride_h if (H - win_h) % stride_h != 0 else 0
-    pad_w = stride_w - (W - win_w) % stride_w if (W - win_w) % stride_w != 0 else 0
+    # Apply the calculated padding
     season_cause_stacked_feats_padded = np.pad(
-        season_cause_stacked_feats, ((0, 0), (0, pad_h), (0, pad_w), (0, 0)), mode="constant", constant_values=NODATA
+        season_cause_stacked_feats, ((0, 0), (pad_top, pad_bot), (pad_left, pad_right), (0, 0)), mode="constant", constant_values=NODATA
     )
     season_cause_mask_padded = np.pad(
-        season_cause_mask, ((0, 0), (0, pad_h), (0, pad_w)), mode="constant", constant_values=1.0
-    )  # Mask should be 1 where nan
+        season_cause_mask,
+        ((0, 0), (pad_top, pad_bot), (pad_left, pad_right)),
+        mode="constant",
+        constant_values=1.0,  # Mask should be 1 where nan
+    )
+
     # season_cause_stacked_feats_padded[:,:,:,-1][season_cause_mask_padded] = 0.0 #For outputs, mask means 0 probability
     _, H_pad, W_pad, _ = season_cause_stacked_feats_padded.shape
 
@@ -121,11 +123,13 @@ def generate_data_samples(
     output_type: str = "count",
     win_h: int = 128,
     win_w: int = 128,
-    overlap_ratio: float = 0.2,
+    overlap_ratio: float | None = 0.2,
+    overlap_with_halo: float | None = None,
     weather_sampling: str = "dist",
     is_array_job: bool = False,
     task_id: int = 0,
     num_tasks: int = 1,
+    hex_ids: list | None = None,
 ):
     if save_dir:
         out_dir = save_dir
@@ -137,7 +141,7 @@ def generate_data_samples(
 
     if is_array_job:
         # 1. Get all Hex IDs
-        hex_ids = find_hex_ids(root_dir)
+        hex_ids = find_hex_ids(root_dir) if hex_ids is None else hex_ids
         # Sort them to ensure every worker sees the same order
         hex_ids = sorted(list(hex_ids))
 
@@ -148,7 +152,7 @@ def generate_data_samples(
             print(f"[Worker {task_id}/{num_tasks}] Processing {len(my_hexels)} hexels out of {len(hex_ids)} total.")
             hex_ids = my_hexels
     else:
-        hex_ids = find_hex_ids(root_dir)
+        hex_ids = find_hex_ids(root_dir) if hex_ids is None else hex_ids
 
     for hex_id in hex_ids:
         if hex_id in completed_hex_ids:
@@ -179,6 +183,7 @@ def generate_data_samples(
             win_h=win_h,
             win_w=win_w,
             overlap_ratio=overlap_ratio,
+            overlap_with_halo=overlap_with_halo,
         )
         print(f"======Processed Hex ID: {hex_id}==========")
 
@@ -192,13 +197,27 @@ def main():
     parser.add_argument("--output_type", type=str, help="output type as prob or count", default="count")
     parser.add_argument("--win_h", type=int, help="Height of the window", default=128)
     parser.add_argument("--win_w", type=int, help="Height of the window", default=128)
-    parser.add_argument("--overlap_ratio", type=float, help="Overlap ratio between windows", default=0.2)
+    parser.add_argument("--overlap_ratio", type=float, help="Overlap ratio between windows", default=None)
+    parser.add_argument(
+        "--overlap_with_halo",
+        type=float,
+        help="Overlap with halo only used when doing center crop stitching for inference (set overlap_ratio to None)",
+        default=None,
+    )
     parser.add_argument(
         "--weather_sampling",
         type=str,
         help="Sampling method for weather data, options 'dist', 'random', or 'weather_zone_id'",
         default="dist",
         choices=["dist", "random", "weather_zone_id"],
+    )
+    parser.add_argument(
+        "--hex_ids",
+        type=str,
+        nargs="+",
+        required=False,
+        default=None,
+        help="List of hex IDs to use for the data prep",
     )
     parser.add_argument("--is_array_job", action="store_true", help="Boolean to indicate if using SLURM job array")
     parser.add_argument("--task_id", type=int, default=0, help="SLURM array ID")
@@ -212,11 +231,13 @@ def main():
         win_h=args.win_h,
         win_w=args.win_w,
         overlap_ratio=args.overlap_ratio,
+        overlap_with_halo=args.overlap_with_halo,
         output_type=args.output_type,
         weather_sampling=args.weather_sampling,
         is_array_job=args.is_array_job,
         task_id=args.task_id,
         num_tasks=args.num_tasks,
+        hex_ids=args.hex_ids,
     )
 
 

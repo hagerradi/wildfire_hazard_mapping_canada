@@ -125,6 +125,9 @@ def find_simulation_output_file(root_dir: str, hex_id: str, output_type: str, se
 
 
 def find_hex_ids(root_dir: str) -> list:
+    """
+    Find all the numerical hex ids
+    """
     hex_ids = []
     try:
         with os.scandir(root_dir) as entries:
@@ -188,6 +191,60 @@ def get_processed_hex_ids(folder_path: str) -> list:
 
         hex_ids.append(extracted_id)
     return hex_ids
+
+
+def get_padding_params(
+    H: int, W: int, win_h: int, win_w: int, overlap_ratio: float | None = None, overlap_with_halo: float | None = None
+) -> tuple[int, int, int, int, int, int]:
+    """
+    Get the padding and strides for splitting a hexel into patches
+    Args:
+        H (int): Height of the   hexel
+        W (int): Width of the hexel
+        win_h (int) : Height of the patch window
+        win_w (int) : Width of the patch window
+        overlap_ratio (float) : % overlap among patches for the split (used normally)
+        overlap_with_halo (float) : Int overlap with halo among the patches (used only for center_crop stitching)
+    """
+    if overlap_ratio is None and overlap_with_halo is None:
+        raise ValueError(
+            "Atleast one of the overlap_ratio or overlap_with_halo should be not None."
+            "Help: you should use overlap_with_halo for inference data splitting when using centre crop as stitching method with value as int "
+            "you should use overlap_ratio for training data and this hould be a float [0,1]"
+        )
+    if overlap_ratio is not None and overlap_with_halo is not None:
+        raise ValueError(
+            "Atleast one of the overlap_ratio or overlap_with_halo should be None."
+            "Help: you should use overlap_with_halo for inference data splitting when using centre crop as stitching method with value as int "
+            "you should use overlap_ratio for training data and this hould be a float [0,1]"
+        )
+    if overlap_ratio is not None:
+        stride_h = max(1, int(win_h * (1 - overlap_ratio)))  # n_rows = (H-win_h)//stride_h + 1
+        stride_w = max(1, int(win_w * (1 - overlap_ratio)))
+
+        # Adding padding for the edges (bottom and right only)
+        pad_top, pad_left = 0, 0
+        pad_bot = stride_h - (H - win_h) % stride_h if (H - win_h) % stride_h != 0 else 0
+        pad_right = stride_w - (W - win_w) % stride_w if (W - win_w) % stride_w != 0 else 0
+
+    if overlap_with_halo is not None:
+        # Halo padding logic for center-crop stitching
+        overlap_ratio = int(overlap_with_halo)
+        stride_h = overlap_ratio
+        stride_w = overlap_ratio
+
+        halo_h = (win_h - stride_h) // 2
+        halo_w = (win_w - stride_w) // 2
+
+        # Calculate extra padding to ensure grid divisibility
+        pad_h_extra = (stride_h - (H % stride_h)) % stride_h
+        pad_w_extra = (stride_w - (W % stride_w)) % stride_w
+
+        # Pad top/left with halo, bottom/right with halo + extra
+        pad_top, pad_bot = halo_h, halo_h + pad_h_extra
+        pad_left, pad_right = halo_w, halo_w + pad_w_extra
+
+    return pad_top, pad_bot, pad_left, pad_right, stride_h, stride_w  # type: ignore
 
 
 def plot_split_window_hexel(windows, channel_index=0, max_cols=5, figsize=(15, 15)):

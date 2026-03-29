@@ -56,6 +56,11 @@ To visualize predictions and/or save visualizations, add the optional flags `--v
 
 ```python -m src.evaluate_hexels --config=configs/default_v1.yaml```
 
+If we want to use center crop for stitching predictions, make sure step 2 in data_preparation is run with `overlap_with_halo=64` and `overlap_ratio=None`
+
+Then, you should use `--stitch_mode=center_crop` to run `src.evaluate_hexels`
+
+
 ### Generate full Canada map of hexels
 
 To generate the full Canada hexel map of targets and/or predictions, run the following script (see --help for more args. information):
