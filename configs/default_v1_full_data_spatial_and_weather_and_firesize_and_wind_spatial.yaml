@@ -19,7 +19,7 @@ model:
   auxiliary_embed_dims:
     weather: 128
     fire_size: 16
-    wind_grid_spatial: 16
+    wind_grid_spatial: 32
 
   auxiliary_feature_encoder_poolings:
     weather: "max" # max, mean, attention
