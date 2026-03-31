@@ -40,12 +40,12 @@ training:
   log_every_n_epoch: 1
 
 evaluation:
-  best_ckpt_metrics: ["spearman"] # loss, ssim, mae, etc
+  best_ckpt_metrics: ["ccc"] # loss, ssim, mae, etc
   best_ckpt_metrics_mode: ["max"] # max, or min
   checkpoint_filename: "best.pth" # option to load best or last
 
 data:
-  root_dir: "/network/projects/amlrt/nrcan_wildfires/full_data/yan_bp3/data_samples_approach_1_weather"
+  root_dir: "/network/projects/amlrt/nrcan_wildfires/full_data/yan_bp3/data_samples_approach_1_final"
   raw_data_dir: "/network/projects/amlrt/nrcan_wildfires/full_data/yan_bp3"
 
   train_split: "train_indices.csv"
@@ -68,11 +68,11 @@ data:
       params:
         csv_name: "weather_table_processed.csv"
         feature_names_list: ["temp", "rh", "prec", "ffmc", "dmc", "dc", "isi", "bui", "fwi", "ws"] # other options: "wd", "ws", "fwi"
-        fire_weather_zone_selection_approach: "wx_zone"
-        zone_selection_approach: "mode" # "mode" or "weighted"
+        fire_weather_zone_id_col: "wx_zone"
+        fire_weather_zone_selection_approach: "mode" # "mode" or "weighted"
         num_samples_per_patch: 256
-        sampling_bias: "high_values" # null, "high_values"
-        feature_to_bias: "NORM_LOG_SIZE_HA"
+        sampling_bias: null # null, "high_values"
+        feature_to_bias: null
         transforms_list: []
         augmentation_prob: 0.0
 
@@ -81,7 +81,7 @@ logger:
   project_name: "nrcan-wildfireriskmapping"
   workspace: "mila-amlrt"
   experiment_name: "unet_full_data_spatial_weather"
-  tags: ["baseline", "full_data", "modelling_approach=1", "fuel_one_hot_encoding", "KL-loss", "3inputfeatures", "weather-tabular"]
+  tags: ["full_data", "modelling_approach=1", "final_experiment", "ignition", "elevation", "fuel", "weather"]
   # log loss and metrics on comet every n steps
   log_every_n_step: 10
 

@@ -5,6 +5,7 @@ authors = [
     {name = "Hager Radi", email = "hager.radi@mila.quebec"},
     {name = "Chirag Goel", email = "chirag.goel@mila.quebec"},
     {name = "Aldo Zaimi", email = "aldo.zaimi@mila.quebec"},
+    {name = "Jana Osea", email = "jana.osea@mila.quebec"},
 ]
 readme = "README.md"
 requires-python = ">=3.12"
