@@ -1,24 +1,22 @@
 import numpy as np
 import pandas as pd
 
-# Renaming the columns of df
-column_full_form_abrevation_map = {
-    "WeatherZone": "wx_zone",
-    "Season": "season",
-    "Temperature": "temp",
-    "RelativeHumidity": "rh",
-    "WindSpeed": "ws",
-    "WindDirection": "wd",
-    "Precipitation": "prec",
-    "FineFuelMoistureCode": "ffmc",
-    "DuffMoistureCode": "dmc",
-    "DroughtCode": "dc",
-    "InitialSpreadIndex": "isi",
-    "BuildupIndex": "bui",
-    "FireWeatherIndex": "fwi",
-}
-
-WEATHER_FEATURE_NUMERIC_COLS = ["temp", "rh", "ws", "wd", "prec", "ffmc", "dmc", "dc", "isi", "bui", "fwi"]
+# features of fire weather list to include
+weather_column_names = [
+    "WeatherZone",
+    "Season",
+    "Temperature",
+    "RelativeHumidity",
+    "Precipitation",
+    "FineFuelMoistureCode",
+    "DuffMoistureCode",
+    "DroughtCode",
+    "InitialSpreadIndex",
+    "BuildupIndex",
+    "FireWeatherIndex",
+    "WindSpeed",
+    "WindDirection",
+]
 
 
 def check_column_format(df: pd.DataFrame, col_name: str) -> np.bool:
@@ -38,19 +36,18 @@ def check_column_format(df: pd.DataFrame, col_name: str) -> np.bool:
 
 def check_weather_list(weather_list: pd.DataFrame) -> pd.DataFrame:
     """
-    Check if the weather list is of the required format (columns) and the season and wx_zone column
+    Check if the weather list is of the required format (columns) and the season and WeatherZone column
     """
-    if set(list(column_full_form_abrevation_map.values())).issubset(weather_list.columns):
+    if set(list(weather_column_names)).issubset(weather_list.columns):
         return weather_list
-    if not set(list(column_full_form_abrevation_map.keys())).issubset(weather_list.columns):
+    if not set(list(weather_column_names)).issubset(weather_list.columns):
         raise ValueError("Missing columns/ weather df not in required format")
     print("==============hexel did not have the req columns===================")
-    weather_list = weather_list.rename(columns=column_full_form_abrevation_map)
-    if check_column_format(weather_list, "season"):
+    if check_column_format(weather_list, "Season"):
         print("=============Season check not passed==================")
-        weather_list["season"] = weather_list["season"].astype(str).str.extract(r"(\d+)").astype(int)
-    if check_column_format(weather_list, "wx_zone"):
-        print("=============wx_zone check not passed==================")
-        weather_list["wx_zone"] = weather_list["wx_zone"].astype(str).str.extract(r"(\d+)").astype(int)
+        weather_list["Season"] = weather_list["Season"].astype(str).str.extract(r"(\d+)").astype(int)
+    if check_column_format(weather_list, "WeatherZone"):
+        print("=============WeatherZone check not passed==================")
+        weather_list["WeatherZone"] = weather_list["WeatherZone"].astype(str).str.extract(r"(\d+)").astype(int)
 
     return weather_list

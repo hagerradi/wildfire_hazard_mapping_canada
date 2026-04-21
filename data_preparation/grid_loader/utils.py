@@ -1,89 +1,55 @@
-import math
 import os
 from pathlib import Path
+from typing import Any
 
-import matplotlib.pyplot as plt
+import geopandas as gpd
 import numpy as np
 import pandas as pd
 import rasterio
-from matplotlib import cm
-from matplotlib.colors import ListedColormap
-from matplotlib.patches import Patch
-from rasterio.plot import show
+from rasterio.enums import Resampling
+from rasterio.io import MemoryFile
+from rasterio.mask import mask
+from rasterio.transform import Affine
+from rasterio.warp import calculate_default_transform, reproject
 
-from data_preparation.paths import OUTPUT_BURN_PROB_PATH
-from data_preparation.utils import HEX_ID_NA, find_hex_ids
+from data_preparation.paths import Paths
+from data_preparation.utils import find_hex_ids
 
 # value for nodata in the rasters
 NODATA = np.nan
 
-# Max wind velocity (TODO: need to modify when we have the remaining dataset)
-MAX_WIND_VELOCITY = 16.170000076293945
-
-# Normalization values for Fire Intensity (TODO: need to rerun once we have the remaining dataset)
-FIRE_INTENSITY_MAX = 131456.0
-FIRE_INTENSITY_MIN = 0.0
-
-# Global Burn Count Min Max
-BURN_COUNT_MAX = 2329.0
-BURN_COUNT_MIN = 0.0
-
 # mapping cause to cause index
-fire_cause_mapping = {1: "h", 2: "l"}
+fire_cause_mapping = {1: "H", 2: "N"}
 
-# features of fire weather list to include
-selected_weather_features = ["temp", "rh", "prec", "ffmc", "dmc", "dc", "isi", "bui"]  #'ws','wd_sin', 'wd_cos'
-
-# grouping fuel classes
-fuel_grouping = {
-    "high": [1, 2, 3, 4, 5, 6, 7, 650, 665],
-    "medium": [635],
-    "low": [11, 12, 13, 425, 525, 625],
-    "grass": [31, 32],
-    "nonfuel": [101, 102, 106],
+# TODO: revisit fuel grouping
+FUEL_GROUP_MAP = {
+    # Non-fuel
+    **{k: 0 for k in [100, 101, 102, 105, 106, 110]},
+    # Conifer
+    1: 1,  # Spruce-Lichen Woodland
+    2: 2,  # Boreal Spruce
+    3: 3,  # Mature Jack or Lodgepole Pine
+    4: 4,  # Immature Jack or Lodgepole Pine
+    5: 5,  # Red and White Pine
+    6: 6,  # Conifer Plantation
+    7: 7,  # Ponderosa Pine - Douglas-Fir
+    # Aspen
+    **{k: 8 for k in [11, 12, 13]},
+    # Slash
+    **{k: 9 for k in [21, 22, 23]},
+    # Grass
+    **{k: 10 for k in [31, 32]},
+    # Boreal Mixedwood
+    **{k: 11 for k in [40, 50, 60]},
+    **{k: 12 for k in range(405, 500, 5)},
+    **{k: 13 for k in range(505, 600, 5)},
+    **{k: 14 for k in range(605, 700, 5)},
+    # Dead Balsam Fir Mixedwood
+    **{k: 15 for k in [70, 80, 90]},
+    **{k: 16 for k in range(705, 800, 5)},
+    **{k: 17 for k in range(805, 900, 5)},
+    **{k: 18 for k in range(905, 1000, 5)},
 }
-
-# ranking fuel classes
-fuel_ranking = {
-    # ----- Lowest spread / non-fuel -----
-    102: 0,  # Water
-    101: 0,  # Non-fuel
-    106: 0,  # Urban / Non-fuel
-    # ----- Aspen / hardwoods -----
-    12: 1,  # D-2 Green Aspen (with BUI thresholding)
-    13: 2,  # D-1/D-2 Aspen (intermediate)
-    # ----- Mixedwood 25% conifer -----
-    425: 3,  # M-1 Leafless (25% conifer)
-    525: 3,  # M-2 Green (25% conifer)
-    625: 3,  # M-1/M-2 (25% conifer)
-    # ----- Grass -----
-    31: 4,  # O-1a Matted Grass
-    32: 4,  # O-1b Standing Grass
-    # ----- Mixedwood 35–65% conifer -----
-    635: 5,  # M-1/M-2 (35% conifer)
-    650: 6,  # M-1/M-2 (50% conifer)
-    665: 7,  # M-1/M-2 (65% conifer)
-    # ----- Aspen (leafless, higher spread but < pure conifer) -----
-    11: 8,  # D-1 Leafless Aspen
-    # ----- Conifer stands (high → extreme spread) -----
-    1: 9,  # C-1 Spruce-Lichen Woodland
-    2: 10,  # C-2 Boreal Spruce
-    7: 11,  # C-7 Ponderosa Pine / Douglas-fir
-    5: 12,  # C-5 Red and White Pine
-    6: 12,  # C-6 Conifer Plantation  (≈ C-5)
-    3: 13,  # C-3 Mature Jack or Lodgepole Pine
-    4: 14,  # C-4 Immature Jack or Lodgepole Pine  # highest spread
-}
-
-
-def load_raster(path: str) -> np.ma.MaskedArray:
-    """Load raster from given path"""
-    if os.path.exists(path):  # noqa: F821
-        with rasterio.open(path) as src:
-            raster = src.read(1, masked=True)  # mask out the nodata
-            return raster
-    else:
-        raise FileNotFoundError(f"File not found: {path}")
 
 
 def load_csv(path: str) -> pd.DataFrame:
@@ -96,113 +62,272 @@ def load_csv(path: str) -> pd.DataFrame:
         raise FileNotFoundError(f"File not found: {path}")
 
 
-def load_fire_shapefiles(hex_dir: str) -> list[Path]:
-    """
-    Helper that loads all shp files from a given hexel.
+def load_raster(path: str) -> np.ma.MaskedArray:
+    """Load raster from given path"""
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"File not found: {path}")
 
-    Args:
-        hex_dir (str): The path to the hexel folder
-    Returns:
-        (list[Path]): the list of shapefiles for the hexel
-    """
-    output_dir = Path(hex_dir) / "outputs"
-    if not output_dir.exists():
-        raise FileNotFoundError(f"Output directory not found: {output_dir}")
-
-    shp_paths = sorted(list(output_dir.glob("*.shp")))
-    if not shp_paths:
-        raise FileNotFoundError(f"No .shp files found in {output_dir}")
-
-    return shp_paths
+    with rasterio.open(path) as src:
+        raster = src.read(1, masked=True)  # mask out the nodata
+        return raster
 
 
-def get_max_wind_velocity(data_path: str) -> float:
-    """Get the global maximum wind velocity for normalization"""
-    all_hex_ids = find_hex_ids(data_path)
-    global_max_wind_velocity = -np.inf
-    print(all_hex_ids)
-    for hex_id in all_hex_ids:
-        if hex_id in HEX_ID_NA:
-            print(f"======Skipping hex{hex_id} since NA =========")
-            continue
-        path_wind_grids = f"{data_path}/hex{hex_id}/burning_conditions_module/wind_grids"
-        all_wind_velocity_files = list(Path(path_wind_grids).glob("w???_vel.asc"))
-        for file_name in all_wind_velocity_files:
-            wind_velocity_grid = load_raster(str(file_name))
-            global_max_wind_velocity = max(global_max_wind_velocity, wind_velocity_grid.data.max())
-    return float(global_max_wind_velocity)
+def load_spatial_raster(
+    path: Path,
+    reproject_flag: bool = True,
+    actual_mask_path: Path | None = None,
+) -> tuple[np.ma.MaskedArray, dict[str, Any]]:
+    """Load one raster band, optionally reproject/clip/crop it, and return updated profile."""
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"File not found: {path}")
+
+    with rasterio.open(path) as src:
+        raster = src.read(1, masked=True)
+        transform = src.transform
+        crs = src.crs
+        nodata = src.nodata
+        profile = src.profile.copy()
+
+    if reproject_flag:
+        raster, transform, profile = reproject_raster(
+            raster=raster,
+            src_transform=transform,
+            src_crs=crs,
+            src_nodata=nodata,
+            profile=profile,
+            dst_crs="ESRI:102002",
+        )
+        crs = "ESRI:102002"
+
+    if actual_mask_path:
+        raster, transform, profile = clip_array_to_mask(
+            raster=raster,
+            transform=transform,
+            profile=profile,
+            mask_path=actual_mask_path,
+            crs=crs,
+            nodata=nodata,
+        )
+
+    raster, transform, profile = crop_masked_raster(
+        raster=raster,
+        transform=transform,
+        profile=profile,
+    )
+
+    return raster, profile
 
 
-def get_range_elevation(data_path: str) -> tuple[float, float]:
+def clip_array_to_mask(
+    raster: np.ma.MaskedArray,
+    transform: Affine,
+    profile: dict[str, Any],
+    crs: Any,
+    mask_path: Path,
+    crop: bool = True,
+    filled: bool = False,
+    nodata: float | int | None = None,
+) -> tuple[np.ma.MaskedArray, Affine, dict[str, Any]]:
+    """Clip a loaded 2D raster array to a polygon mask in the raster CRS."""
+    if raster.ndim != 2:
+        raise ValueError("Input raster must be 2D.")
+
+    mask_gdf = gpd.read_file(mask_path).to_crs(crs)
+
+    if nodata is None:
+        nodata = profile.get("nodata", None)
+
+    data_to_write = raster.filled(nodata) if np.ma.isMaskedArray(raster) and nodata is not None else np.asarray(raster)
+
+    meta = profile.copy()
+    meta.update(
+        {
+            "driver": meta.get("driver", "GTiff"),
+            "height": raster.shape[0],
+            "width": raster.shape[1],
+            "count": 1,
+            "dtype": data_to_write.dtype,
+            "crs": crs,
+            "transform": transform,
+            "nodata": nodata,
+        }
+    )
+
+    with MemoryFile() as memfile, memfile.open(**meta) as ds:
+        ds.write(data_to_write, 1)
+
+        out_image, out_transform = mask(
+            ds,
+            mask_gdf.geometry,
+            crop=crop,
+            filled=filled,
+        )
+
+        out_profile = ds.profile.copy()
+        out_profile.update(
+            {
+                "height": out_image.shape[1],
+                "width": out_image.shape[2],
+                "transform": out_transform,
+                "crs": crs,
+                "nodata": nodata,
+                "count": 1,
+            }
+        )
+
+    clipped = out_image[0]
+
+    if filled:
+        if nodata is not None:
+            clipped = np.ma.masked_equal(clipped, nodata)
+        else:
+            clipped = np.ma.masked_array(clipped)
+    else:
+        if not np.ma.isMaskedArray(clipped):
+            clipped = np.ma.masked_array(clipped)
+
+    return clipped, out_transform, out_profile
+
+
+def crop_masked_raster(
+    raster: np.ma.MaskedArray,
+    transform: Affine,
+    profile: dict[str, Any],
+) -> tuple[np.ma.MaskedArray, Affine, dict[str, Any]]:
+    """Crop fully masked borders and update transform and profile."""
+    if not np.ma.isMaskedArray(raster):
+        raise ValueError("Input raster must be a masked array.")
+
+    valid = ~np.ma.getmaskarray(raster)
+
+    if not np.any(valid):
+        raise ValueError("Raster contains no valid pixels.")
+
+    rows = np.where(valid.any(axis=1))[0]
+    cols = np.where(valid.any(axis=0))[0]
+
+    row_min, row_max = rows[0], rows[-1]
+    col_min, col_max = cols[0], cols[-1]
+
+    cropped = raster[row_min : row_max + 1, col_min : col_max + 1]
+    new_transform = transform * Affine.translation(col_min, row_min)
+
+    out_profile = profile.copy()
+    out_profile.update(
+        {
+            "height": cropped.shape[0],
+            "width": cropped.shape[1],
+            "transform": new_transform,
+            "count": 1,
+        }
+    )
+
+    return cropped, new_transform, out_profile
+
+
+def reproject_raster(
+    raster: np.ma.MaskedArray,
+    src_transform: Affine,
+    src_crs: Any,
+    src_nodata: float | int | None,
+    profile: dict[str, Any],
+    dst_crs: str = "ESRI:102002",
+    resampling: Resampling = Resampling.nearest,
+) -> tuple[np.ma.MaskedArray, Affine, dict[str, Any]]:
+    """Reproject an already loaded raster while preserving mask/nodata and updating profile."""
+    height, width = raster.shape
+
+    if src_nodata is not None:
+        src_filled = raster.filled(src_nodata)
+    else:
+        src_filled = raster.filled()
+
+    dst_transform, dst_width, dst_height = calculate_default_transform(
+        src_crs,
+        dst_crs,
+        width,
+        height,
+        *rasterio.transform.array_bounds(height, width, src_transform),
+    )
+
+    dst = np.empty((dst_height, dst_width), dtype=src_filled.dtype)
+
+    reproject(
+        source=src_filled,
+        destination=dst,
+        src_transform=src_transform,
+        src_crs=src_crs,
+        src_nodata=src_nodata,
+        dst_transform=dst_transform,
+        dst_crs=dst_crs,
+        dst_nodata=src_nodata,
+        resampling=resampling,
+    )
+
+    if src_nodata is not None:
+        dst_masked = np.ma.masked_equal(dst, src_nodata)
+    else:
+        dst_masked = np.ma.masked_array(dst)
+
+    out_profile = profile.copy()
+    out_profile.update(
+        {
+            "crs": dst_crs,
+            "transform": dst_transform,
+            "width": dst_width,
+            "height": dst_height,
+            "count": 1,
+            "nodata": src_nodata,
+            "dtype": dst.dtype,
+        }
+    )
+
+    return dst_masked, dst_transform, out_profile
+
+
+def get_range_elevation(root_dir: str) -> tuple[float, float]:
     """Get the global range of elevation for normalization"""
-    all_hex_ids = find_hex_ids(data_path)
-    min_elevation, max_elevation = np.inf, -np.inf
-    for hex_id in all_hex_ids:
-        if hex_id in HEX_ID_NA:
-            print(f"======Skipping hex{hex_id} since NA =========")
-            continue
-        path_elev_grids = f"{data_path}/hex{hex_id}/mapped_inputs"
-        all_elevation_files = list(Path(path_elev_grids).glob("elev.asc"))
-        for file_name in all_elevation_files:
-            elevation_grid = load_raster(str(file_name))
-            masked_data = np.ma.masked_equal(elevation_grid, -9999)
-            max_elevation = max(max_elevation, masked_data.max())
-            min_elevation = min(min_elevation, masked_data.min())
-    return float(max_elevation), float(min_elevation)
-
-
-def get_range_output_fire_intensity(data_path: str) -> tuple[float, float]:
-    """Get the maximum and minimum output fire intensity for normalization"""
-    all_hex_ids = find_hex_ids(data_path)
-    min_fire_intensity, max_fire_intensity = np.inf, -np.inf
-    for hex_id in all_hex_ids:
-        if hex_id in HEX_ID_NA:
-            print(f"======Skipping hex{hex_id} since NA =========")
-            continue
-        path_output_files = f"{data_path}/hex{hex_id}/outputs/hex_{hex_id}_fiRaw_mean.tif"
-        output_fire_intensity_grid = load_raster(path_output_files)
-        max_fire_intensity = max(max_fire_intensity, output_fire_intensity_grid.max())
-        min_fire_intensity = min(min_fire_intensity, output_fire_intensity_grid.min())
-    return float(max_fire_intensity), float(min_fire_intensity)
-
-
-def get_range_burn_count(root_dir: str) -> tuple[float, float]:
-    """Get the maximum and minimum burn counts for normalization"""
     all_hex_ids = find_hex_ids(root_dir)
-    BURN_COUNT_MAX, BURN_COUNT_MIN = -np.inf, np.inf
+    min_value, max_value = np.inf, -np.inf
     for hex_id in all_hex_ids:
-        if hex_id in HEX_ID_NA:
-            print(f"======Skipping hex{hex_id} since NA =========")
-            continue
-        print("In hex ID", hex_id)
-        hex_dir = os.path.join(root_dir, f"hex{hex_id}")
-        outputs_dir = os.path.join(hex_dir, OUTPUT_BURN_PROB_PATH)
-        pattern = f"hex_{hex_id}_season_*_cause_*_bc.tif"
-        list_burn_count_season_cause_map_paths = list(Path(outputs_dir).glob(pattern))
-        for burn_count_season_cause_map_path in list_burn_count_season_cause_map_paths:
-            out_grid = load_raster(str(burn_count_season_cause_map_path))
-            BURN_COUNT_MAX = max(BURN_COUNT_MAX, out_grid.max())
-            BURN_COUNT_MIN = min(BURN_COUNT_MIN, out_grid.min())
-    return (BURN_COUNT_MAX, BURN_COUNT_MIN)
+        paths = Paths(hex_id=hex_id, root_dir=root_dir)
+        path_elev_grid = paths.elevation_grid(hex_id=hex_id)
+        elevation_grid = load_raster(str(path_elev_grid))
+        masked_data = np.ma.masked_equal(elevation_grid, -9999)
+        max_value = max(max_value, masked_data.max())
+        min_value = min(min_value, masked_data.min())
+    return float(max_value), float(min_value)
 
 
-def get_range_burn_prob(root_dir: str) -> tuple[float, float]:
-    """Get the maximum and minimum burn probability for standardization - approach 1"""
+def get_range_output(root_dir: str, output_type: str) -> tuple[float, float]:
+    """
+    Get global max and min for one output type across all valid hexelss.
+    Usage:
+    get_output_range(root_dir, "fire_intensity")
+    get_output_range(root_dir, "fire_ros")
+    get_output_range(root_dir, "fire_burn_probability")
+    """
+    path_methods = {
+        "fire_intensity": "output_fire_intensity",
+        "fire_ros": "output_ros",
+        "fire_burn_probability": "output_burn_prob",
+    }
+
+    if output_type not in path_methods:
+        raise ValueError(f"Unsupported output_type: {output_type}")
+
     all_hex_ids = find_hex_ids(root_dir)
-    burn_prob_max_value, burn_prob_min_value = -np.inf, np.inf
+    min_value, max_value = np.inf, -np.inf
+
     for hex_id in all_hex_ids:
-        if hex_id in HEX_ID_NA:
-            print(f"======Skipping hex{hex_id} since NA =========")
-            continue
-        hex_dir = os.path.join(root_dir, f"hex{hex_id}")
-        outputs_dir = os.path.join(hex_dir, OUTPUT_BURN_PROB_PATH)
-        pattern = f"hex_{hex_id}_*iter_bp.tif"
-        list_burn_count_season_cause_map_paths = list(Path(outputs_dir).glob(pattern))
-        for burn_count_season_cause_map_path in list_burn_count_season_cause_map_paths:
-            out_grid = load_raster(str(burn_count_season_cause_map_path))
-            burn_prob_max_value = max(burn_prob_max_value, out_grid.max())
-            burn_prob_min_value = min(burn_prob_min_value, out_grid.min())
-    return (burn_prob_max_value, burn_prob_min_value)
+        paths = Paths(hex_id=hex_id, root_dir=root_dir)
+        output_path = getattr(paths, path_methods[output_type])()
+        output_grid = load_raster(str(output_path))
+
+        max_value = max(max_value, float(output_grid.max()))
+        min_value = min(min_value, float(output_grid.min()))
+
+    return max_value, min_value
 
 
 def denormalize_burn_count(data: np.ndarray, min_val: float, max_val: float) -> np.ndarray:
@@ -221,191 +346,3 @@ def denormalize_burn_prob(
     elif out_norm == "log":
         data = np.expm1(data * np.log1p(multiplier)) / multiplier
     return data.astype("float32")
-
-
-def visualize_ignition_grid(grid: np.ndarray, cause: int, season: int):
-    """
-    Visualizes an ignition raster using matplotlib.
-    """
-    masked_grid = np.ma.masked_invalid(grid)
-
-    plt.figure(figsize=(8, 6))
-    img = plt.imshow(masked_grid, cmap="gray", origin="upper")
-    plt.colorbar(img, label="Ignition probability")
-    plt.title(f"Ignition Grid for season {season} : Cause: {cause}")
-    plt.xlabel("Easting (m)")
-    plt.ylabel("Northing (m)")
-    plt.show()
-
-
-def visualize_weather_params(weather_cube: np.ndarray, sampling: str = "dist", cols: int = 3):
-    """
-    Visualizes multiple weather parameters in a subplot grid.
-
-    Args:
-        weather_cube: 3D numpy array (Height, Width, Num_Params)
-        param_names: List of strings matching the 3rd dimension of weather_cube
-        cols: Number of columns desired in the grid
-    """
-    if sampling == "dist":
-        param_names = [
-            "temp_mean",
-            "temp_std",
-            "rh_mean",
-            "rh_std",
-            "prec_mean",
-            "prec_std",
-            "ffmc_mean",
-            "ffmc_std",
-            "dmc_mean",
-            "dmc_std",
-            "dc_mean",
-            "dc_std",
-            "isi_mean",
-            "isi_std",
-            "bui_mean",
-            "bui_std",
-        ]
-    else:
-        param_names = ["temp", "rh", "ws", "wd_sin", "wd_cos", "prec", "ffmc", "dmc", "dc", "isi", "bui"]
-    num_params = len(param_names)
-
-    # 1. Calculate Grid Size
-    rows = math.ceil(num_params / cols)
-
-    # 2. Create Subplots
-    # Increase figsize to accommodate multiple plots (width, height)
-    fig, axes = plt.subplots(rows, cols, figsize=(cols * 5, rows * 4))
-
-    # Flatten axes array for easy iteration (handles 1D or 2D arrays of axes)
-    axes = axes.flatten()
-
-    # 3. Define Colormap (Doing this once usually suffices)
-    # Note: cm.get_cmap is deprecated in recent versions; using recommended approach fallback
-    try:
-        base_cmap = plt.get_cmap("viridis").copy()
-    except:  # noqa: E722
-        base_cmap = cm.get_cmap("viridis", 256).copy()
-
-    base_cmap.set_bad(color=(0, 0, 0, 0))  # Transparent for masked values
-
-    # 4. Loop through parameters
-    for i, param in enumerate(param_names):
-        ax = axes[i]
-
-        # Extract single slice: (Height, Width)
-        raster_slice = weather_cube[:, :, i]
-
-        # Mask the data
-        masked = np.ma.masked_equal(raster_slice, -9999)
-
-        # Plot using rasterio.plot.show
-        # We pass the ax object so it draws on the specific subplot
-        show(masked, ax=ax, cmap=base_cmap, interpolation="nearest")
-
-        # Add Colorbar specifically to this axis
-        img = ax.get_images()[0]
-        cbar = fig.colorbar(img, ax=ax, fraction=0.046, pad=0.04)
-        cbar.set_label(param)
-
-        # Set Title
-        ax.set_title(f"{param}")
-
-    # 5. Hide empty subplots (if you have 7 params in a 3x3 grid, hide last 2)
-    for j in range(i + 1, len(axes)):
-        axes[j].axis("off")
-
-    plt.tight_layout()
-    plt.show()
-
-
-def visualize_fuel_grid(fuel_grid: np.ndarray, nodata_value: int = -1) -> None:
-    """Visualize fuel grid with a discrete color per fuel class."""
-
-    # Mask out nodata
-    masked_grid = np.ma.masked_where(fuel_grid == nodata_value, fuel_grid)
-
-    # Unique valid fuel classes (exclude nodata)
-    classes = np.unique(masked_grid.compressed())  # ignores masked values
-
-    # Map fuel codes -> 0..N-1 indices for stable coloring
-    class_to_idx = {cls: i for i, cls in enumerate(classes)}
-    idx_grid = np.full(fuel_grid.shape, fill_value=-1, dtype=int)
-
-    for cls, i in class_to_idx.items():
-        idx_grid[fuel_grid == cls] = i
-
-    idx_grid = np.ma.masked_where(fuel_grid == nodata_value, idx_grid)
-
-    # Build discrete colormap
-    colors = plt.get_cmap("tab20")(np.linspace(0, 1, len(classes)))
-    cmap = ListedColormap(colors)
-
-    plt.figure(figsize=(8, 6))
-    # Now values are 0..len(classes)-1, so vmin/vmax make sense
-    plt.imshow(
-        idx_grid,
-        cmap=cmap,
-        origin="upper",
-        vmin=0,
-        vmax=len(classes) - 1,
-    )
-
-    plt.title("FBP fuel map")
-    plt.xlabel("Easting (m)")
-    plt.ylabel("Northing (m)")
-
-    # Legend with fuel codes
-    legend_patches = [Patch(facecolor=colors[i], edgecolor="black", label=str(cls)) for i, cls in enumerate(classes)]
-    plt.legend(
-        handles=legend_patches,
-        title="Fuel Classes",
-        loc="upper right",
-        bbox_to_anchor=(1.32, 1.0),
-        frameon=True,
-    )
-
-    plt.tight_layout()
-    plt.show()
-
-
-def visualize_elevation_grid(grid: np.ndarray):
-    """
-    Visualizes an elevation grid using matplotlib.
-    """
-    masked_grid = np.ma.masked_invalid(grid)
-
-    plt.figure(figsize=(8, 6))
-    img = plt.imshow(masked_grid, cmap="terrain", origin="upper")
-    plt.colorbar(img, label="Elevation")
-    plt.title("Elevation Grid (m)")
-    plt.show()
-
-
-def visualize_fire_intensity_grid(grid: np.ndarray):
-    """
-    Visualizes a fire intensity grid using matplotlib.
-    """
-    masked_grid = np.ma.masked_invalid(grid)
-
-    plt.figure(figsize=(8, 6))
-    img = plt.imshow(masked_grid, cmap="viridis", origin="upper")
-    plt.colorbar(img, label="Fire Intensity")
-    plt.title("Fire Intensity Grid (m)")
-    plt.xlabel("Easting (m)")
-    plt.ylabel("Northing (m)")
-    plt.show()
-
-
-def visualize_burn_prob_grid(grid: np.ndarray):
-    """
-    Visualizes a burn prob grid using matplotlib.
-    """
-
-    plt.figure(figsize=(8, 6))
-    img = plt.imshow(grid, cmap="viridis", origin="upper")
-    plt.colorbar(img, label="Burn Probability")
-    plt.title("Burn Probability Grid (m)")
-    plt.xlabel("Easting (m)")
-    plt.ylabel("Northing (m)")
-    plt.show()

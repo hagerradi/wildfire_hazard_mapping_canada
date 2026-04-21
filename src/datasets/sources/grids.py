@@ -5,7 +5,7 @@ from collections.abc import Callable
 import numpy as np
 import torch
 
-from data_preparation.grid_loader.utils import BURN_COUNT_MAX, BURN_COUNT_MIN, fuel_ranking, get_range_burn_prob, get_range_elevation
+from data_preparation.grid_loader.utils import FUEL_GROUP_MAP, get_range_elevation, get_range_output
 from src.config import GridParams
 from src.datasets.sources.base import DataSource
 from src.datasets.utils import fill_nan_channel_mean_numpy, one_hot_encode, output_burn_prob_norm
@@ -44,15 +44,14 @@ class GridSource(DataSource):
         self.out_norm = params.out_norm
         self.fuel_feats_encoding = params.fuel_feats_encoding
         self.normalize_fuel_feats_ordinal = params.normalize_fuel_feats_ordinal
+        self.num_fuel_classes = int(max(FUEL_GROUP_MAP.values()) + 1)
 
         self.norm_col_map = {"total_iters": "total_unique_iters", "season_cause_iters": "season_cause_unique_iters"}
-        self.max_fuel_grid = float(max(fuel_ranking.values()))
-        self.min_fuel_grid = float(min(fuel_ranking.values()))
 
         # 1. Normalizations (for modelling approach 1)
         self.BURN_PROB_MAX, self.BURN_PROB_MIN = 1.0, 0.0
         if self.modelling_approach == "1" and self.out_norm == "min_max":
-            self.BURN_PROB_MAX, self.BURN_PROB_MIN = get_range_burn_prob(os.path.dirname(self.root_dir))
+            self.BURN_PROB_MAX, self.BURN_PROB_MIN = get_range_output(os.path.dirname(self.root_dir), "fire_burn_probability")
 
         # 2. Update indices
         with open(os.path.join(self.root_dir, f"feature_channel_map_{self.modelling_approach}.json")) as f:
@@ -61,7 +60,6 @@ class GridSource(DataSource):
             if "fuel_grid" in self.feature_names_list:
                 self.fuel_feat_index = self.channel_feature_map["fuel_grid"][0]
                 if self.fuel_feats_encoding == "one_hot":
-                    num_classes = int(self.max_fuel_grid + 1)
                     # Update input_channel_indices to account for new one-hot channels
                     idx_fuel_feats = self.input_channel_indices.index(self.fuel_feat_index)
                     self.input_channel_indices = (
@@ -70,8 +68,8 @@ class GridSource(DataSource):
                     # Insert new indices for the one-hot channels at the position of the old fuel index
                     self.input_channel_indices = (
                         self.input_channel_indices[:idx_fuel_feats]
-                        + list(range(self.fuel_feat_index, self.fuel_feat_index + num_classes))
-                        + [i + num_classes - 1 for i in self.input_channel_indices[idx_fuel_feats:]]
+                        + list(range(self.fuel_feat_index, self.fuel_feat_index + self.num_fuel_classes))
+                        + [i + self.num_fuel_classes - 1 for i in self.input_channel_indices[idx_fuel_feats:]]
                     )
         # 3. normalization for elevation grid
         self.ELEVATION_MAX, self.ELEVATION_MIN = get_range_elevation(os.path.dirname(self.root_dir))
@@ -98,32 +96,17 @@ class GridSource(DataSource):
 
         # 3. Processing one hot encoding
         if "fuel_grid" in self.feature_names_list and self.fuel_feats_encoding == "one_hot":  # (H,W,C+20)
-            num_classes = int(self.max_fuel_grid + 1)
-            input_arr = one_hot_encode(arr=input_arr, channel_idx=self.fuel_feat_index, num_classes=num_classes)
+            input_arr = one_hot_encode(arr=input_arr, channel_idx=self.fuel_feat_index, num_classes=self.num_fuel_classes)
 
         # 4. Mean Imputation
         input_arr = fill_nan_channel_mean_numpy(input_arr)
-
-        # 5. Process ordinal encoding norm (if not norm do nothing)
-        if "fuel_grid" in self.feature_names_list and self.fuel_feats_encoding == "ordinal":
-            input_arr[:, :, self.fuel_feat_index][~mask] = 0.0  # Nan is no fuel
-            if self.normalize_fuel_feats_ordinal:
-                input_arr[:, :, self.fuel_feat_index] = (input_arr[:, :, self.fuel_feat_index] - self.min_fuel_grid) / (
-                    self.max_fuel_grid - self.min_fuel_grid
-                )
 
         # 6. Filter to just chosen input channel indices or if no features selected just return None
         if self.input_channel_indices is not None:
             input_arr = input_arr[:, :, self.input_channel_indices]
 
         # 7. Perform output normalizations
-        if self.modelling_approach == "2":
-            if self.out_norm == "min_max":
-                output_arr = (output_arr - BURN_COUNT_MIN) / (BURN_COUNT_MAX - BURN_COUNT_MIN)
-            elif self.out_norm in ["total_iters", "season_cause_iters"]:
-                col_name = self.norm_col_map[self.out_norm]
-                output_arr /= float(patch_info[col_name])
-        elif self.modelling_approach == "1":
+        if self.modelling_approach == "1":
             output_arr = output_burn_prob_norm(
                 output_arr=output_arr, burn_prob_max=self.BURN_PROB_MAX, burn_prob_min=self.BURN_PROB_MIN, out_norm=self.out_norm
             )

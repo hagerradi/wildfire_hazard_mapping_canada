@@ -5,10 +5,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from data_preparation.generate_season_cause_output import FireCountRasterizer
-from data_preparation.grid_loader.utils import NODATA, load_fire_shapefiles
-from data_preparation.hexel_loader import load_features_per_hexel
-from data_preparation.utils import HEX_ID_NA, find_hex_ids, get_processed_hex_ids
+from data_preparation.grid_loader import NODATA
+from data_preparation.hexel_loader import load_spatial_features_per_hexel
+from data_preparation.utils import find_hex_ids, get_processed_hex_ids
 
 
 def save_split_hexel_windows(
@@ -40,9 +39,6 @@ def get_split_hexel_window(
         season_cause_mask(np.ndarray): A bool array where True means to ignore the pixel (num_season_cause, H,W)
     """
     print("============Splitting the hexel==================")
-    shp_paths = load_fire_shapefiles(os.path.join(root_dir, "hex" + str(hex_id)))
-    rasterizer = FireCountRasterizer(shp_paths, None)
-    total_unique_iters = rasterizer.get_num_unique_iters(season=None, cause=None)
     num_season_cause, H, W, _ = season_cause_stacked_feats.shape
     stride_h = max(1, int(win_h * (1 - overlap_ratio)))  # n_rows = (H-win_h)//stride_h + 1
     stride_w = max(1, int(win_w * (1 - overlap_ratio)))
@@ -67,10 +63,8 @@ def get_split_hexel_window(
         mask = season_cause_mask_padded[i]
         if season_cause_mapping is None:
             season, cause = "all", "all"
-            season_cause_unique_iters = None
         else:
             season, cause = season_cause_mapping[i]
-            season_cause_unique_iters = rasterizer.get_num_unique_iters(season=season, cause=cause)
         for row in range(0, H_pad - win_h + 1, stride_h):
             for col in range(0, W_pad - win_w + 1, stride_w):
                 num_total_windows += 1
@@ -93,8 +87,6 @@ def get_split_hexel_window(
                         row,
                         col,
                         valid_ratio,
-                        total_unique_iters,
-                        season_cause_unique_iters,
                     ]
                 )
     df_coords = pd.DataFrame(valid_coords)
@@ -107,8 +99,6 @@ def get_split_hexel_window(
         "row",
         "col",
         "valid_ratio",
-        "total_unique_iters",
-        "season_cause_unique_iters",
     ]
     df_coords.to_csv(os.path.join(out_dir, f"meta_hex_{hex_id}.csv"), index=False)
     print(f"=====Hexel data Saved at {out_dir} ========")
@@ -118,11 +108,9 @@ def generate_data_samples(
     root_dir: str,
     modelling_approach: int,
     save_dir: str | None,
-    output_type: str = "count",
     win_h: int = 128,
     win_w: int = 128,
     overlap_ratio: float = 0.2,
-    weather_sampling: str = "dist",
     is_array_job: bool = False,
     task_id: int = 0,
     num_tasks: int = 1,
@@ -154,17 +142,12 @@ def generate_data_samples(
         if hex_id in completed_hex_ids:
             print(f"==========Skipping because completed hex{hex_id}=============")
             continue
-        if hex_id in HEX_ID_NA:
-            print("======Skipping hex=======", hex_id)
-            continue
         print(f"======Working on Hex ID: {hex_id}==========")
-        stacked_feats, mask, season_cause_mapping = load_features_per_hexel(
+        stacked_feats, mask, season_cause_mapping = load_spatial_features_per_hexel(
             root_dir=root_dir,
             hex_id=hex_id,
             feature_channel_map_path=os.path.join(out_dir, f"feature_channel_map_{modelling_approach}.json"),
             modelling_approach=modelling_approach,
-            output_type=output_type,
-            weather_sampling=weather_sampling,
         )
         if (stacked_feats is None) or (mask is None):
             print(f"================Failed for hex {hex_id}===================")
@@ -189,17 +172,9 @@ def main():
     parser.add_argument("--root_dir", type=str, help="data root directory", required=True)
     parser.add_argument("--save_dir", type=str, help="save data directory", default=None)
     parser.add_argument("--modelling_approach", type=int, help="Either 1 or 2", default=2)
-    parser.add_argument("--output_type", type=str, help="output type as prob or count", default="count")
     parser.add_argument("--win_h", type=int, help="Height of the window", default=128)
     parser.add_argument("--win_w", type=int, help="Height of the window", default=128)
     parser.add_argument("--overlap_ratio", type=float, help="Overlap ratio between windows", default=0.2)
-    parser.add_argument(
-        "--weather_sampling",
-        type=str,
-        help="Sampling method for weather data, options 'dist', 'random', or 'weather_zone_id'",
-        default="dist",
-        choices=["dist", "random", "weather_zone_id"],
-    )
     parser.add_argument("--is_array_job", action="store_true", help="Boolean to indicate if using SLURM job array")
     parser.add_argument("--task_id", type=int, default=0, help="SLURM array ID")
     parser.add_argument("--num_tasks", type=int, default=1, help="Total number of array tasks")
@@ -212,8 +187,6 @@ def main():
         win_h=args.win_h,
         win_w=args.win_w,
         overlap_ratio=args.overlap_ratio,
-        output_type=args.output_type,
-        weather_sampling=args.weather_sampling,
         is_array_job=args.is_array_job,
         task_id=args.task_id,
         num_tasks=args.num_tasks,

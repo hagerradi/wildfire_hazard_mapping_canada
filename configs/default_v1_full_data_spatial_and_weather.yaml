@@ -67,8 +67,9 @@ data:
     - name: "weather"
       params:
         csv_name: "weather_table_processed.csv"
-        feature_names_list: ["temp", "rh", "prec", "ffmc", "dmc", "dc", "isi", "bui", "fwi", "ws"] # other options: "wd", "ws", "fwi"
-        fire_weather_zone_id_col: "wx_zone"
+        feature_names_list: ["Temperature", "RelativeHumidity", "Precipitation", "FineFuelMoistureCode", "DuffMoistureCode", "DroughtCode",
+                              "InitialSpreadIndex", "BuildupIndex", FireWeatherIndex", "WindSpeed", "wd_sin", "wd_cos"]
+        fire_weather_zone_id_col: "WeatherZone"
         fire_weather_zone_selection_approach: "mode" # "mode" or "weighted"
         num_samples_per_patch: 256
         sampling_bias: null # null, "high_values"
@@ -78,7 +79,7 @@ data:
 
 logger:
   enabled: True
-  project_name: "nrcan-wildfireriskmapping"
+  project_name: "nrcan05-wildfireriskmapping"
   workspace: "mila-amlrt"
   experiment_name: "unet_full_data_spatial_weather"
   tags: ["full_data", "modelling_approach=1", "final_experiment", "ignition", "elevation", "fuel", "weather"]

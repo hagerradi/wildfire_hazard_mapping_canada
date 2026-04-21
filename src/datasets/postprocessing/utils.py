@@ -8,10 +8,13 @@ import rasterio
 import torch
 from rasterio.profiles import Profile
 
-from data_preparation.grid_loader.output import load_output_burn_grid
-from data_preparation.grid_loader.utils import denormalize_burn_count, denormalize_burn_prob, get_range_burn_count, get_range_burn_prob
-from data_preparation.paths import ELEVATION_GRID_PATH
-from data_preparation.utils import find_simulation_output_file
+from data_preparation.grid_loader.utils import (
+    denormalize_burn_count,
+    denormalize_burn_prob,
+    get_range_output,
+    load_spatial_raster,
+)
+from data_preparation.paths import Paths
 from src.config import Config
 from src.datasets.postprocessing.stitch_hexel import stitch_windows
 from src.datasets.postprocessing.visualize_predictions import (
@@ -82,10 +85,12 @@ def get_predicted_hexel(
     Returns the reconstructed hexel
     """
     start_idx = 0
-    if os.path.exists(os.path.join(os.path.join(raw_data_dir, "hex" + str(hex_id)), ELEVATION_GRID_PATH)):
-        with rasterio.open(os.path.join(os.path.join(raw_data_dir, "hex" + str(hex_id)), ELEVATION_GRID_PATH)) as src:
-            gt_elevation_grid = src.read(1, masked=True)
-            gt_elevation_grid_profile = src.profile.copy()
+
+    all_paths = Paths(hex_id=hex_id, root_dir=raw_data_dir)
+
+    gt_elevation_grid, gt_elevation_grid_profile = load_spatial_raster(
+        path=all_paths.elevation_grid(hex_id=hex_id), actual_mask_path=all_paths.mask_grid_actual(hex_id=hex_id)
+    )
 
     # clip predictions between 0 and 1 in case of outliers
     predictions = np.clip(predictions, 0, 1)
@@ -96,7 +101,7 @@ def get_predicted_hexel(
             df=test_df,
             predictions=predictions,
             start_idx=start_idx,
-            gt_shape=tuple(gt_elevation_grid.data.shape),
+            gt_shape=tuple(gt_elevation_grid.shape),
             stitch_mode=stitch_mode,
             win_h=win_h,
             win_w=win_w,
@@ -211,12 +216,9 @@ def evaluate_and_visualize_hexels(
     raw_data_dir = config.data.raw_data_dir
     modelling_approach = config.modelling_approach
     valid_mask_threshold = config.data.valid_mask_threshold
-    output_type, season, cause = "prob", None, None
 
     if modelling_approach == "1":
-        max_target_val, min_target_val = get_range_burn_prob(root_dir=raw_data_dir)
-    else:
-        max_target_val, min_target_val = get_range_burn_count(root_dir=raw_data_dir)
+        max_target_val, min_target_val = get_range_output(root_dir=raw_data_dir, output_type="fire_burn_probability")
 
     if isinstance(test_predictions, str):
         raise TypeError(f"Expected ndarray, but got string: {test_predictions}")
@@ -258,9 +260,8 @@ def evaluate_and_visualize_hexels(
         )
         save_predicted_hexels(reconstructed_hexel_denorm, gt_elevation_grid_profile, hex_id, config.save_dir)
         # Save the hex as plt plot
-        hex_dir = os.path.join(raw_data_dir, f"hex{hex_id}")
-        fpath = find_simulation_output_file(hex_dir, hex_id, output_type, season=season, cause=cause)
-        grid_gt = load_output_burn_grid(fpath)
+        all_paths = Paths(hex_id=hex_id, root_dir=raw_data_dir)
+        grid_gt, _ = load_spatial_raster(path=all_paths.output_burn_prob(), actual_mask_path=all_paths.mask_grid_actual(hex_id=hex_id))
 
         visualize_burn_prob_grids(
             gt_grid=grid_gt,

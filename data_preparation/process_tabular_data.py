@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 
-def build_weather_table(root_dir: Path, save_path: Path, pattern: str = "hex*/burning_conditions_module/hex_*_weather*.csv"):
+def build_weather_table(root_dir: Path, save_path: Path, pattern: str = "hex*/tabular/hex*_DailyWeather.csv"):
     """
     Aggregates weather CSVs into a single table and applies global preprocessing.
     Args:
