@@ -56,7 +56,7 @@ def temp_data_dir():
         for fname in filenames:
             arr = np.random.rand(32, 32, 36).astype(np.float32)
             # Add some NaNs to input channels
-            arr[:, :, 4] = 100.0  # Force this channel to be '100.0' so it matches weather CSV below.
+            arr[:, :, 3] = 100.0  # Force fire zone channel to be '100.0' so it matches weather CSV below.
             arr[1, 1, :] = np.nan
             arr[10, 20, :] = np.nan
             np.save(os.path.join(tmpdir, fname), arr)
@@ -291,7 +291,7 @@ def test_tabular_weighted_sampling(temp_data_dir):
 
     # Build a small patch where the zone channel has 4 occurrences of 100 and 1 of 200
     data = np.full((32, 32, 36), np.nan, dtype=np.float32)
-    zone_channel = 4  # matches the fixture's feature_channel_map
+    zone_channel = 3  # matches the fixture's feature_channel_map
     coords = [(0, 0), (0, 1), (0, 2), (0, 3), (0, 4)]
     for i, (r, c) in enumerate(coords):
         data[r, c, zone_channel] = 100.0 if i < 4 else 200.0
