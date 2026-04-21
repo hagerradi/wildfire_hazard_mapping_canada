@@ -15,11 +15,11 @@ import yaml
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from data_preparation.grid_loader.utils import load_spatial_raster
 from data_preparation.hexel_loader import load_spatial_features_per_hexel
 from data_preparation.paths import Paths
 from data_preparation.process_hexels_into_grids import get_split_hexel_window
 from data_preparation.process_tabular_data import build_weather_table, process_fire_size_distribution_table
+from data_preparation.spatial.utils import load_spatial_raster
 from data_preparation.utils import find_hex_ids
 from inference.predictor import BurnRiskPredictor
 from src.datasets.dataset import MultiSourceDataset

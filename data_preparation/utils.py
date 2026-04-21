@@ -10,7 +10,7 @@ from sklearn.model_selection import train_test_split
 
 from data_preparation.paths import Paths
 
-feature_names = ["fuel_grid", "elevation_grid", "ignition_grid", "bp_out_grid", "fi_out_grid", "ros_out_grid"]
+feature_names = ["fuel_grid", "elevation_grid", "ignition_grid", "firezones_grid", "bp_out_grid", "fi_out_grid", "ros_out_grid"]
 FIRE_SIZE_FEATURE_COLS = ["GRIDCODE", "SIZE_HA"]
 
 
@@ -92,7 +92,7 @@ def find_hex_ids(root_dir: str) -> list:
 
 def get_min_max_hex_prob_df(root_dir: str) -> list:
     """create a list of burn prob dist for stratified sampling"""
-    from data_preparation.grid_loader import load_spatial_raster
+    from data_preparation.spatial import load_spatial_raster
 
     all_hex_ids = find_hex_ids(root_dir)
     hex_min_max_bp = []

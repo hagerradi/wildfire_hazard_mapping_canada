@@ -2,8 +2,8 @@ import os
 
 import numpy as np
 
-from data_preparation.grid_loader.utils import fire_cause_mapping, load_spatial_raster
 from data_preparation.paths import Paths
+from data_preparation.spatial.utils import fire_cause_mapping, load_spatial_raster
 
 
 def load_ignition_grid(root_dir: str, hex_id: str, cause: int = None, season: int = None) -> np.ma.MaskedArray:

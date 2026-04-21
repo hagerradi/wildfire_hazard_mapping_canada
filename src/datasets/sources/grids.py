@@ -83,7 +83,7 @@ class GridSource(DataSource):
             data = np.load(patch_info["file_path"]).astype(np.float32)
 
         # 1. Separate inputs, output, and mask
-        input_arr, output_arr = data[:, :, :-1], data[:, :, -1]
+        input_arr, output_arr = data[:, :, 0:3], data[:, :, -3]
         output_arr[np.isnan(output_arr)] = 0.0
         assert np.all(np.isnan(input_arr) == np.isnan(input_arr[..., :1])), "NaN mask differs across channels!"
         mask = ~np.isnan(input_arr[:, :, 0])  # mask is True where not NaN, False where NaN

@@ -21,33 +21,28 @@ def temp_data_dir():
     try:
         # Create dummy feature_channel_map
         feature_channel_map = {
-            "ignition_grid": [0],
-            "esc_fires_grid": [1],
-            "fuel_grid": [2],
-            "elevation_grid": [3],
-            "weather_grid": [4],
-            "wind_grid": [5],
+            "fuel_grid": [0],
+            "elevation_grid": [1],
+            "ignition_grid": [2],
+            "firezones_grid": [3],
+            "bp_out_grid": [4],
+            "fi_out_grid": [5],
+            "ros_out_grid": [6],
         }
-        with open(os.path.join(tmpdir, "feature_channel_map_2.json"), "w") as f:
+        with open(os.path.join(tmpdir, "feature_channel_map_1.json"), "w") as f:
             json.dump(feature_channel_map, f)
 
         # Create dummy metadata CSV
         filenames = []
         valid_ratios = []
-        total_unique_iters = []
-        season_cause_unique_iters = []
         for i in range(3):
             fname = f"sample_{i}.npy"
             filenames.append(fname)
             valid_ratios.append(1.0)
-            total_unique_iters.append(10)
-            season_cause_unique_iters.append(5)
         df = pd.DataFrame(
             {
                 "filename": filenames,
                 "valid_ratio": valid_ratios,
-                "total_unique_iters": total_unique_iters,
-                "season_cause_unique_iters": season_cause_unique_iters,
             }
         )
         train_csv = "train.csv"
@@ -67,9 +62,18 @@ def temp_data_dir():
             np.save(os.path.join(tmpdir, fname), arr)
 
         # Create dummy weather table csv
-        weather_feats = ["temp", "rh", "prec", "ffmc", "dmc", "dc", "isi", "bui"]
+        weather_feats = [
+            "Temperature",
+            "RelativeHumidity",
+            "Precipitation",
+            "FineFuelMoistureCode",
+            "DuffMoistureCode",
+            "DroughtCode",
+            "InitialSpreadIndex",
+            "BuildupIndex",
+        ]
         data = {feat: np.random.rand(5) for feat in weather_feats}
-        data["wx_zone"] = [100, 100, 100, 200, 200]  # 3 samples for zone 100
+        data["WeatherZone"] = [100, 100, 100, 200, 200]  # 3 samples for zone 100
         weather_df = pd.DataFrame(data)
         weather_csv = "weather_table.csv"
         weather_df.to_csv(os.path.join(tmpdir, weather_csv), index=False)
@@ -101,13 +105,13 @@ def test_multi_source_integration(temp_data_dir):
     grid_source = GridSource(
         root_dir=tmpdir,
         params=grid_params,
-        modelling_approach="2",
+        modelling_approach="1",
     )
 
     weather_params = TabularParams(
         csv_name=weather_csv,
         feature_names_list=weather_feats,
-        fire_weather_zone_id_col="wx_zone",
+        fire_weather_zone_id_col="WeatherZone",
         fire_weather_zone_selection_approach="mode",
         num_samples_per_patch=2,
     )
@@ -123,10 +127,10 @@ def test_multi_source_integration(temp_data_dir):
     weather_source = TabularSource(
         root_dir=tmpdir,
         params=weather_params,
-        modelling_approach="2",
+        modelling_approach="1",
     )
 
-    fire_size_source = TabularSource(root_dir=tmpdir, params=fire_size_params, modelling_approach="2")
+    fire_size_source = TabularSource(root_dir=tmpdir, params=fire_size_params, modelling_approach="1")
 
     ds = MultiSourceDataset(
         csv_name="train.csv", root_dir=tmpdir, sources={"grid": grid_source, "weather": weather_source, "fire_size": fire_size_source}
@@ -153,7 +157,7 @@ def test_grid_one_hot_encoding(temp_data_dir):
     grid_source = GridSource(
         root_dir=tmpdir,
         params=grid_params,
-        modelling_approach="2",
+        modelling_approach="1",
     )
 
     ds = MultiSourceDataset(csv_name="train.csv", root_dir=tmpdir, sources={"grid": grid_source})
@@ -171,7 +175,7 @@ def test_grid_feature_names_list(temp_data_dir):
         fuel_feats_encoding="ordinal",
     )
 
-    grid_source = GridSource(root_dir=tmpdir, params=grid_params, modelling_approach="2")
+    grid_source = GridSource(root_dir=tmpdir, params=grid_params, modelling_approach="1")
     ds = MultiSourceDataset(csv_name="train.csv", root_dir=tmpdir, sources={"grid": grid_source})
 
     sample = ds[0]
@@ -187,32 +191,6 @@ def test_mask_threshold(temp_data_dir):
     ds = MultiSourceDataset(csv_name="train.csv", root_dir=tmpdir, valid_mask_threshold=1.0)
 
     assert len(ds) == 0
-
-
-def test_grid_output_normalization_iters(temp_data_dir):
-    tmpdir, train_csv, _, _, _, _, _, _ = temp_data_dir
-
-    grid_params = GridParams(
-        feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],
-        fuel_feats_encoding="one_hot",
-        out_norm="total_iters",
-    )
-
-    grid_source = GridSource(
-        root_dir=tmpdir,
-        params=grid_params,
-        modelling_approach="2",
-    )
-    ds = MultiSourceDataset(csv_name="train.csv", root_dir=tmpdir, sources={"grid": grid_source})
-    sample = ds[0]
-    _, y, _ = sample["grid"]
-    # Output should be normalized by total_unique_iters (10)
-    arr = np.load(os.path.join(tmpdir, "sample_0.npy")).astype(np.float32)
-    expected = arr[:, :, -1] / 10
-    # Mask out nan locations for comparison
-    y_np = y.squeeze().numpy()
-    mask = ~np.isnan(expected)
-    np.testing.assert_allclose(y_np[mask], expected[mask], rtol=1e-5, atol=1e-5)
 
 
 def test_grid_transforms(temp_data_dir):
@@ -235,7 +213,7 @@ def test_grid_transforms(temp_data_dir):
             "grid": GridSource(
                 root_dir=tmpdir,
                 params=params_orig,
-                modelling_approach="2",
+                modelling_approach="1",
                 transform=None,  # No transforms here
             )
         },
@@ -257,7 +235,7 @@ def test_grid_transforms(temp_data_dir):
             "grid": GridSource(
                 root_dir=tmpdir,
                 params=params_flip,
-                modelling_approach="2",
+                modelling_approach="1",
                 transform=transform_flip,  # Apply Flip Transform
             )
         },
@@ -282,7 +260,7 @@ def test_grid_transforms(temp_data_dir):
             "grid": GridSource(
                 root_dir=tmpdir,
                 params=params_rot,
-                modelling_approach="2",
+                modelling_approach="1",
                 transform=transform_rot,  # Apply Rotate Transform
             )
         },
@@ -309,7 +287,7 @@ def test_tabular_weighted_sampling(temp_data_dir):
         num_samples_per_patch=2,
     )
 
-    fire_size_source = TabularSource(root_dir=tmpdir, params=fire_size_params, modelling_approach="2")
+    fire_size_source = TabularSource(root_dir=tmpdir, params=fire_size_params, modelling_approach="1")
 
     # Build a small patch where the zone channel has 4 occurrences of 100 and 1 of 200
     data = np.full((32, 32, 36), np.nan, dtype=np.float32)

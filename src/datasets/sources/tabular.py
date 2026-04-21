@@ -56,7 +56,7 @@ class TabularSource(DataSource):
         # 1. Extract weather zone channel index
         with open(os.path.join(self.root_dir, f"feature_channel_map_{self.modelling_approach}.json")) as f:
             channel_feature_map = json.load(f)
-            self.zone_channel = channel_feature_map["weather_grid"][0]
+            self.zone_channel = channel_feature_map["firezones_grid"][0]
         # 2. Create weather lookup table for faster sampling
         self.lut = {}
         for zone, group in self.df.groupby(self.fire_weather_zone_id_col):

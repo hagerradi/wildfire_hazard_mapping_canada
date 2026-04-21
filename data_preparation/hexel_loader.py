@@ -51,6 +51,7 @@ def load_spatial_features_per_hexel(
         fuel_grid: np.ma.MaskedArray,
         elevation_grid: np.ma.MaskedArray,
         ignition_grid: np.ma.MaskedArray,
+        firezones_grid: np.ma.MaskedArray,
         bp_out_grid: np.ma.MaskedArray,
         fi_out_grid: np.ma.MaskedArray,
         ros_out_grid: np.ma.MaskedArray,
@@ -60,6 +61,7 @@ def load_spatial_features_per_hexel(
             fuel_grid[:, :, np.newaxis],
             elevation_grid[:, :, np.newaxis],
             ignition_grid[:, :, np.newaxis],
+            firezones_grid[:, :, np.newaxis],
             bp_out_grid[:, :, np.newaxis],
             fi_out_grid[:, :, np.newaxis],
             ros_out_grid[:, :, np.newaxis],
@@ -90,6 +92,10 @@ def load_spatial_features_per_hexel(
         path=all_paths.elevation_grid(hex_id=hex_id), actual_mask_path=all_paths.mask_grid_actual(hex_id=hex_id)
     )
 
+    firezones_grid, _ = load_spatial_raster(
+        path=all_paths.firezones_grid(hex_id=hex_id), actual_mask_path=all_paths.mask_grid_actual(hex_id=hex_id)
+    )
+
     if modelling_approach == 1:
         # input
         ignition_grid = load_ignition_grid(root_dir=root_dir, hex_id=hex_id)
@@ -98,14 +104,10 @@ def load_spatial_features_per_hexel(
         fi_out_grid, _ = load_spatial_raster(all_paths.output_fire_intensity(), actual_mask_path=all_paths.mask_grid_actual(hex_id=hex_id))
         ros_out_grid, _ = load_spatial_raster(all_paths.output_ros(), actual_mask_path=all_paths.mask_grid_actual(hex_id=hex_id))
 
-        stacked_features, mask = stack_sample(fuel_grid, elevation_grid, ignition_grid, bp_out_grid, fi_out_grid, ros_out_grid)
+        stacked_features, mask = stack_sample(
+            fuel_grid, elevation_grid, ignition_grid, firezones_grid, bp_out_grid, fi_out_grid, ros_out_grid
+        )
         return np.expand_dims(stacked_features, axis=0), np.expand_dims(mask, axis=0), None
 
     # modelling approach 2
     raise ValueError("Data Season mapping not supported yet!")
-
-
-if __name__ == "__main__":
-    out, mask, _ = load_spatial_features_per_hexel(
-        root_dir="../burnp3plus", hex_id="01", feature_channel_map_path="../burnp3plus/feature_channel_map.json"
-    )

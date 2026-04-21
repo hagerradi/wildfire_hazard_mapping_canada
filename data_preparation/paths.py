@@ -17,7 +17,7 @@ class Paths:
     def mask_grid_buffer(self, hex_id: int | str) -> Path:
         return self.spatial_dir / "mask_grids" / f"hex{hex_id}_buffer.shp"
 
-    def fire_zone_grid(self, hex_id: int | str) -> Path:
+    def firezones_grid(self, hex_id: int | str) -> Path:
         return self.spatial_dir / f"hex{hex_id}_firezones.tif"
 
     def fuel_grid(self, hex_id: int | str) -> Path:
