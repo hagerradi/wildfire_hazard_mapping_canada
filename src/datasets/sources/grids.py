@@ -5,7 +5,7 @@ from collections.abc import Callable
 import numpy as np
 import torch
 
-from data_preparation.grid_loader.utils import FUEL_GROUP_MAP, get_range_elevation, get_range_output
+from data_preparation.spatial.utils import FUEL_GROUP_MAP, get_range_elevation, get_range_output
 from src.config import GridParams
 from src.datasets.sources.base import DataSource
 from src.datasets.utils import fill_nan_channel_mean_numpy, one_hot_encode, output_burn_prob_norm

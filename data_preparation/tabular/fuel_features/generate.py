@@ -7,11 +7,46 @@ import os
 import subprocess
 
 import numpy as np
+import pandas as pd
 import rasterio
 
-from data_preparation.feature_processing.weather import load_weather_list
-from data_preparation.grid_loader.utils import load_raster, visualize_ignition_grid
-from data_preparation.grid_loader.weather import weather_list_to_grid
+from data_preparation.spatial.utils import NODATA, load_raster
+from data_preparation.tabular.weather import load_weather_list
+from data_preparation.visualizations import visualize_ignition_grid
+
+
+def weather_list_to_grid(
+    weather_list: pd.DataFrame, fire_weather_zone_grid: np.ma.MaskedArray, selected_weather_features: list[str], sampling: str = "dist"
+) -> np.ndarray:
+    """Project weather list onto the Fire Weather Zones"""
+    fire_weather_zones = weather_list["wx_zone"].unique()
+
+    # Determine number of output channels based on sampling strategy
+    if sampling == "dist":
+        n_channels = len(selected_weather_features) * 2
+    elif sampling == "weather_zone_id":
+        n_channels = 1
+    else:
+        n_channels = len(selected_weather_features)
+    h, w = fire_weather_zone_grid.shape
+    out = np.full((h, w, n_channels), NODATA, dtype="float32")
+
+    for zone in fire_weather_zones:
+        weather_zone_subset = weather_list[weather_list["wx_zone"] == zone][selected_weather_features]
+        # Randomly sample 1 row from the given weather list (1xlen(selected_weather_features))
+        if sampling == "random":
+            value = np.array(weather_zone_subset.sample(1, random_state=42))
+        # array of means for all the variables (1xlen(selected_weather_features))
+        elif sampling == "mean":
+            value = weather_zone_subset.mean().values
+        # array of mean, var for all the variables (1x2*len(selected_weather_features))
+        elif sampling == "dist":
+            value = np.vstack([weather_zone_subset.mean(), weather_zone_subset.std()]).T.flatten()
+        elif sampling == "weather_zone_id":
+            value = zone
+        out[fire_weather_zone_grid.data == zone] = value  # type: ignore
+    # HxWx2*len(selected_weather_features) (or len(selected_weather_features)) (or 1)
+    return out  # type: ignore
 
 
 def save_grid(path: str, data_arr: np.ndarray, profile: dict):
@@ -37,7 +72,7 @@ def load_weather_grid(weather_list_file_path: str, zone_grid_file_path: str):
         data = src.read(1, masked=True)
         profile = src.profile
 
-    out_weather_params = weather_list_to_grid(weather_csv, data, selected_weather_features, sampling="mean")
+    out_weather_params = weather_list_to_grid(weather_csv, data, selected_weather_features, sampling="mean")  # noqa: F821
     weather_profile = copy.deepcopy(profile)
     weather_profile.update(
         dtype="float32",

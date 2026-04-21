@@ -109,12 +109,6 @@ def load_spatial_raster(
             nodata=nodata,
         )
 
-    raster, transform, profile = crop_masked_raster(
-        raster=raster,
-        transform=transform,
-        profile=profile,
-    )
-
     return raster, profile
 
 

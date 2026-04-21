@@ -5,8 +5,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from data_preparation.grid_loader import NODATA
 from data_preparation.hexel_loader import load_spatial_features_per_hexel
+from data_preparation.spatial import NODATA
 from data_preparation.utils import find_hex_ids, get_processed_hex_ids
 
 

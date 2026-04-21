@@ -8,7 +8,7 @@ from matplotlib.patches import Patch
 from rasterio.plot import show
 
 
-def visualize_ignition_grid(grid: np.ndarray, cause: int, season: int):
+def visualize_ignition_grid(grid: np.ndarray, cause: int | None = None, season: int | None = None):
     """
     Visualizes an ignition raster using matplotlib.
     """

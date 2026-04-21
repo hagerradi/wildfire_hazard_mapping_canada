@@ -5,8 +5,8 @@ import os
 
 import numpy as np
 
-from data_preparation.grid_loader import NODATA, load_fuel_grid, load_ignition_grid, load_spatial_raster
 from data_preparation.paths import Paths
+from data_preparation.spatial import NODATA, load_fuel_grid, load_ignition_grid, load_spatial_raster
 from data_preparation.utils import feature_names
 
 
@@ -56,13 +56,6 @@ def load_spatial_features_per_hexel(
         ros_out_grid: np.ma.MaskedArray,
     ) -> tuple[np.ndarray, np.ndarray]:
         """Stack all features and compute mask."""
-        print(fuel_grid.shape)
-        print(elevation_grid.shape)
-        print(ignition_grid.shape)
-        print(bp_out_grid.shape)
-        print(ros_out_grid.shape)
-        print(fi_out_grid.shape)
-
         features_list = [
             fuel_grid[:, :, np.newaxis],
             elevation_grid[:, :, np.newaxis],
@@ -114,5 +107,5 @@ def load_spatial_features_per_hexel(
 
 if __name__ == "__main__":
     out, mask, _ = load_spatial_features_per_hexel(
-        root_dir="../burnp3plus", hex_id="05", feature_channel_map_path="../burnp3plus/feature_channel_map.json"
+        root_dir="../burnp3plus", hex_id="01", feature_channel_map_path="../burnp3plus/feature_channel_map.json"
     )

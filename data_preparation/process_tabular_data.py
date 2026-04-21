@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from data_preparation.feature_processing.weather import load_weather_list, preprocess_weather_list
+from data_preparation.tabular.weather import load_weather_list, preprocess_weather_list
 from data_preparation.utils import aggregate_csv_by_pattern, find_file_path, process_fire_size_df
 
 logger = logging.getLogger(__name__)

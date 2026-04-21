@@ -1,6 +1,6 @@
 import functools
 import os
-from typing import Callable
+from collections.abc import Callable
 
 import numpy as np
 import pandas as pd
@@ -8,13 +8,13 @@ import rasterio
 import torch
 from rasterio.profiles import Profile
 
-from data_preparation.grid_loader.utils import (
+from data_preparation.paths import Paths
+from data_preparation.spatial.utils import (
     denormalize_burn_count,
     denormalize_burn_prob,
     get_range_output,
     load_spatial_raster,
 )
-from data_preparation.paths import Paths
 from src.config import Config
 from src.datasets.postprocessing.stitch_hexel import stitch_windows
 from src.datasets.postprocessing.visualize_predictions import (
