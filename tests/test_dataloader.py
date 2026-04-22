@@ -57,6 +57,8 @@ def temp_data_dir():
             arr = np.random.rand(32, 32, 36).astype(np.float32)
             # Add some NaNs to input channels
             arr[:, :, 3] = 100.0  # Force fire zone channel to be '100.0' so it matches weather CSV below.
+            arr[:, :, 4] = 0.25  # Keep bp_out_grid deterministic.
+            arr[:, :, 33] = 0.75  # Ensure tests detect accidental fallback to -3 indexing.
             arr[1, 1, :] = np.nan
             arr[10, 20, :] = np.nan
             np.save(os.path.join(tmpdir, fname), arr)
@@ -97,7 +99,7 @@ def test_multi_source_integration(temp_data_dir):
 
     grid_params = GridParams(
         feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],
-        out_norm="min_max",
+        out_norm="none",
         fuel_feats_encoding="ordinal",
         normalize_fuel_feats_ordinal=True,
     )
@@ -143,6 +145,9 @@ def test_multi_source_integration(temp_data_dir):
     input_arr, target, mask = sample["grid"]
     assert isinstance(input_arr, torch.Tensor)
     assert input_arr.shape[0] == 3
+    target_np = target.squeeze(0).numpy()
+    mask_np = mask.squeeze(0).numpy()
+    np.testing.assert_allclose(target_np[mask_np], 0.25, rtol=1e-6, atol=1e-6)
     weather = sample["weather"]
     assert weather.shape == (2, len(weather_feats))
     fire_size = sample["fire_size"]

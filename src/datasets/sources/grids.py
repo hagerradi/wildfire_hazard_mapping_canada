@@ -56,7 +56,23 @@ class GridSource(DataSource):
         # 2. Update indices
         with open(os.path.join(self.root_dir, f"feature_channel_map_{self.modelling_approach}.json")) as f:
             self.channel_feature_map = json.load(f)
-            self.input_channel_indices = [item for key in self.feature_names_list for item in self.channel_feature_map[key]]
+            self.raw_input_channel_indices = [item for key in self.feature_names_list for item in self.channel_feature_map[key]]
+            self.input_channel_indices = list(self.raw_input_channel_indices)
+            self.max_input_channel_index = max(self.input_channel_indices)
+            output_channel_keys = ("bp_out_grid", "esc_fires_grid")
+            self.output_channel_index = next(
+                (
+                    self.channel_feature_map[channel_key][0]
+                    for channel_key in output_channel_keys
+                    if channel_key in self.channel_feature_map
+                ),
+                None,
+            )
+            if self.output_channel_index is None:
+                raise ValueError(
+                    f"Missing output channel in feature channel map. Expected one of {output_channel_keys}, "
+                    f"found keys: {list(self.channel_feature_map.keys())}"
+                )
             if "fuel_grid" in self.feature_names_list:
                 self.fuel_feat_index = self.channel_feature_map["fuel_grid"][0]
                 if self.fuel_feats_encoding == "one_hot":
@@ -83,16 +99,18 @@ class GridSource(DataSource):
             data = np.load(patch_info["file_path"]).astype(np.float32)
 
         # 1. Separate inputs, output, and mask
-        input_arr, output_arr = data[:, :, 0:3], data[:, :, -3]
+        input_arr, output_arr = data[:, :, : self.max_input_channel_index + 1], data[:, :, self.output_channel_index]
         output_arr[np.isnan(output_arr)] = 0.0
-        assert np.all(np.isnan(input_arr) == np.isnan(input_arr[..., :1])), "NaN mask differs across channels!"
-        mask = ~np.isnan(input_arr[:, :, 0])  # mask is True where not NaN, False where NaN
+        input_arr_for_mask = input_arr[:, :, self.raw_input_channel_indices]
+        assert np.all(np.isnan(input_arr_for_mask) == np.isnan(input_arr_for_mask[..., :1])), "NaN mask differs across channels!"
+        mask = ~np.isnan(input_arr_for_mask[:, :, 0])  # mask is True where not NaN, False where NaN
 
         # 2. Normalize elevation (and any other input)
-        elev_feat_index = self.channel_feature_map["elevation_grid"][0]
-        input_arr[:, :, elev_feat_index] = (input_arr[:, :, elev_feat_index] - self.ELEVATION_MIN) / (
-            self.ELEVATION_MAX - self.ELEVATION_MIN + 1e-8
-        )
+        if "elevation_grid" in self.feature_names_list:
+            elev_feat_index = self.channel_feature_map["elevation_grid"][0]
+            input_arr[:, :, elev_feat_index] = (input_arr[:, :, elev_feat_index] - self.ELEVATION_MIN) / (
+                self.ELEVATION_MAX - self.ELEVATION_MIN + 1e-8
+            )
 
         # 3. Processing one hot encoding
         if "fuel_grid" in self.feature_names_list and self.fuel_feats_encoding == "one_hot":  # (H,W,C+20)
