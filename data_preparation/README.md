@@ -36,7 +36,7 @@ To build the tabular files, run the following:
 ```bash
 python -m data_preparation.process_tabular_data \
 	--root_dir="/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA" \
-	--save_dir="/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA/data_samples_approach_1" \
+	--save_dir="/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA/data_samples_v1" \
 	--weather_output_file="weather_table_processed.csv" \
 	--fire_size_input_file="df_fire_fru.csv" \
 	--fire_size_output_file="df_fire_fru_processed.csv"
