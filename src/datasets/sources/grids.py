@@ -16,6 +16,8 @@ class GridSource(DataSource):
     DataSource class for Spatial Grid
     """
 
+    OUTPUT_CHANNEL_KEYS = ("bp_out_grid", "esc_fires_grid")
+
     def __init__(
         self,
         root_dir: str,
@@ -58,30 +60,29 @@ class GridSource(DataSource):
             self.channel_feature_map = json.load(f)
             self.raw_input_channel_indices = [item for key in self.feature_names_list for item in self.channel_feature_map[key]]
             self.preprocess_channel_indices = sorted(set(self.raw_input_channel_indices))
-            self.preprocess_channel_lookup = {
+            self.channel_index_to_local_index = {
                 channel_index: local_index for local_index, channel_index in enumerate(self.preprocess_channel_indices)
             }
             self.raw_input_local_indices = [
-                self.preprocess_channel_lookup[channel_index] for channel_index in self.raw_input_channel_indices
+                self.channel_index_to_local_index[channel_index] for channel_index in self.raw_input_channel_indices
             ]
             self.input_channel_indices = list(self.raw_input_local_indices)
-            output_channel_keys = ("bp_out_grid", "esc_fires_grid")
             self.output_channel_index = next(
                 (
                     self.channel_feature_map[channel_key][0]
-                    for channel_key in output_channel_keys
+                    for channel_key in self.OUTPUT_CHANNEL_KEYS
                     if channel_key in self.channel_feature_map
                 ),
                 None,
             )
             if self.output_channel_index is None:
                 raise ValueError(
-                    f"Missing output channel in feature channel map. Expected one of {output_channel_keys}, "
+                    f"Missing output channel in feature channel map. Expected one of {self.OUTPUT_CHANNEL_KEYS}, "
                     f"found keys: {list(self.channel_feature_map.keys())}"
                 )
             if "fuel_grid" in self.feature_names_list:
                 self.fuel_feat_index = self.channel_feature_map["fuel_grid"][0]
-                self.fuel_feat_local_index = self.preprocess_channel_lookup[self.fuel_feat_index]
+                self.fuel_feat_local_index = self.channel_index_to_local_index[self.fuel_feat_index]
                 if self.fuel_feats_encoding == "one_hot":
                     updated_input_channel_indices = []
                     for channel_index in self.raw_input_local_indices:
@@ -119,7 +120,7 @@ class GridSource(DataSource):
 
         # 2. Normalize elevation (and any other input)
         if "elevation_grid" in self.feature_names_list:
-            elev_feat_local_index = self.preprocess_channel_lookup[self.channel_feature_map["elevation_grid"][0]]
+            elev_feat_local_index = self.channel_index_to_local_index[self.channel_feature_map["elevation_grid"][0]]
             input_arr[:, :, elev_feat_local_index] = (input_arr[:, :, elev_feat_local_index] - self.ELEVATION_MIN) / (
                 self.ELEVATION_MAX - self.ELEVATION_MIN + 1e-8
             )

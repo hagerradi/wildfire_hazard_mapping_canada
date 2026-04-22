@@ -58,7 +58,7 @@ def temp_data_dir():
             # Add some NaNs to input channels
             arr[:, :, 3] = 100.0  # Force fire zone channel to be '100.0' so it matches weather CSV below.
             arr[:, :, 4] = 0.25  # Keep bp_out_grid deterministic.
-            arr[:, :, 33] = 0.75  # Ensure tests detect accidental fallback to -3 indexing.
+            arr[:, :, 33] = 0.75  # 33 is channel -3 for 36-channel arrays; catches accidental -3 output indexing.
             arr[1, 1, :] = np.nan
             arr[10, 20, :] = np.nan
             np.save(os.path.join(tmpdir, fname), arr)
