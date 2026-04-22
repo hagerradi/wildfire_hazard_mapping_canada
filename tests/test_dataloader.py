@@ -99,7 +99,7 @@ def test_multi_source_integration(temp_data_dir):
 
     grid_params = GridParams(
         feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],
-        out_norm="none",
+        out_norm="min_max",
         fuel_feats_encoding="ordinal",
         normalize_fuel_feats_ordinal=True,
     )
@@ -145,9 +145,7 @@ def test_multi_source_integration(temp_data_dir):
     input_arr, target, mask = sample["grid"]
     assert isinstance(input_arr, torch.Tensor)
     assert input_arr.shape[0] == 3
-    target_np = target.squeeze(0).numpy()
     mask_np = mask.squeeze(0).numpy()
-    np.testing.assert_allclose(target_np[mask_np], 0.25, rtol=1e-6, atol=1e-6)
     assert mask_np.shape == (32, 32)
     assert not mask_np[1, 1]
     assert not mask_np[10, 20]
@@ -331,3 +329,18 @@ def test_tabular_weighted_sampling(temp_data_dir):
         np.testing.assert_allclose(captured["p"], expected_p, rtol=1e-8, atol=1e-12)
     finally:
         np.random.choice = original_choice
+
+
+def test_grid_output_channel_from_feature_map(temp_data_dir):
+    tmpdir, *_ = temp_data_dir
+    grid_params = GridParams(
+        feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],
+        out_norm="none",
+        fuel_feats_encoding="ordinal",
+        normalize_fuel_feats_ordinal=True,
+    )
+    grid_source = GridSource(root_dir=tmpdir, params=grid_params, modelling_approach="1")
+    _, target, mask = grid_source.get_sample({"file_path": os.path.join(tmpdir, "sample_0.npy")})
+    target_np = target.squeeze(0).numpy()
+    mask_np = mask.squeeze(0).numpy()
+    np.testing.assert_allclose(target_np[mask_np], 0.25, rtol=1e-6, atol=1e-6)

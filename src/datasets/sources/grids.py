@@ -91,11 +91,9 @@ class GridSource(DataSource):
                             updated_input_channel_indices.append(channel_index)
                         elif channel_index == self.fuel_feat_local_index:
                             updated_input_channel_indices.extend(
-                                list(
-                                    range(
-                                        self.fuel_feat_local_index,
-                                        self.fuel_feat_local_index + self.num_fuel_classes,
-                                    )
+                                range(
+                                    self.fuel_feat_local_index,
+                                    self.fuel_feat_local_index + self.num_fuel_classes,
                                 )
                             )
                         else:
