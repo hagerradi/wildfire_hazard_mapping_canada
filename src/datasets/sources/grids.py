@@ -16,7 +16,8 @@ class GridSource(DataSource):
     DataSource class for Spatial Grid
     """
 
-    OUTPUT_CHANNEL_KEYS = ("bp_out_grid", "esc_fires_grid")
+    # TODO: make it configurable
+    OUTPUT_CHANNEL_KEYS = ["bp_out_grid"]
 
     def __init__(
         self,
@@ -47,8 +48,6 @@ class GridSource(DataSource):
         self.fuel_feats_encoding = params.fuel_feats_encoding
         self.normalize_fuel_feats_ordinal = params.normalize_fuel_feats_ordinal
         self.num_fuel_classes = int(max(FUEL_GROUP_MAP.values()) + 1)
-
-        self.norm_col_map = {"total_iters": "total_unique_iters", "season_cause_iters": "season_cause_unique_iters"}
 
         # 1. Normalizations (for modelling approach 1)
         self.BURN_PROB_MAX, self.BURN_PROB_MIN = 1.0, 0.0
@@ -150,8 +149,6 @@ class GridSource(DataSource):
         if self.transform:
             input_arr, output_arr, mask = self.transform(input_arr, output_arr, mask)
 
-        if len(self.feature_names_list) == 1 and "wind_grid" in self.feature_names_list:
-            return input_arr
         return (input_arr, output_arr, mask)  # (C, H, W), (1, H, W), (1, H, W)
 
     def input_dim(self):
