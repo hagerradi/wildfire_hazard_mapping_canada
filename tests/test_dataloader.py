@@ -148,6 +148,10 @@ def test_multi_source_integration(temp_data_dir):
     target_np = target.squeeze(0).numpy()
     mask_np = mask.squeeze(0).numpy()
     np.testing.assert_allclose(target_np[mask_np], 0.25, rtol=1e-6, atol=1e-6)
+    assert mask_np.shape == (32, 32)
+    assert not mask_np[1, 1]
+    assert not mask_np[10, 20]
+    assert mask_np[0, 0]
     weather = sample["weather"]
     assert weather.shape == (2, len(weather_feats))
     fire_size = sample["fire_size"]

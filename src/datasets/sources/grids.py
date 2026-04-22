@@ -69,9 +69,10 @@ class GridSource(DataSource):
             self.input_channel_indices = list(self.raw_input_local_indices)
             self.output_channel_index = next(
                 (
-                    self.channel_feature_map[channel_key][0]
+                    channel_indices[0]
                     for channel_key in self.OUTPUT_CHANNEL_KEYS
-                    if channel_key in self.channel_feature_map
+                    for channel_indices in [self.channel_feature_map.get(channel_key)]
+                    if channel_indices
                 ),
                 None,
             )
