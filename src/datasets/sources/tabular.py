@@ -63,6 +63,14 @@ class TabularSource(DataSource):
             feats = group[self.feature_names_list].values.astype(np.float32)
             self.lut[int(zone)] = feats
 
+        if not self.lut:
+            raise ValueError(
+                f"Weather LUT is empty: no valid zones found in '{self.csv_name}'. "
+                f"Check that '{self.fire_weather_zone_id_col}' column contains valid zone IDs."
+            )
+        # Pre-built global fallback: used when a patch's zone IDs are absent from the LUT
+        self._fallback_candidates = np.concatenate(list(self.lut.values()))
+
     def get_sample(self, patch_info: dict):
         if "data" in patch_info:
             # Fast load (Training)
@@ -71,16 +79,30 @@ class TabularSource(DataSource):
             # Slow Path (Debugging / Standalone)
             data = np.load(patch_info["file_path"])
         zone_arr = data[:, :, self.zone_channel]
-        mask = ~np.isnan(zone_arr)
+        mask = ~np.isnan(zone_arr) & (zone_arr > 0)
         zone_arr = zone_arr[mask]
-        sample_features = None
+
+        candidates = None
+        weights = None
         values, counts = np.unique(zone_arr, return_counts=True)
 
         # 1. Select candidates depending on sampling approach
-        if self.fire_weather_zone_selection_approach == "mode":  # Selects the candidates from the most common zone in the patch
-            mode_zone = int(values[np.argmax(counts)])
-            candidates = self.lut.get(mode_zone)
-            weights = None
+        if len(values) == 0:
+            # Patch is fully masked — fall back to global candidates
+            print("[TabularSource] Warning: patch is fully masked (all NaN). Using global fallback.")
+            candidates = self._fallback_candidates
+        elif self.fire_weather_zone_selection_approach == "mode":  # Selects the candidates from the most common zone in the patch
+            # Try zones in descending frequency order until one is found in the LUT
+            for zone_val in values[np.argsort(counts)[::-1]]:
+                zone_cands = self.lut.get(int(zone_val))
+                if zone_cands is not None:
+                    candidates = zone_cands
+                    break
+            if candidates is None:
+                print(
+                    f"[TabularSource] Warning: no LUT match for any zone in patch (zones={[int(v) for v in values]}). Using global fallback."
+                )
+                candidates = self._fallback_candidates
         elif (
             self.fire_weather_zone_selection_approach == "weighted"
         ):  # Selects candidates from all zones in the patch, with probability proportional to their frequency
@@ -92,8 +114,10 @@ class TabularSource(DataSource):
                     all_candidates.append(zone_cands)
                     probs.append(np.full(len(zone_cands), count / len(zone_cands)))
             if not all_candidates:
-                candidates = None
-                weights = None
+                print(
+                    f"[TabularSource] Warning: no LUT match for any zone in patch (zones={[int(v) for v in values]}). Using global fallback."
+                )
+                candidates = self._fallback_candidates
             else:
                 candidates = np.concatenate(all_candidates)
                 weights = np.concatenate(probs)
@@ -124,8 +148,7 @@ class TabularSource(DataSource):
                 # else: all-zero bias → fall back to existing weights
 
         # 3. Perform actual sampling
-        if candidates is not None and len(candidates) > 0:
-            sample_features = candidates[np.random.choice(len(candidates), size=self.num_samples_per_patch, replace=True, p=weights)]
+        sample_features = candidates[np.random.choice(len(candidates), size=self.num_samples_per_patch, replace=True, p=weights)]
         return sample_features
 
     def input_dim(self):

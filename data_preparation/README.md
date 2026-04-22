@@ -10,7 +10,7 @@ sbatch run_files/generate_grid_data.sh
 
 Instead, you can run the following on an interactive node:
 ```bash
-python -m data_preparation.process_hexels_into_grids --root_dir="/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA"  --save_dir="/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA/data_samples_v1" --modelling_approach=1 --win_h=128 --win_w=128 --overlap_ratio=0.2
+python -m data_preparation.process_hexels_into_grids --root_dir="/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA"  --save_dir="/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA/data_samples_v1" --modelling_approach=1 --win_h=256 --win_w=256 --overlap_ratio=0.2
 ```
 
 Step 2: Create training, validation and test splits.

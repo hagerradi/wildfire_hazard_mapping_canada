@@ -77,7 +77,7 @@ class TabularParams(BaseModel):
 
     csv_name: str = "weather_table_processed.csv"
     feature_names_list: list[str]
-    fire_weather_zone_id_col: str = "wx_zone"
+    fire_weather_zone_id_col: str = "WeatherZone"
     fire_weather_zone_selection_approach: str = "mode"  # Selection method to determine weather zone to be used for the patch: "mode" (for most common zone) or "weighted" (for frequency-weighted sampling)
     num_samples_per_patch: int = 256
     transforms_list: list[str] = Field(default_factory=list)
@@ -103,18 +103,16 @@ class DataConfig(BaseModel):
     val_split: str
     test_split: str
     filename_col: str = "filename"
-    valid_mask_threshold: float = 0.01
+    valid_mask_threshold: float = 0.5
 
     input_sources: list[DataSourceConfig]
 
 
 class DataPrepConfig(BaseModel):
     modelling_approach: int = 1
-    win_h: int = 128
-    win_w: int = 128
+    win_h: int = 256
+    win_w: int = 256
     overlap_ratio: float = 0.2
-    output_type: str = "prob"  # "count", "prob"
-    weather_sampling: str = "weather_zone_id"  # "weather_zone_id", "dist"
 
 
 class Config(BaseModel):

@@ -27,7 +27,7 @@ def preprocess_weather_list(weather_list: pd.DataFrame) -> pd.DataFrame:
     weather_list[min_max_cols] = scaler_mm.fit_transform(weather_list[min_max_cols])
 
     # These are normal dist variables
-    z_score_cols = ["Temperature", "WindSpeed", "DuffMoistureCode", "DroughtCode", "InitialSpreadIndex", "BuildupIndex"]
+    z_score_cols = ["Temperature", "WindSpeed", "DuffMoistureCode", "DroughtCode", "InitialSpreadIndex", "BuildupIndex", "FireWeatherIndex"]
     scaler_z = StandardScaler()
     weather_list[z_score_cols] = scaler_z.fit_transform(weather_list[z_score_cols])
 
