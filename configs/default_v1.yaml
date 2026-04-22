@@ -36,8 +36,8 @@ evaluation:
   checkpoint_filename: "best.pth" # option to load best or last
 
 data:
-  root_dir: "../yan_bp3/data_samples_approach_1"
-  raw_data_dir: "../yan_bp3"
+  root_dir: "../burnp3plus/data_samples_v1"
+  raw_data_dir: "../burnp3plus"
 
   train_split: "train_indices.csv"
   val_split: "val_indices.csv"

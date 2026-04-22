@@ -217,8 +217,7 @@ def evaluate_and_visualize_hexels(
     modelling_approach = config.modelling_approach
     valid_mask_threshold = config.data.valid_mask_threshold
 
-    if modelling_approach == "1":
-        max_target_val, min_target_val = get_range_output(root_dir=raw_data_dir, output_type="fire_burn_probability")
+    max_target_val, min_target_val = get_range_output(root_dir=raw_data_dir, output_type="fire_burn_probability")
 
     if isinstance(test_predictions, str):
         raise TypeError(f"Expected ndarray, but got string: {test_predictions}")
