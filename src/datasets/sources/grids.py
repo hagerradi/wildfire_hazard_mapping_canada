@@ -57,8 +57,14 @@ class GridSource(DataSource):
         with open(os.path.join(self.root_dir, f"feature_channel_map_{self.modelling_approach}.json")) as f:
             self.channel_feature_map = json.load(f)
             self.raw_input_channel_indices = [item for key in self.feature_names_list for item in self.channel_feature_map[key]]
-            self.input_channel_indices = list(self.raw_input_channel_indices)
-            self.max_input_channel_index = max(self.input_channel_indices)
+            self.preprocess_channel_indices = sorted(set(self.raw_input_channel_indices))
+            self.preprocess_channel_lookup = {
+                channel_index: local_index for local_index, channel_index in enumerate(self.preprocess_channel_indices)
+            }
+            self.raw_input_local_indices = [
+                self.preprocess_channel_lookup[channel_index] for channel_index in self.raw_input_channel_indices
+            ]
+            self.input_channel_indices = list(self.raw_input_local_indices)
             output_channel_keys = ("bp_out_grid", "esc_fires_grid")
             self.output_channel_index = next(
                 (
@@ -75,18 +81,24 @@ class GridSource(DataSource):
                 )
             if "fuel_grid" in self.feature_names_list:
                 self.fuel_feat_index = self.channel_feature_map["fuel_grid"][0]
+                self.fuel_feat_local_index = self.preprocess_channel_lookup[self.fuel_feat_index]
                 if self.fuel_feats_encoding == "one_hot":
-                    # Update input_channel_indices to account for new one-hot channels
-                    idx_fuel_feats = self.input_channel_indices.index(self.fuel_feat_index)
-                    self.input_channel_indices = (
-                        self.input_channel_indices[:idx_fuel_feats] + self.input_channel_indices[idx_fuel_feats + 1 :]
-                    )
-                    # Insert new indices for the one-hot channels at the position of the old fuel index
-                    self.input_channel_indices = (
-                        self.input_channel_indices[:idx_fuel_feats]
-                        + list(range(self.fuel_feat_index, self.fuel_feat_index + self.num_fuel_classes))
-                        + [i + self.num_fuel_classes - 1 for i in self.input_channel_indices[idx_fuel_feats:]]
-                    )
+                    updated_input_channel_indices = []
+                    for channel_index in self.raw_input_local_indices:
+                        if channel_index < self.fuel_feat_local_index:
+                            updated_input_channel_indices.append(channel_index)
+                        elif channel_index == self.fuel_feat_local_index:
+                            updated_input_channel_indices.extend(
+                                list(
+                                    range(
+                                        self.fuel_feat_local_index,
+                                        self.fuel_feat_local_index + self.num_fuel_classes,
+                                    )
+                                )
+                            )
+                        else:
+                            updated_input_channel_indices.append(channel_index + self.num_fuel_classes - 1)
+                    self.input_channel_indices = updated_input_channel_indices
         # 3. normalization for elevation grid
         self.ELEVATION_MAX, self.ELEVATION_MIN = get_range_elevation(os.path.dirname(self.root_dir))
 
@@ -99,22 +111,22 @@ class GridSource(DataSource):
             data = np.load(patch_info["file_path"]).astype(np.float32)
 
         # 1. Separate inputs, output, and mask
-        input_arr, output_arr = data[:, :, : self.max_input_channel_index + 1], data[:, :, self.output_channel_index]
+        input_arr, output_arr = data[:, :, self.preprocess_channel_indices], data[:, :, self.output_channel_index]
         output_arr[np.isnan(output_arr)] = 0.0
-        input_arr_for_mask = input_arr[:, :, self.raw_input_channel_indices]
+        input_arr_for_mask = input_arr[:, :, self.raw_input_local_indices]
         assert np.all(np.isnan(input_arr_for_mask) == np.isnan(input_arr_for_mask[..., :1])), "NaN mask differs across channels!"
         mask = ~np.isnan(input_arr_for_mask[:, :, 0])  # mask is True where not NaN, False where NaN
 
         # 2. Normalize elevation (and any other input)
         if "elevation_grid" in self.feature_names_list:
-            elev_feat_index = self.channel_feature_map["elevation_grid"][0]
-            input_arr[:, :, elev_feat_index] = (input_arr[:, :, elev_feat_index] - self.ELEVATION_MIN) / (
+            elev_feat_local_index = self.preprocess_channel_lookup[self.channel_feature_map["elevation_grid"][0]]
+            input_arr[:, :, elev_feat_local_index] = (input_arr[:, :, elev_feat_local_index] - self.ELEVATION_MIN) / (
                 self.ELEVATION_MAX - self.ELEVATION_MIN + 1e-8
             )
 
         # 3. Processing one hot encoding
         if "fuel_grid" in self.feature_names_list and self.fuel_feats_encoding == "one_hot":  # (H,W,C+20)
-            input_arr = one_hot_encode(arr=input_arr, channel_idx=self.fuel_feat_index, num_classes=self.num_fuel_classes)
+            input_arr = one_hot_encode(arr=input_arr, channel_idx=self.fuel_feat_local_index, num_classes=self.num_fuel_classes)
 
         # 4. Mean Imputation
         input_arr = fill_nan_channel_mean_numpy(input_arr)
