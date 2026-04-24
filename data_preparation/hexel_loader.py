@@ -66,43 +66,71 @@ def load_spatial_features_per_hexel(
             fi_out_grid[:, :, np.newaxis],
             ros_out_grid[:, :, np.newaxis],
         ]
+
         if not os.path.exists(feature_channel_map_path):
             generate_feature_channel_map(features_list, feature_channel_map_path)
-        stacked = np.concatenate(
-            features_list,
-            axis=-1,
+
+        stacked_ma = np.ma.concatenate(features_list, axis=-1)
+        mask = np.logical_or.reduce(
+            [
+                np.ma.getmaskarray(fuel_grid),
+                np.ma.getmaskarray(elevation_grid),
+                np.ma.getmaskarray(ignition_grid),
+                np.ma.getmaskarray(firezones_grid),
+                np.ma.getmaskarray(bp_out_grid),
+                np.ma.getmaskarray(fi_out_grid),
+                np.ma.getmaskarray(ros_out_grid),
+            ]
         )
-        stacked = np.ma.filled(stacked, fill_value=NODATA).astype(np.float32)
-        # Get all the masks for all the season/cause and channels
-        all_feat_mask = np.isnan(stacked)
-        # Aggregate the channel masks to create a single mast (OR operation)
-        mask = np.any(all_feat_mask, axis=-1)
-        # Redo the feats with the new mask
+
+        fuel_mask = np.ma.getmaskarray(fuel_grid)
+        elevation_mask = np.ma.getmaskarray(elevation_grid)
+        ignition_mask = np.ma.getmaskarray(ignition_grid)
+        firezones_mask = np.ma.getmaskarray(firezones_grid)
+        bp_out_mask = np.ma.getmaskarray(bp_out_grid)
+        fi_out_mask = np.ma.getmaskarray(fi_out_grid)
+        ros_out_mask = np.ma.getmaskarray(ros_out_grid)
+
+        assert np.array_equal(mask, fuel_mask | elevation_mask | ignition_mask | firezones_mask | bp_out_mask | fi_out_mask | ros_out_mask)
+
+        stacked = stacked_ma.filled(NODATA).astype(np.float32)
         stacked[mask] = NODATA
-        if int(np.sum(mask.astype(bool) != np.isnan(fuel_grid).astype(bool))) > 0:
-            print("======The fuel mask is not the same as the cumulative mask=====")
         return stacked, mask
 
     # identify all seasons and causes first
     all_paths = Paths(hex_id=hex_id, root_dir=root_dir)
-    # load all common grids
-    fuel_grid = load_fuel_grid(root_dir=root_dir, hex_id=hex_id)  # noqa: F821
 
-    elevation_grid, _ = load_spatial_raster(
+    elevation_grid, reference_profile = load_spatial_raster(
         path=all_paths.elevation_grid(hex_id=hex_id), actual_mask_path=all_paths.mask_grid_actual(hex_id=hex_id)
     )
+    # load all common grids on the elevation reference grid
+    fuel_grid = load_fuel_grid(root_dir=root_dir, hex_id=hex_id, reference_profile=reference_profile)
 
     firezones_grid, _ = load_spatial_raster(
-        path=all_paths.firezones_grid(hex_id=hex_id), actual_mask_path=all_paths.mask_grid_actual(hex_id=hex_id)
+        path=all_paths.firezones_grid(hex_id=hex_id),
+        actual_mask_path=all_paths.mask_grid_actual(hex_id=hex_id),
+        reference_profile=reference_profile,
     )
 
     if modelling_approach == 1:
         # input
-        ignition_grid = load_ignition_grid(root_dir=root_dir, hex_id=hex_id)
+        ignition_grid = load_ignition_grid(root_dir=root_dir, hex_id=hex_id, reference_profile=reference_profile)
 
-        bp_out_grid, _ = load_spatial_raster(all_paths.output_burn_prob(), actual_mask_path=all_paths.mask_grid_actual(hex_id=hex_id))
-        fi_out_grid, _ = load_spatial_raster(all_paths.output_fire_intensity(), actual_mask_path=all_paths.mask_grid_actual(hex_id=hex_id))
-        ros_out_grid, _ = load_spatial_raster(all_paths.output_ros(), actual_mask_path=all_paths.mask_grid_actual(hex_id=hex_id))
+        bp_out_grid, _ = load_spatial_raster(
+            all_paths.output_burn_prob(),
+            actual_mask_path=all_paths.mask_grid_actual(hex_id=hex_id),
+            reference_profile=reference_profile,
+        )
+        fi_out_grid, _ = load_spatial_raster(
+            all_paths.output_fire_intensity(),
+            actual_mask_path=all_paths.mask_grid_actual(hex_id=hex_id),
+            reference_profile=reference_profile,
+        )
+        ros_out_grid, _ = load_spatial_raster(
+            all_paths.output_ros(),
+            actual_mask_path=all_paths.mask_grid_actual(hex_id=hex_id),
+            reference_profile=reference_profile,
+        )
 
         stacked_features, mask = stack_sample(
             fuel_grid, elevation_grid, ignition_grid, firezones_grid, bp_out_grid, fi_out_grid, ros_out_grid

@@ -76,6 +76,7 @@ def load_spatial_raster(
     path: Path,
     reproject_flag: bool = True,
     actual_mask_path: Path | None = None,
+    reference_profile: dict[str, Any] | None = None,
 ) -> tuple[np.ma.MaskedArray, dict[str, Any]]:
     """Load one raster band, optionally reproject/clip/crop it, and return updated profile."""
     if not os.path.exists(path):
@@ -95,9 +96,12 @@ def load_spatial_raster(
             src_crs=crs,
             src_nodata=nodata,
             profile=profile,
-            dst_crs="ESRI:102002",
+            dst_crs=reference_profile["crs"] if reference_profile is not None else "ESRI:102002",
+            dst_transform=reference_profile["transform"] if reference_profile is not None else None,
+            dst_width=reference_profile["width"] if reference_profile is not None else None,
+            dst_height=reference_profile["height"] if reference_profile is not None else None,
         )
-        crs = "ESRI:102002"
+        crs = profile["crs"]
 
     if actual_mask_path:
         raster, transform, profile = clip_array_to_mask(
@@ -227,6 +231,9 @@ def reproject_raster(
     profile: dict[str, Any],
     dst_crs: str = "ESRI:102002",
     resampling: Resampling = Resampling.nearest,
+    dst_transform: Affine | None = None,
+    dst_width: int | None = None,
+    dst_height: int | None = None,
 ) -> tuple[np.ma.MaskedArray, Affine, dict[str, Any]]:
     """Reproject an already loaded raster while preserving mask/nodata and updating profile."""
     height, width = raster.shape
@@ -236,13 +243,14 @@ def reproject_raster(
     else:
         src_filled = raster.filled()
 
-    dst_transform, dst_width, dst_height = calculate_default_transform(
-        src_crs,
-        dst_crs,
-        width,
-        height,
-        *rasterio.transform.array_bounds(height, width, src_transform),
-    )
+    if dst_transform is None or dst_width is None or dst_height is None:
+        dst_transform, dst_width, dst_height = calculate_default_transform(
+            src_crs,
+            dst_crs,
+            width,
+            height,
+            *rasterio.transform.array_bounds(height, width, src_transform),
+        )
 
     dst = np.empty((dst_height, dst_width), dtype=src_filled.dtype)
 

@@ -26,12 +26,12 @@ lr_scheduler:
   # milestones: [30, 40] # if using multistep
 
 training:
-  max_epochs: 10
+  max_epochs: 2
   # Logging frequency in epochs
   log_every_n_epoch: 1
 
 evaluation:
-  best_ckpt_metrics: ["spearman"] # loss, ssim, mae, etc
+  best_ckpt_metrics: ["ccc"] # loss, ssim, mae, etc
   best_ckpt_metrics_mode: ["max"] # max, or min
   checkpoint_filename: "best.pth" # option to load best or last
 
@@ -39,8 +39,8 @@ data:
   root_dir: "../burnp3plus/data_samples_v1"
   raw_data_dir: "../burnp3plus"
 
-  train_split: "train_indices.csv"
-  val_split: "val_indices.csv"
+  train_split: "test_indices.csv"
+  val_split: "test_indices.csv"
   test_split: "test_indices.csv"
 
   batch_size: 64

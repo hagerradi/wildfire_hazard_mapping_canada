@@ -254,8 +254,8 @@ def evaluate_and_visualize_hexels(
             modelling_approach=modelling_approach,
             out_norm=out_norm,
             stitch_mode="mean",
-            win_h=128,
-            win_w=128,
+            win_h=config.data_prep.win_h,
+            win_w=config.data_prep.win_w,
         )
         save_predicted_hexels(reconstructed_hexel_denorm, gt_elevation_grid_profile, hex_id, config.save_dir)
         # Save the hex as plt plot
