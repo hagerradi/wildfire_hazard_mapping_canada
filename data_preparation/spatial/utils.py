@@ -243,7 +243,12 @@ def reproject_raster(
     else:
         src_filled = raster.filled()
 
-    if dst_transform is None or dst_width is None or dst_height is None:
+    has_reference_grid = dst_transform is not None and dst_width is not None and dst_height is not None
+
+    if not has_reference_grid:
+        if dst_transform is not None or dst_width is not None or dst_height is not None:
+            raise ValueError("dst_transform, dst_width, and dst_height must be provided together.")
+
         dst_transform, dst_width, dst_height = calculate_default_transform(
             src_crs,
             dst_crs,
@@ -252,7 +257,13 @@ def reproject_raster(
             *rasterio.transform.array_bounds(height, width, src_transform),
         )
 
-    dst = np.empty((dst_height, dst_width), dtype=src_filled.dtype)
+    if dst_transform is None or dst_width is None or dst_height is None:
+        raise ValueError("dst_transform, dst_width, and dst_height must be resolved before reprojection.")
+
+    if src_nodata is not None:
+        dst = np.full((dst_height, dst_width), src_nodata, dtype=src_filled.dtype)
+    else:
+        dst = np.empty((dst_height, dst_width), dtype=src_filled.dtype)
 
     reproject(
         source=src_filled,
