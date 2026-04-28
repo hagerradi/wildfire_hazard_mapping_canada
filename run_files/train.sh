@@ -6,9 +6,9 @@
 #SBATCH --error=logs/job_%x_%j.err
 #SBATCH --partition=long
 #SBATCH --ntasks=1
-#SBATCH --time=05:59:00
-#SBATCH --mem-per-cpu=10Gb
-#SBATCH --cpus-per-task=2
+#SBATCH --time=15:59:00
+#SBATCH --mem-per-cpu=20Gb
+#SBATCH --cpus-per-task=4
 #SBATCH --gres=gpu:a100:1
 
 # Capture the first argument, default to 'configs/default_v1.yaml' if empty

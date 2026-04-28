@@ -36,7 +36,7 @@ evaluation:
   checkpoint_filename: "best.pth" # option to load best or last
 
 data:
-  root_dir: "/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA/data_samples_v2"
+  root_dir: "/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA/data_samples_v3"
   raw_data_dir: "/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA"
 
   train_split: "train_indices.csv"
