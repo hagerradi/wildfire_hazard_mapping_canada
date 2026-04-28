@@ -103,7 +103,7 @@ class DataConfig(BaseModel):
     val_split: str
     test_split: str
     filename_col: str = "filename"
-    valid_mask_threshold: float = 0.4
+    valid_mask_threshold: float = 0.01
 
     input_sources: list[DataSourceConfig]
 

@@ -55,6 +55,8 @@ data:
   batch_size: 64
   num_workers: 2
 
+  valid_mask_threshold: 0.01
+
   input_sources:
     - name: "grid"
       params:

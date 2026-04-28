@@ -25,6 +25,7 @@ def stitch_windows(
         counter = np.zeros(original_shape, dtype=dtype)
 
         for window, mask, (r, c) in zip(windows, masks, coords):
+            window = np.array(window, copy=True)
             window[~mask] = 0.0
             h_win, w_win = window.shape[:2]
 
@@ -40,7 +41,7 @@ def stitch_windows(
 
         # Normalize
         valid_mask = counter > 0
-        reconstructed = np.zeros_like(accumulator)
+        reconstructed = np.full(original_shape, np.nan, dtype=dtype)
         reconstructed[valid_mask] = accumulator[valid_mask] / counter[valid_mask]
 
         return reconstructed
@@ -51,6 +52,7 @@ def stitch_windows(
         accumulator = np.full(original_shape, -np.inf, dtype=dtype)
 
         for window, mask, (r, c) in zip(windows, masks, coords):
+            window = np.array(window, copy=True)
             h_win, w_win = window.shape[:2]
             window[~mask] = -np.inf
             # Safe slicing
@@ -65,8 +67,8 @@ def stitch_windows(
 
             accumulator[r:r_end, c:c_end] = np.maximum(current_area, new_data)
 
-        # Replace remaining -inf with 0 (areas where no window was placed)
-        accumulator[np.isinf(accumulator)] = 0.0
+        # Leave areas with no valid window contribution as NaN
+        accumulator[np.isinf(accumulator)] = np.nan
 
         return accumulator
 

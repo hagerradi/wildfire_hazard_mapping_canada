@@ -37,9 +37,10 @@ def save_predicted_hexels(predicted_hexel: np.ndarray, hexel_profile: Profile, h
     """
     out_path = os.path.join(save_dir, "predicted_hexels", f"hexel_{hex_id}_predicted.tif")
     os.makedirs(os.path.join(save_dir, "predicted_hexels"), exist_ok=True)
-    print("Shape of predicted array", predicted_hexel.shape)
+    nodata = hexel_profile.get("nodata", -9999)
+    write_array = np.where(np.isfinite(predicted_hexel), predicted_hexel, nodata).astype(hexel_profile["dtype"])
     with rasterio.open(out_path, "w", **hexel_profile) as dst:
-        dst.write(predicted_hexel, 1)
+        dst.write(write_array, 1)
 
 
 def get_stitched_windows(
@@ -260,7 +261,11 @@ def evaluate_and_visualize_hexels(
         save_predicted_hexels(reconstructed_hexel_denorm, gt_elevation_grid_profile, hex_id, config.save_dir)
         # Save the hex as plt plot
         all_paths = Paths(hex_id=hex_id, root_dir=raw_data_dir)
-        grid_gt, _ = load_spatial_raster(path=all_paths.output_burn_prob(), actual_mask_path=all_paths.mask_grid_actual(hex_id=hex_id))
+        grid_gt, _ = load_spatial_raster(
+            path=all_paths.output_burn_prob(),
+            actual_mask_path=all_paths.mask_grid_actual(hex_id=hex_id),
+            reference_profile=gt_elevation_grid_profile,
+        )
 
         visualize_burn_prob_grids(
             gt_grid=grid_gt,
