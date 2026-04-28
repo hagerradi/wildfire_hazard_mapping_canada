@@ -29,8 +29,8 @@ evaluation:
   checkpoint_filename: "best.pth" # option to load best or last
 
 data:
-  root_dir: "../yan_bp3/data_samples_approach_2"
-  raw_data_dir: "../yan_bp3"
+  root_dir: "../burnp3plus/data_samples_approach_2"
+  raw_data_dir: "../burnp3plus"
 
   train_split: "train_indices.csv"
   val_split: "val_indices.csv"
@@ -51,7 +51,7 @@ data:
 
 logger:
   enabled: True
-  project_name: "nrcan-wildfireriskmapping"
+  project_name: "nrcan05-wildfireriskmapping"
   workspace: "mila-amlrt"
   experiment_name: "unet_run_001_approach_2"
   tags: ["baseline", "first-exp", "modelling_approach=2", "fuel_one_hot_encoding", "KL-loss", "3inputfeatures", "standardized_probs", "masked_metrics"]

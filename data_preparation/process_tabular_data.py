@@ -9,14 +9,14 @@ from pathlib import Path
 
 import pandas as pd
 
-from data_preparation.feature_processing.weather import load_weather_list, preprocess_weather_list
+from data_preparation.tabular.weather import load_weather_list, preprocess_weather_list
 from data_preparation.utils import aggregate_csv_by_pattern, find_file_path, process_fire_size_df
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 
-def build_weather_table(root_dir: Path, save_path: Path, pattern: str = "hex*/burning_conditions_module/hex_*_weather*.csv"):
+def build_weather_table(root_dir: Path, save_path: Path, pattern: str = "hex*/tabular/hex*_DailyWeather.csv"):
     """
     Aggregates weather CSVs into a single table and applies global preprocessing.
     Args:

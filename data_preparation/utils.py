@@ -8,22 +8,10 @@ import pandas as pd
 from matplotlib import pyplot as plt
 from sklearn.model_selection import train_test_split
 
-from data_preparation.paths import OUTPUT_BURN_PROB_PATH
+from data_preparation.paths import Paths
 
-feature_names = ["ignition_grid", "esc_fires_grid", "fuel_grid", "elevation_grid", "weather_grid", "wind_grid", "out_grid"]
-WEATHER_FEATURE_COLS = ["temp", "rh", "ws", "wd", "prec", "ffmc", "dmc", "dc", "isi", "bui", "fwi"]
+feature_names = ["fuel_grid", "elevation_grid", "ignition_grid", "firezones_grid", "bp_out_grid", "fi_out_grid", "ros_out_grid"]
 FIRE_SIZE_FEATURE_COLS = ["GRIDCODE", "SIZE_HA"]
-HEX_ID_NA = ["52", "53", "04", "25", "47", "48"]
-
-feature_count_map = {
-    "ignition_prob": 1,
-    "esc_fire_prob": 1,
-    "weather_params": 16,  # mean, var for 8 features
-    "fuel_grid": 1,
-    "wind_grid": 16,  # u, v for 8 directions
-    "elevation_grid": 1,
-    "out_burn_prob": 1,
-}
 
 
 def find_file_path(filename: str, *search_dirs: Path) -> Path:
@@ -87,43 +75,6 @@ def aggregate_csv_by_pattern(root_dir: Path, pattern: str, load_function: Callab
     return full_df
 
 
-def find_simulation_output_file(root_dir: str, hex_id: str, output_type: str, season: str = None, cause: str = None) -> str:
-    """
-    Helper to get the right raster file.
-
-    Args:
-        root_dir (str): The root dir.
-        hex_id (str): The hexel ID.
-        output_type (str): Either 'count' or 'prob'.
-        season (str): The season.
-        cause (str): The cause.
-
-    """
-    outputs_dir = os.path.join(root_dir, OUTPUT_BURN_PROB_PATH)
-
-    if output_type == "count":
-        suffix = "_bc.tif"
-    elif output_type == "prob":
-        suffix = "_bp.tif"
-    else:
-        raise ValueError(f"Invalid output_type: {output_type}.")
-
-    if season is not None and cause is not None:
-        fname = f"hex_{hex_id}_season_{season}_cause_{cause}{suffix}"
-        return os.path.join(outputs_dir, fname)
-
-    else:
-        pattern = f"hex_{hex_id}_*iter{suffix}"
-        matches = list(Path(outputs_dir).glob(pattern))
-
-        if not matches:
-            raise FileNotFoundError(f"No global file found matching '{pattern}' in {outputs_dir}")
-        if len(matches) > 1:
-            raise RuntimeError(f"Multiple {output_type} files found: {matches}")
-
-        return str(matches[0])
-
-
 def find_hex_ids(root_dir: str) -> list:
     hex_ids = []
     try:
@@ -139,20 +90,15 @@ def find_hex_ids(root_dir: str) -> list:
     return hex_ids
 
 
-def get_min_max_hex_prob_df(data_dir: str) -> list:
+def get_min_max_hex_prob_df(root_dir: str) -> list:
     """create a list of burn prob dist for stratified sampling"""
-    from data_preparation.grid_loader.output import load_output_burn_grid
+    from data_preparation.spatial import load_spatial_raster
 
-    output_type, season, cause = "prob", None, None
-    all_hex_ids = find_hex_ids(data_dir)
+    all_hex_ids = find_hex_ids(root_dir)
     hex_min_max_bp = []
     for hex_id in all_hex_ids:
-        if hex_id in HEX_ID_NA:
-            print("======Skipping hex=======", hex_id)
-            continue
-        root_dir = os.path.join(data_dir, f"hex{hex_id}")
-        fpath = find_simulation_output_file(root_dir, hex_id, output_type, season=season, cause=cause)
-        out_grid = load_output_burn_grid(fpath)
+        all_paths = Paths(hex_id=hex_id, root_dir=root_dir)
+        out_grid, _ = load_spatial_raster(all_paths.output_burn_prob())
         out_grid_ravel = out_grid.ravel()
         area_burnt = len(out_grid_ravel[out_grid_ravel != 0.0]) / len(out_grid_ravel)
         hex_min_max_bp.append([hex_id, np.nanmin(out_grid), np.min(out_grid[out_grid != 0.0]), np.nanmax(out_grid), area_burnt])

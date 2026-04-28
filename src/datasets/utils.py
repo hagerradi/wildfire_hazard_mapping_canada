@@ -1,16 +1,16 @@
 import numpy as np
 
-from data_preparation.grid_loader.utils import fuel_ranking
+from data_preparation.spatial.utils import FUEL_GROUP_MAP
 
-AVAILABLE_DATA_SOURCES = ["grid", "weather", "fire_size", "wind_grid_mixer", "wind_grid_spatial"]
-MAX_FUEL_GRID = float(max(fuel_ranking.values()))
+AVAILABLE_DATA_SOURCES = ["grid", "weather", "fire_size"]
+MAX_FUEL_GRID = float(max(FUEL_GROUP_MAP.values()))
 
 
 def get_data_source_class(name: str):
     """
     Returns the source class dynamically to avoid circular imports.
     """
-    if name in ["grid", "wind_grid_mixer", "wind_grid_spatial"]:
+    if name in ["grid"]:
         from src.datasets.sources import GridSource
 
         return GridSource
@@ -26,7 +26,7 @@ def get_data_source_param_class(name: str):
     """
     Returns the param class dynamically to avoid circular imports.
     """
-    if name in ["grid", "wind_grid_mixer", "wind_grid_spatial"]:
+    if name in ["grid"]:
         from src.config import GridParams
 
         return GridParams

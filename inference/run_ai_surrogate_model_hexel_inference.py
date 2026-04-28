@@ -15,11 +15,12 @@ import yaml
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from data_preparation.grid_loader.output import load_output_burn_grid
-from data_preparation.hexel_loader import load_features_per_hexel
+from data_preparation.hexel_loader import load_spatial_features_per_hexel
+from data_preparation.paths import Paths
 from data_preparation.process_hexels_into_grids import get_split_hexel_window
 from data_preparation.process_tabular_data import build_weather_table, process_fire_size_distribution_table
-from data_preparation.utils import find_hex_ids, find_simulation_output_file
+from data_preparation.spatial.utils import load_spatial_raster
+from data_preparation.utils import find_hex_ids
 from inference.predictor import BurnRiskPredictor
 from src.datasets.dataset import MultiSourceDataset
 from src.datasets.postprocessing.utils import get_predicted_hexel, save_predicted_hexels, visualize_burn_prob_grids
@@ -88,13 +89,11 @@ def prepare_hexel_data(
         raise ValueError(f"Hexel ID {hex_id} not found in {data_dir}. Check logs for details.")
 
     logger.info(f"Loading features for hexel {hex_id}...")
-    stacked_feats, mask, season_cause_mapping = load_features_per_hexel(
+    stacked_feats, mask, season_cause_mapping = load_spatial_features_per_hexel(
         root_dir=str(data_dir),
         hex_id=hex_id,
         feature_channel_map_path=str(feature_channel_map_path),
         modelling_approach=modelling_approach,
-        output_type=output_type,
-        weather_sampling=weather_sampling,
     )
 
     if stacked_feats is None or mask is None:
@@ -258,9 +257,8 @@ def run_single_hexel_pipeline(
     save_predicted_hexels(
         predicted_hexel=reconstructed_hexel_denorm, hexel_profile=gt_elevation_grid_profile, hex_id=hex_id, save_dir=str(save_dir)
     )
-    hex_dir = data_dir / f"hex{hex_id}"
-    gt_path = find_simulation_output_file(str(hex_dir), hex_id, output_type=data_prep_config["output_type"])
-    gt_grid = load_output_burn_grid(gt_path)
+    all_paths = Paths(hex_id=hex_id, root_dir=data_dir)
+    gt_grid, _ = load_spatial_raster(path=all_paths.output_burn_prob(), actual_mask_path=all_paths.mask_grid_actual(hex_id=hex_id))
     visualize_burn_prob_grids(gt_grid=gt_grid, pred_grid=reconstructed_hexel_denorm, hex_id=hex_id, save_dir=str(save_dir))
     logger.info(f"Step 8: Saved reconstructed hexel and visualization for hexel {hex_id} in {save_dir}")
 

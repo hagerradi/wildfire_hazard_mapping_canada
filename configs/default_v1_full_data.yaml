@@ -36,8 +36,8 @@ evaluation:
   checkpoint_filename: "best.pth" # option to load best or last
 
 data:
-  root_dir: "/network/projects/amlrt/nrcan_wildfires/full_data/yan_bp3/data_samples_approach_1_final"
-  raw_data_dir: "/network/projects/amlrt/nrcan_wildfires/full_data/yan_bp3"
+  root_dir: "/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA/data_samples_v3"
+  raw_data_dir: "/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA"
 
   train_split: "train_indices.csv"
   val_split: "val_indices.csv"
@@ -45,6 +45,8 @@ data:
 
   batch_size: 64
   num_workers: 2
+
+  valid_mask_threshold: 0.01
 
   input_sources:
     - name: "grid"
@@ -58,7 +60,7 @@ data:
 
 logger:
   enabled: True
-  project_name: "nrcan-wildfireriskmapping"
+  project_name: "nrcan05-wildfireriskmapping"
   workspace: "mila-amlrt"
   experiment_name: "unet_full_data_spatial"
   tags: ["baseline", "full_data", "modelling_approach=1", "final_experiment", "ignition", "elevation", "fuel", "fuel_one_hot_encoding"]

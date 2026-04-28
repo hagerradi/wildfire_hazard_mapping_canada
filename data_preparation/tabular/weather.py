@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 
-from data_preparation.feature_processing.utils import WEATHER_FEATURE_NUMERIC_COLS, check_weather_list
+from data_preparation.tabular.utils import check_weather_list
 
 
 def wind_direction_to_sincos(wd: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -19,19 +19,19 @@ def wind_direction_to_sincos(wd: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
 def preprocess_weather_list(weather_list: pd.DataFrame) -> pd.DataFrame:
     """Preprocess/Normalize the Fire Weather List"""
     # prec usually follows power law and
-    weather_list["prec"] = np.log1p(weather_list["prec"])  # log1p is log(x+1)
+    weather_list["Precipitation"] = np.log1p(weather_list["Precipitation"])  # log1p is log(x+1)
 
     # These are bounded variables
-    min_max_cols = ["rh", "ffmc"]
+    min_max_cols = ["RelativeHumidity", "FineFuelMoistureCode"]
     scaler_mm = MinMaxScaler()
     weather_list[min_max_cols] = scaler_mm.fit_transform(weather_list[min_max_cols])
 
     # These are normal dist variables
-    z_score_cols = ["temp", "ws", "dmc", "dc", "isi", "bui"]
+    z_score_cols = ["Temperature", "WindSpeed", "DuffMoistureCode", "DroughtCode", "InitialSpreadIndex", "BuildupIndex", "FireWeatherIndex"]
     scaler_z = StandardScaler()
     weather_list[z_score_cols] = scaler_z.fit_transform(weather_list[z_score_cols])
 
-    wd_sin, wd_cos = wind_direction_to_sincos(np.array(weather_list["wd"]))
+    wd_sin, wd_cos = wind_direction_to_sincos(np.array(weather_list["WindDirection"]))
     weather_list["wd_sin"], weather_list["wd_cos"] = wd_sin, wd_cos
     return weather_list
 
@@ -46,7 +46,7 @@ def load_weather_list(weather_list_file_path: str, season: int | None = None, no
     weather_list = weather_list.loc[
         :, ~weather_list.columns.str.startswith("Unnamed:")
     ]  # Accounts for anomaly columns in hex 32 (just a repeat column of WeatherZone)
-    weather_list_subset = weather_list[weather_list["season"] == season].copy() if season else weather_list.copy()
+    weather_list_subset = weather_list[weather_list["Season"] == season].copy() if season else weather_list.copy()
 
     if normalize_weatherlist:
         return preprocess_weather_list(weather_list_subset)
