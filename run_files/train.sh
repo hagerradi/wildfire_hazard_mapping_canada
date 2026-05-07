@@ -1,5 +1,4 @@
 #!/bin/bash
-set -euo pipefail
 ##SBATCH --mail-type=all
 ##SBATCH --mail-user=name@mila.quebec
 #SBATCH --job-name=unet_full_data
@@ -11,6 +10,8 @@ set -euo pipefail
 #SBATCH --mem-per-cpu=20Gb
 #SBATCH --cpus-per-task=4
 #SBATCH --gres=gpu:a100:1
+
+set -euo pipefail
 
 # Capture the first argument, default to 'configs/default_v1.yaml' if empty
 CONFIG_FILE=${1:-configs/default_v1.yaml}
