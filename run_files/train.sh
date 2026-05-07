@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 ##SBATCH --mail-type=all
 ##SBATCH --mail-user=name@mila.quebec
 #SBATCH --job-name=unet_full_data
@@ -14,10 +15,108 @@
 # Capture the first argument, default to 'configs/default_v1.yaml' if empty
 CONFIG_FILE=${1:-configs/default_v1.yaml}
 
+cd "${SLURM_SUBMIT_DIR:-$(pwd)}"
 mkdir -p logs
 source .venv/bin/activate
-export COMET_API_KEY=$COMET_API_KEY
-echo "Running training with config: $CONFIG_FILE"
-python -m src.train --config="$CONFIG_FILE"
-echo "Running evaluation with config: $CONFIG_FILE"
-python -m src.evaluate_hexels --config="$CONFIG_FILE"
+
+if [[ -z "${COMET_API_KEY:-}" ]]; then
+    echo "ERROR: COMET_API_KEY must be exported before submitting this job." >&2
+    exit 1
+fi
+
+RUN_CONFIG_FILE="$CONFIG_FILE"
+ORIGINAL_DATA_ROOT_DIR=""
+
+if [[ -n "${SLURM_TMPDIR:-}" ]]; then
+    echo "Using SLURM_TMPDIR for staged dataset: ${SLURM_TMPDIR}"
+
+    ORIGINAL_DATA_ROOT_DIR=$(python - "$CONFIG_FILE" <<'PY'
+import sys
+from pathlib import Path
+
+import yaml
+
+config_path = Path(sys.argv[1])
+with config_path.open() as handle:
+    config = yaml.safe_load(handle)
+
+print(Path(config["data"]["root_dir"]).resolve())
+PY
+)
+
+    STAGE_PARENT="${SLURM_TMPDIR}/nrcan_wildfireriskmapping_data"
+    STAGED_DATA_ROOT_DIR="${STAGE_PARENT}/$(basename "$ORIGINAL_DATA_ROOT_DIR")"
+    mkdir -p "$STAGE_PARENT"
+
+    echo "Staging data.root_dir:"
+    echo "  from: ${ORIGINAL_DATA_ROOT_DIR}"
+    echo "  to:   ${STAGED_DATA_ROOT_DIR}"
+    df -h "$SLURM_TMPDIR" || true
+
+    if command -v rsync >/dev/null 2>&1; then
+        rsync -a "${ORIGINAL_DATA_ROOT_DIR}/" "${STAGED_DATA_ROOT_DIR}/"
+    else
+        mkdir -p "$STAGED_DATA_ROOT_DIR"
+        cp -a "${ORIGINAL_DATA_ROOT_DIR}/." "$STAGED_DATA_ROOT_DIR/"
+    fi
+
+    echo "Staged dataset size:"
+    du -sh "$STAGED_DATA_ROOT_DIR" || true
+
+    RUN_CONFIG_FILE="${SLURM_TMPDIR}/$(basename "${CONFIG_FILE%.yaml}")_slurm_tmpdir.yaml"
+    python - "$CONFIG_FILE" "$RUN_CONFIG_FILE" "$STAGED_DATA_ROOT_DIR" <<'PY'
+import sys
+from pathlib import Path
+
+import yaml
+
+source_config = Path(sys.argv[1])
+run_config = Path(sys.argv[2])
+staged_root = Path(sys.argv[3])
+
+with source_config.open() as handle:
+    config = yaml.safe_load(handle)
+
+config["data"]["root_dir"] = str(staged_root)
+
+with run_config.open("w") as handle:
+    yaml.safe_dump(config, handle, sort_keys=False)
+
+print(f"Wrote staged config: {run_config}")
+PY
+else
+    echo "SLURM_TMPDIR is not set; using config data.root_dir directly."
+fi
+
+echo "Running training with config: $RUN_CONFIG_FILE"
+python -m src.train --config="$RUN_CONFIG_FILE"
+
+if [[ -n "$ORIGINAL_DATA_ROOT_DIR" ]]; then
+    echo "Restoring checkpoint config data.root_dir to persistent path: ${ORIGINAL_DATA_ROOT_DIR}"
+    python - "$RUN_CONFIG_FILE" "$ORIGINAL_DATA_ROOT_DIR" <<'PY'
+import sys
+from pathlib import Path
+
+import torch
+import yaml
+
+run_config = Path(sys.argv[1])
+original_root = sys.argv[2]
+
+with run_config.open() as handle:
+    config = yaml.safe_load(handle)
+
+save_dir = Path(config["save_dir"])
+for checkpoint_name in ("best.pth", "last.pth"):
+    checkpoint_path = save_dir / checkpoint_name
+    if not checkpoint_path.exists():
+        continue
+    checkpoint = torch.load(checkpoint_path, map_location="cpu")
+    checkpoint["config"]["data"]["root_dir"] = original_root
+    torch.save(checkpoint, checkpoint_path)
+    print(f"Updated {checkpoint_path}")
+PY
+fi
+
+echo "Running evaluation with config: $RUN_CONFIG_FILE"
+python -m src.evaluate_hexels --config="$RUN_CONFIG_FILE"
