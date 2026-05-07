@@ -64,6 +64,7 @@ class GridParams(BaseModel):
     """Specific parameters for the GridSource."""
 
     feature_names_list: list[str]
+    target_name: str = "bp"
     # TODO: move out_norm outside of grid source config since it's for GT
     out_norm: str = "min_max"
     fuel_feats_encoding: str = "one_hot"

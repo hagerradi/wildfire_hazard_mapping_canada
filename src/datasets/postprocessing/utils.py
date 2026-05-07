@@ -15,7 +15,7 @@ from data_preparation.spatial.utils import (
     get_range_output,
     load_spatial_raster,
 )
-from src.config import Config
+from src.config import Config, GridParams
 from src.datasets.postprocessing.stitch_hexel import stitch_windows
 from src.datasets.postprocessing.visualize_predictions import (
     plot_hexbin_distribution,
@@ -23,6 +23,7 @@ from src.datasets.postprocessing.visualize_predictions import (
     visualize_burn_prob_grids,
     visualize_hexel_iou,
 )
+from src.datasets.targets import TargetSpec, get_target_spec
 from src.logger import CometLogger
 
 
@@ -141,6 +142,13 @@ def get_predicted_hexel(
     return reconstructed_hexel_denorm, gt_elevation_grid_profile
 
 
+def get_config_target_spec(config: Config) -> TargetSpec:
+    for source in config.data.input_sources:
+        if source.name == "grid" and isinstance(source.params, GridParams):
+            return get_target_spec(source.params.target_name)
+    return get_target_spec("bp")
+
+
 def calculate_hexel_metrics_pytorch(
     gt_grid: np.ndarray, pred_grid: np.ndarray, device: torch.device, metric_functions: dict[str, Callable]
 ) -> dict[str, float]:
@@ -217,8 +225,9 @@ def evaluate_and_visualize_hexels(
     raw_data_dir = config.data.raw_data_dir
     modelling_approach = config.modelling_approach
     valid_mask_threshold = config.data.valid_mask_threshold
+    target = get_config_target_spec(config)
 
-    max_target_val, min_target_val = get_range_output(root_dir=raw_data_dir, output_type="fire_burn_probability")
+    max_target_val, min_target_val = get_range_output(root_dir=raw_data_dir, output_type=target.output_type)
 
     if isinstance(test_predictions, str):
         raise TypeError(f"Expected ndarray, but got string: {test_predictions}")
@@ -261,8 +270,9 @@ def evaluate_and_visualize_hexels(
         save_predicted_hexels(reconstructed_hexel_denorm, gt_elevation_grid_profile, hex_id, config.save_dir)
         # Save the hex as plt plot
         all_paths = Paths(hex_id=hex_id, root_dir=raw_data_dir)
+        target_path = getattr(all_paths, target.path_method)()
         grid_gt, _ = load_spatial_raster(
-            path=all_paths.output_burn_prob(),
+            path=target_path,
             actual_mask_path=all_paths.mask_grid_actual(hex_id=hex_id),
             reference_profile=gt_elevation_grid_profile,
         )
@@ -273,6 +283,7 @@ def evaluate_and_visualize_hexels(
             hex_id=hex_id,
             save_dir=config.save_dir,
             experiment_logger=experiment_logger,
+            target_label=target.label,
         )
 
         # plot and save hexbin figures (for calibration)
@@ -282,6 +293,8 @@ def evaluate_and_visualize_hexels(
             hex_id=hex_id,
             save_dir=config.save_dir,
             experiment_logger=experiment_logger,
+            target_label=target.label,
+            probability_scale=target.probability_scale,
         )
 
         # plot and save hist. figures
@@ -291,6 +304,8 @@ def evaluate_and_visualize_hexels(
             hex_id=hex_id,
             save_dir=config.save_dir,
             experiment_logger=experiment_logger,
+            target_label=target.label,
+            probability_scale=target.probability_scale,
         )
 
         # compute per-hexel metrics
@@ -310,7 +325,16 @@ def evaluate_and_visualize_hexels(
             # generate the TopK IoU plots
             for p in percentiles_to_plot:
                 pred_bin, gt_bin = get_hexel_binary_maps(reconstructed_hexel_denorm, grid_gt, percentile=p)
-                visualize_hexel_iou(grid_gt, reconstructed_hexel_denorm, gt_bin, pred_bin, hex_id, config.save_dir, p)
+                visualize_hexel_iou(
+                    grid_gt,
+                    reconstructed_hexel_denorm,
+                    gt_bin,
+                    pred_bin,
+                    hex_id,
+                    config.save_dir,
+                    p,
+                    target_label=target.label,
+                )
 
         print(f"=======Saved subplots for hex{hex_id}==============")
 

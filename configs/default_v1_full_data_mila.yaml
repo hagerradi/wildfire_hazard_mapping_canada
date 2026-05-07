@@ -45,6 +45,7 @@ data:
     - name: "grid"
       params:
         feature_names_list: ["ignition_grid", "fuel_grid", "elevation_grid"]
+        target_name: "bp"
         out_norm: "min_max"
         fuel_feats_encoding: "one_hot"
         normalize_fuel_feats_ordinal: True

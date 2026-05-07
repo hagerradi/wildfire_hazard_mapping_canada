@@ -58,6 +58,8 @@ def temp_data_dir():
             # Add some NaNs to input channels
             arr[:, :, 3] = 100.0  # Force fire zone channel to be '100.0' so it matches weather CSV below.
             arr[:, :, 4] = 0.25  # Keep bp_out_grid deterministic.
+            arr[:, :, 5] = 0.50  # Keep fi_out_grid deterministic.
+            arr[:, :, 6] = 0.75  # Keep ros_out_grid deterministic.
             arr[1, 1, :] = np.nan
             arr[10, 20, :] = np.nan
             np.save(os.path.join(tmpdir, fname), arr)
@@ -211,7 +213,7 @@ def test_grid_source_rejects_invalid_explicit_raw_data_dir(temp_data_dir, monkey
         fuel_feats_encoding="ordinal",
     )
 
-    with pytest.raises(ValueError, match="Invalid burn probability normalization range"):
+    with pytest.raises(ValueError, match="Invalid Burn Probability normalization range"):
         GridSource(root_dir=tmpdir, raw_data_dir="/bad/raw", params=grid_params, modelling_approach="1")
 
 
@@ -390,10 +392,19 @@ def test_tabular_weighted_sampling(temp_data_dir):
         np.random.choice = original_choice
 
 
-def test_grid_output_channel_from_feature_map(temp_data_dir):
+@pytest.mark.parametrize(
+    ("target_name", "expected_value"),
+    [
+        ("bp", 0.25),
+        ("fi", 0.50),
+        ("ros", 0.75),
+    ],
+)
+def test_grid_output_channel_from_feature_map(temp_data_dir, target_name, expected_value):
     tmpdir, *_ = temp_data_dir
     grid_params = GridParams(
         feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],
+        target_name=target_name,
         out_norm="none",
         fuel_feats_encoding="ordinal",
         normalize_fuel_feats_ordinal=True,
@@ -402,4 +413,25 @@ def test_grid_output_channel_from_feature_map(temp_data_dir):
     _, target, mask = grid_source.get_sample({"file_path": os.path.join(tmpdir, "sample_0.npy")})
     target_np = target.squeeze(0).numpy()
     mask_np = mask.squeeze(0).numpy()
-    np.testing.assert_allclose(target_np[mask_np], 0.25, rtol=1e-6, atol=1e-6)
+    np.testing.assert_allclose(target_np[mask_np], expected_value, rtol=1e-6, atol=1e-6)
+
+
+def test_grid_target_nan_excluded_from_mask(temp_data_dir):
+    tmpdir, *_ = temp_data_dir
+    sample_path = os.path.join(tmpdir, "sample_0.npy")
+    arr = np.load(sample_path)
+    arr[0, 0, 5] = np.nan
+    np.save(sample_path, arr)
+
+    grid_params = GridParams(
+        feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],
+        target_name="fi",
+        out_norm="none",
+        fuel_feats_encoding="ordinal",
+        normalize_fuel_feats_ordinal=True,
+    )
+    grid_source = GridSource(root_dir=tmpdir, params=grid_params, modelling_approach="1")
+    _, target, mask = grid_source.get_sample({"file_path": sample_path})
+
+    assert not mask.squeeze(0).numpy()[0, 0]
+    assert target.squeeze(0).numpy()[0, 0] == 0.0
