@@ -25,6 +25,7 @@ class GridSource(DataSource):
         params: GridParams,
         modelling_approach: str = "1",
         transform: Callable | None = None,
+        raw_data_dir: str | None = None,
     ):
         """
         Args:
@@ -36,9 +37,12 @@ class GridSource(DataSource):
             normalize_fuel_feats_ordinal (bool): If we want to normalize the ordinal encoded fuel feats
             modelling_approach (str): The approach used for modelling
             transform (callable, optional): Optional transform to be applied on a sample.
+            raw_data_dir (str, optional): Directory with raw per-hexel rasters used for normalization ranges.
         """
 
         self.root_dir = root_dir
+        self.raw_data_dir = raw_data_dir if raw_data_dir is not None else os.path.dirname(self.root_dir)
+        self._validate_raw_ranges = raw_data_dir is not None
         self.params = params
         self.modelling_approach = modelling_approach
         self.transform = transform
@@ -52,7 +56,14 @@ class GridSource(DataSource):
         # 1. Normalizations (for modelling approach 1)
         self.BURN_PROB_MAX, self.BURN_PROB_MIN = 1.0, 0.0
         if self.modelling_approach == "1" and self.out_norm == "min_max":
-            self.BURN_PROB_MAX, self.BURN_PROB_MIN = get_range_output(os.path.dirname(self.root_dir), "fire_burn_probability")
+            self.BURN_PROB_MAX, self.BURN_PROB_MIN = get_range_output(self.raw_data_dir, "fire_burn_probability")
+            if self._validate_raw_ranges:
+                self._validate_range(
+                    max_value=self.BURN_PROB_MAX,
+                    min_value=self.BURN_PROB_MIN,
+                    label="burn probability",
+                    source_dir=self.raw_data_dir,
+                )
 
         # 2. Update indices
         with open(os.path.join(self.root_dir, f"feature_channel_map_{self.modelling_approach}.json")) as f:
@@ -99,7 +110,23 @@ class GridSource(DataSource):
                             updated_input_channel_indices.append(channel_index + self.num_fuel_classes - 1)
                     self.input_channel_indices = updated_input_channel_indices
         # 3. normalization for elevation grid
-        self.ELEVATION_MAX, self.ELEVATION_MIN = get_range_elevation(os.path.dirname(self.root_dir))
+        self.ELEVATION_MAX, self.ELEVATION_MIN = get_range_elevation(self.raw_data_dir)
+        if self._validate_raw_ranges:
+            self._validate_range(
+                max_value=self.ELEVATION_MAX,
+                min_value=self.ELEVATION_MIN,
+                label="elevation",
+                source_dir=self.raw_data_dir,
+            )
+
+    @staticmethod
+    def _validate_range(max_value: float, min_value: float, label: str, source_dir: str) -> None:
+        if not np.isfinite(max_value) or not np.isfinite(min_value) or max_value <= min_value:
+            raise ValueError(
+                f"Invalid {label} normalization range from raw_data_dir={source_dir!r}: "
+                f"min={min_value}, max={max_value}. Check that raw_data_dir points to the raw hexel dataset, "
+                "not only the prepared patch directory."
+            )
 
     def get_sample(self, patch_info: dict):
         if "data" in patch_info:

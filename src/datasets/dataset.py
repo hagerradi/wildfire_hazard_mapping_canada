@@ -96,9 +96,15 @@ def build_dataset(config: DataConfig, csv_name: str, modelling_approach: str = "
 
         # Instantiate each data source class
         source_class = get_data_source_class(source_conf.name)
-        sources[source_conf.name] = source_class(
-            root_dir=config.root_dir, params=source_conf.params, modelling_approach=modelling_approach, transform=transform
-        )
+        source_kwargs = {
+            "root_dir": config.root_dir,
+            "params": source_conf.params,
+            "modelling_approach": modelling_approach,
+            "transform": transform,
+        }
+        if source_conf.name == "grid":
+            source_kwargs["raw_data_dir"] = config.raw_data_dir
+        sources[source_conf.name] = source_class(**source_kwargs)
 
     dataset = MultiSourceDataset(
         csv_name=csv_name,

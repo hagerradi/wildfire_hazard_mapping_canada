@@ -9,8 +9,8 @@ import pytest
 import torch
 import torchvision.transforms.functional as F
 
-from src.config import DataSourceConfig, GridParams, TabularParams
-from src.datasets.dataset import MultiSourceDataset
+from src.config import DataConfig, DataSourceConfig, GridParams, TabularParams
+from src.datasets.dataset import MultiSourceDataset, build_dataset
 from src.datasets.sources import GridSource, TabularSource
 from src.datasets.transforms import setup_augmentations
 
@@ -153,6 +153,66 @@ def test_multi_source_integration(temp_data_dir):
     assert weather.shape == (2, len(weather_feats))
     fire_size = sample["fire_size"]
     assert fire_size.shape == (2, len(fire_size_feats))
+
+
+def test_build_dataset_passes_raw_data_dir_to_grid_source(temp_data_dir, monkeypatch):
+    tmpdir, train_csv, _, _, _, _, _, _ = temp_data_dir
+    raw_data_dir = "/network/raw/source"
+    seen = {}
+
+    def fake_get_range_output(root_dir, output_type):
+        seen["output"] = (root_dir, output_type)
+        return 1.0, 0.0
+
+    def fake_get_range_elevation(root_dir):
+        seen["elevation"] = root_dir
+        return 1000.0, 0.0
+
+    monkeypatch.setattr("src.datasets.sources.grids.get_range_output", fake_get_range_output)
+    monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation", fake_get_range_elevation)
+
+    config = DataConfig(
+        root_dir=tmpdir,
+        raw_data_dir=raw_data_dir,
+        train_split=train_csv,
+        val_split="val.csv",
+        test_split="test.csv",
+        input_sources=[
+            DataSourceConfig(
+                name="grid",
+                params=GridParams(
+                    feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],
+                    out_norm="min_max",
+                    fuel_feats_encoding="ordinal",
+                ),
+            )
+        ],
+    )
+
+    ds = build_dataset(config=config, csv_name=train_csv, modelling_approach="1")
+
+    assert ds.sources["grid"].raw_data_dir == raw_data_dir
+    assert seen["output"] == (raw_data_dir, "fire_burn_probability")
+    assert seen["elevation"] == raw_data_dir
+
+
+def test_grid_source_rejects_invalid_explicit_raw_data_dir(temp_data_dir, monkeypatch):
+    tmpdir, _, _, _, _, _, _, _ = temp_data_dir
+
+    monkeypatch.setattr(
+        "src.datasets.sources.grids.get_range_output",
+        lambda root_dir, output_type: (float("-inf"), float("inf")),
+    )
+    monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation", lambda root_dir: (1000.0, 0.0))
+
+    grid_params = GridParams(
+        feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],
+        out_norm="min_max",
+        fuel_feats_encoding="ordinal",
+    )
+
+    with pytest.raises(ValueError, match="Invalid burn probability normalization range"):
+        GridSource(root_dir=tmpdir, raw_data_dir="/bad/raw", params=grid_params, modelling_approach="1")
 
 
 def test_grid_one_hot_encoding(temp_data_dir):

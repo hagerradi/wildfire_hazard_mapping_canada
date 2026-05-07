@@ -84,6 +84,7 @@ with run_config.open("w") as handle:
     yaml.safe_dump(config, handle, sort_keys=False)
 
 print(f"Wrote staged config: {run_config}")
+print(f"Using persistent raw_data_dir for normalization/evaluation: {config['data']['raw_data_dir']}")
 PY
 else
     echo "SLURM_TMPDIR is not set; using config data.root_dir directly."
