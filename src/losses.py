@@ -78,6 +78,30 @@ class MAELoss(nn.Module):
         return loss.sum() / denom
 
 
+class HuberLoss(nn.Module):
+    """
+    Huber/SmoothL1 loss on raw model outputs with optional mask.
+
+    This is intended for unconstrained regression targets, e.g. standardized log FI/ROS.
+    """
+
+    def __init__(self, beta: float = 1.0, eps: float = 1e-8):
+        super().__init__()
+        self.eps = eps
+        self.huber = nn.SmoothL1Loss(beta=beta, reduction="none")
+
+    def forward(self, logits: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None):
+        loss = self.huber(logits, targets)
+
+        if mask is None:
+            return loss.mean()
+
+        mask = mask.to(dtype=loss.dtype)
+        loss = loss * mask
+        denom = mask.sum().clamp_min(self.eps)
+        return loss.sum() / denom
+
+
 class DiceLoss(nn.Module):
     """
     Soft Dice loss for segmentation.

@@ -1,8 +1,7 @@
-# Full spatial-only FI baseline using the working Comet workspace.
-save_dir: "experiments/fi_spatial_v3_full_mila_loghuber"
+# Short Slurm smoke test for the spatial-only full-data FI log-Huber baseline.
+save_dir: "experiments/smoke_fi_spatial_v3_loghuber"
 
 modelling_approach: "1"
-
 seed: 42
 deterministic: True
 
@@ -16,11 +15,11 @@ optimizer:
   loss: "huber"
 
 lr_scheduler:
-  name: "cosine_warmup"
-  warmup_epochs: 5
+  name: null
+  warmup_epochs: 1
 
 training:
-  max_epochs: 50
+  max_epochs: 1
   log_every_n_epoch: 1
 
 evaluation:
@@ -32,13 +31,12 @@ data:
   root_dir: "/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA/data_samples_v3"
   raw_data_dir: "/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA"
 
-  train_split: "train_indices.csv"
-  val_split: "val_indices.csv"
-  test_split: "test_indices.csv"
+  train_split: "smoke_bp_train_indices_olutayot.csv"
+  val_split: "smoke_bp_val_indices_olutayot.csv"
+  test_split: "smoke_bp_test_indices_olutayot.csv"
 
-  batch_size: 64
+  batch_size: 8
   num_workers: 2
-
   valid_mask_threshold: 0.01
 
   input_sources:
@@ -58,8 +56,8 @@ logger:
   enabled: True
   project_name: "nrcan05-wildfireriskmapping"
   workspace: "mila"
-  experiment_name: "fi_spatial_v3_full_mila_loghuber"
-  tags: ["baseline", "full_data", "modelling_approach=1", "target=fi", "spatial_only", "data_samples_v3", "fuel_one_hot_encoding", "best_ckpt=loss", "loss=huber", "target_norm=log_standard"]
-  log_every_n_step: 10
+  experiment_name: "smoke_fi_spatial_v3_loghuber"
+  tags: ["smoke", "baseline", "full_data", "modelling_approach=1", "target=fi", "spatial_only", "data_samples_v3", "fuel_one_hot_encoding", "best_ckpt=loss", "loss=huber", "target_norm=log_standard"]
+  log_every_n_step: 1
 
-metrics: ["mse", "mae", "mae_top01", "mae_top02", "mae_top05", "mae_top10", "spearman", "bias", "ccc", "iou_top005", "iou_top01", "iou_top02", "iou_top05", "iou_top10", "auc_iou_top10", "auc_iou_full"]
+metrics: ["mse", "mae", "spearman", "bias", "ccc", "iou_top10"]

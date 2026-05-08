@@ -9,7 +9,8 @@ from torch.optim.lr_scheduler import LRScheduler, ReduceLROnPlateau
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from src.config import Config
+from src.config import Config, GridParams
+from src.datasets.targets import get_target_spec
 from src.logger import CometLogger
 from src.losses import WeightedLoss
 from src.models.unet import BaselineUNet, MultiSourceUNet
@@ -67,7 +68,7 @@ class Trainer:
             if not self.auxiliary_input_dims:
                 raise ValueError("Config requests auxiliary features, but no auxiliary dim. were detected.")
 
-            print(f"[Trainer] Mode: Multi-Source (Spatial + auxiliary)")
+            print("[Trainer] Mode: Multi-Source (Spatial + auxiliary)")
             print(f"[Trainer] Spatial Channels: {self.spatial_input_channels}, Auxiliary Dim: {self.auxiliary_input_dims}")
 
             self.model = MultiSourceUNet(
@@ -131,6 +132,14 @@ class Trainer:
         # Validate and load metrics from config.
         self._validate_and_load_metrics()
 
+        self._use_sigmoid_predictions = self._should_use_sigmoid_predictions()
+
+    def _should_use_sigmoid_predictions(self) -> bool:
+        for source in self.config.data.input_sources:
+            if source.name == "grid" and isinstance(source.params, GridParams):
+                return get_target_spec(source.params.target_name).probability_scale
+        return True
+
     def _validate_and_load_metrics(self) -> None:
         """Helper to validate and load metrics to be computed."""
         if not set(self.config.metrics).issubset(AVAILABLE_METRICS):
@@ -165,7 +174,8 @@ class Trainer:
             total_loss = cast(torch.Tensor, loss_out)
             loss_parts = None
 
-        return torch.sigmoid(predictions), total_loss, loss_parts, targets, masks
+        metric_predictions = torch.sigmoid(predictions) if self._use_sigmoid_predictions else predictions
+        return metric_predictions, total_loss, loss_parts, targets, masks
 
     @staticmethod
     def _are_metrics_better(curr: list[float], best: list[float], modes: list[str]):

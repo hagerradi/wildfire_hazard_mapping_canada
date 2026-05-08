@@ -84,6 +84,8 @@ def get_predicted_hexel(
     hex_id: str,
     modelling_approach: str = "1",
     out_norm: str = "min_max",
+    target_log_mean: float | None = None,
+    target_log_std: float | None = None,
     stitch_mode: str = "mean",
     target_channel_index: int = 0,
     win_h: int = 128,
@@ -100,8 +102,8 @@ def get_predicted_hexel(
         path=all_paths.elevation_grid(hex_id=hex_id), actual_mask_path=all_paths.mask_grid_actual(hex_id=hex_id)
     )
 
-    # clip predictions between 0 and 1 in case of outliers
-    predictions = np.clip(predictions, 0, 1)
+    if out_norm in {"min_max", "log"}:
+        predictions = np.clip(predictions, 0, 1)
 
     if modelling_approach == "1":
         reconstructed_hexel = get_stitched_windows(
@@ -115,8 +117,13 @@ def get_predicted_hexel(
             win_h=win_h,
             win_w=win_w,
         )
-        reconstructed_hexel_denorm = denormalize_burn_prob(
-            data=reconstructed_hexel, min_val=min_target_val, max_val=max_target_val, out_norm=out_norm
+        reconstructed_hexel_denorm = denormalize_model_target(
+            data=reconstructed_hexel,
+            min_val=min_target_val,
+            max_val=max_target_val,
+            out_norm=out_norm,
+            target_log_mean=target_log_mean,
+            target_log_std=target_log_std,
         )
         gt_elevation_grid_profile.update(dtype="float32", compress="lzw", nodata=-9999)  # type: ignore
     else:
@@ -157,6 +164,36 @@ def get_config_target_spec(config: Config) -> TargetSpec:
     return get_target_spec("bp")
 
 
+def get_config_grid_params(config: Config) -> GridParams | None:
+    for source in config.data.input_sources:
+        if source.name == "grid" and isinstance(source.params, GridParams):
+            return source.params
+    return None
+
+
+def as_float_array_with_nan(data: np.ndarray) -> np.ndarray:
+    data_ma = np.ma.masked_invalid(np.ma.asarray(data).astype("float32"))
+    return np.asarray(data_ma.filled(np.nan), dtype=np.float32)
+
+
+def denormalize_model_target(
+    data: np.ndarray,
+    min_val: float,
+    max_val: float,
+    out_norm: str,
+    target_log_mean: float | None = None,
+    target_log_std: float | None = None,
+) -> np.ndarray:
+    if out_norm == "log_standard":
+        if target_log_mean is None or target_log_std is None:
+            raise ValueError("target_log_mean and target_log_std are required for out_norm='log_standard'.")
+        if target_log_std <= 0.0:
+            raise ValueError(f"target_log_std must be positive for out_norm='log_standard', got {target_log_std}.")
+        return np.clip(np.expm1(data.astype("float32") * target_log_std + target_log_mean), 0.0, None).astype("float32")
+
+    return denormalize_burn_prob(data=data, min_val=min_val, max_val=max_val, out_norm=out_norm)
+
+
 def get_target_channel_index(data_dir: str, modelling_approach: str, target: TargetSpec) -> int:
     feature_map_path = os.path.join(data_dir, f"feature_channel_map_{modelling_approach}.json")
     with open(feature_map_path) as f:
@@ -176,7 +213,10 @@ def calculate_hexel_metrics_pytorch(
     """
     Utils to convert 2D numpy hexels into torch tensors to run the global per-hexel eval. metrics.
     """
-    valid_mask_np = ~np.isnan(gt_grid) & ~np.isnan(pred_grid)
+    gt_grid = as_float_array_with_nan(gt_grid)
+    pred_grid = as_float_array_with_nan(pred_grid)
+
+    valid_mask_np = np.isfinite(gt_grid) & np.isfinite(pred_grid)
     valid_mask_np = valid_mask_np & (gt_grid >= 0.0)
 
     gt_clean = np.nan_to_num(gt_grid, nan=0.0)
@@ -200,7 +240,10 @@ def get_hexel_binary_maps(pred_grid: np.ndarray, gt_grid: np.ndarray, percentile
     """
     Utils to get the Top K percentile thresholds (binary maps) for full 2D numpy hexel grids.
     """
-    valid_mask = ~np.isnan(gt_grid) & ~np.isnan(pred_grid)
+    gt_grid = as_float_array_with_nan(gt_grid)
+    pred_grid = as_float_array_with_nan(pred_grid)
+
+    valid_mask = np.isfinite(gt_grid) & np.isfinite(pred_grid)
 
     p_valid = pred_grid[valid_mask]
     t_valid = gt_grid[valid_mask]
@@ -247,6 +290,7 @@ def evaluate_and_visualize_hexels(
     modelling_approach = config.modelling_approach
     valid_mask_threshold = config.data.valid_mask_threshold
     target = get_config_target_spec(config)
+    grid_params = get_config_grid_params(config)
     target_channel_index = get_target_channel_index(data_dir=data_dir, modelling_approach=modelling_approach, target=target)
 
     max_target_val, min_target_val = get_range_output(root_dir=raw_data_dir, output_type=target.output_type)
@@ -285,6 +329,8 @@ def evaluate_and_visualize_hexels(
             hex_id=hex_id,
             modelling_approach=modelling_approach,
             out_norm=out_norm,
+            target_log_mean=grid_params.target_log_mean if grid_params is not None else None,
+            target_log_std=grid_params.target_log_std if grid_params is not None else None,
             stitch_mode="mean",
             target_channel_index=target_channel_index,
             win_h=config.data_prep.win_h,

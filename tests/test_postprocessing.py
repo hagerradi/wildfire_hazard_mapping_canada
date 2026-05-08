@@ -1,10 +1,10 @@
-import os
-
 import numpy as np
 import pandas as pd
+import pytest
 
-from src.datasets.postprocessing.utils import get_stitched_windows
+from src.datasets.postprocessing.utils import denormalize_model_target, get_hexel_binary_maps, get_stitched_windows
 from src.datasets.postprocessing.visualize_predictions import get_distribution_axis_limit
+from src.datasets.utils import output_burn_prob_norm
 
 
 def test_get_stitched_windows_uses_target_channel_mask(tmp_path):
@@ -47,3 +47,58 @@ def test_distribution_axis_limit_only_caps_probability_scale():
 
     assert get_distribution_axis_limit(gt_vals, pred_vals, probability_scale=True) == 1.0
     assert get_distribution_axis_limit(gt_vals, pred_vals, probability_scale=False) > 3.0
+
+
+def test_log_standard_target_transform_roundtrip():
+    raw = np.array([[0.0, 1.0, 9.0]], dtype=np.float32)
+    mean = 1.25
+    std = 0.5
+
+    normalized = output_burn_prob_norm(
+        output_arr=raw,
+        burn_prob_max=10.0,
+        burn_prob_min=0.0,
+        out_norm="log_standard",
+        target_log_mean=mean,
+        target_log_std=std,
+    )
+    recovered = denormalize_model_target(
+        data=normalized,
+        min_val=0.0,
+        max_val=10.0,
+        out_norm="log_standard",
+        target_log_mean=mean,
+        target_log_std=std,
+    )
+
+    np.testing.assert_allclose(recovered, raw, rtol=1e-6, atol=1e-6)
+
+
+def test_log_standard_target_transform_requires_stats():
+    raw = np.array([[1.0]], dtype=np.float32)
+
+    with pytest.raises(ValueError, match="target_log_mean"):
+        output_burn_prob_norm(output_arr=raw, burn_prob_max=1.0, burn_prob_min=0.0, out_norm="log_standard")
+
+
+def test_get_hexel_binary_maps_respects_masked_arrays(recwarn):
+    pred = np.ma.array(
+        [[1.0, 5.0], [100.0, 2.0]],
+        mask=[[False, False], [True, False]],
+        dtype=np.float32,
+    )
+    gt = np.ma.array(
+        [[1.0, 4.0], [9.0, 3.0]],
+        mask=[[False, False], [True, False]],
+        dtype=np.float32,
+    )
+
+    pred_bin, gt_bin = get_hexel_binary_maps(pred_grid=pred, gt_grid=gt, percentile=0.5)
+
+    assert not recwarn
+    assert not pred_bin[1, 0]
+    assert pred_bin[0, 1]
+    assert pred_bin[1, 1]
+    assert not gt_bin[1, 0]
+    assert gt_bin[0, 1]
+    assert gt_bin[1, 1]

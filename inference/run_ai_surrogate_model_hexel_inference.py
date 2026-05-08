@@ -159,6 +159,13 @@ def get_target_spec_from_data_config(data_config: dict) -> TargetSpec:
     return get_target_spec("bp")
 
 
+def get_grid_params_from_data_config(data_config: dict) -> dict[str, Any]:
+    for source in data_config.get("input_sources", []):
+        if source.get("name") == "grid":
+            return source.get("params", {})
+    return {}
+
+
 def run_single_hexel_pipeline(
     checkpoint_path: Path,
     data_dir: Path,
@@ -254,6 +261,7 @@ def run_single_hexel_pipeline(
     # Step 7: Post-process predictions back to denormalized hexel
     logger.info("Step 7: Post-processing prediction patches into denormalized hexel...")
     target = get_target_spec_from_data_config(data_config)
+    grid_params = get_grid_params_from_data_config(data_config)
     max_target_val, min_target_val = get_range_output(root_dir=str(data_dir), output_type=target.output_type)
     target_channel_index = get_target_channel_index(
         data_dir=str(processed_data_dir),
@@ -268,6 +276,9 @@ def run_single_hexel_pipeline(
         min_target_val=min_target_val,
         max_target_val=max_target_val,
         hex_id=hex_id,
+        out_norm=grid_params.get("out_norm", "min_max"),
+        target_log_mean=grid_params.get("target_log_mean"),
+        target_log_std=grid_params.get("target_log_std"),
         target_channel_index=target_channel_index,
     )
 
@@ -321,7 +332,7 @@ def main():
 
     # Resolve "all" into the list of available hex IDs
     if hex_id == "all":
-        hex_ids_to_run = sorted(find_hex_ids(str(Path(config["data_dir"]))))
+        hex_ids_to_run = sorted(find_hex_ids(str(Path(data_dir))))
         logger.info(f"Running inference for all hexels: {hex_ids_to_run}")
     else:
         hex_ids_to_run = [hex_id]
@@ -331,13 +342,13 @@ def main():
     for hid in hex_ids_to_run:
         logger.info(f"\n\n========== Hexel {hid} ==========\n")
         run_single_hexel_pipeline(
-            checkpoint_path=Path(config["checkpoint_path"]),
-            data_dir=Path(config["data_dir"]),
+            checkpoint_path=Path(checkpoint_path),
+            data_dir=Path(data_dir),
             hex_id=hid,
             batch_size=batch_size,
             num_workers=num_workers,
             prepare_data=prepare_data,
-            save_dir=save_dir,
+            save_dir=Path(save_dir),
         )
 
     elapsed_time = time.time() - start_time

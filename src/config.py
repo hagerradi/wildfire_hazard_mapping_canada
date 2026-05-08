@@ -67,6 +67,8 @@ class GridParams(BaseModel):
     target_name: str = "bp"
     # TODO: move out_norm outside of grid source config since it's for GT
     out_norm: str = "min_max"
+    target_log_mean: float | None = None
+    target_log_std: float | None = None
     fuel_feats_encoding: str = "one_hot"
     normalize_fuel_feats_ordinal: bool = True
     transforms_list: list[str] = Field(default_factory=list)
