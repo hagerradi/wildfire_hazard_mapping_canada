@@ -1,4 +1,5 @@
 import functools
+import json
 import os
 from collections.abc import Callable
 
@@ -20,8 +21,8 @@ from src.datasets.postprocessing.stitch_hexel import stitch_windows
 from src.datasets.postprocessing.visualize_predictions import (
     plot_hexbin_distribution,
     plot_histogram_distribution,
-    visualize_burn_prob_grids,
     visualize_hexel_iou,
+    visualize_target_grids,
 )
 from src.datasets.targets import TargetSpec, get_target_spec
 from src.logger import CometLogger
@@ -50,6 +51,7 @@ def get_stitched_windows(
     predictions: np.ndarray,
     start_idx: int,
     gt_shape: tuple,
+    target_channel_index: int = 0,
     stitch_mode: str = "mean",
     win_h: int = 128,
     win_w: int = 128,
@@ -60,8 +62,11 @@ def get_stitched_windows(
     all_data_points, all_locations, all_masks = [], [], []
     for i, data in enumerate(np.array(df)):
         path = data[0]
-        array = np.load(os.path.join(base_dir, path))[:, :, 0]
-        mask = ~np.isnan(array)
+        array = np.load(os.path.join(base_dir, path))
+        if target_channel_index >= array.shape[2]:
+            raise ValueError(f"target_channel_index={target_channel_index} is out of bounds for patch with shape {array.shape}.")
+        target_array = array[:, :, target_channel_index]
+        mask = ~np.isnan(target_array)
         all_data_points.append(predictions[start_idx + i].reshape((win_h, win_w)))
         all_locations.append((data[5], data[6]))
         all_masks.append(mask.reshape((win_h, win_w)))
@@ -80,6 +85,7 @@ def get_predicted_hexel(
     modelling_approach: str = "1",
     out_norm: str = "min_max",
     stitch_mode: str = "mean",
+    target_channel_index: int = 0,
     win_h: int = 128,
     win_w: int = 128,
 ) -> tuple[np.ndarray, Profile]:
@@ -104,6 +110,7 @@ def get_predicted_hexel(
             predictions=predictions,
             start_idx=start_idx,
             gt_shape=tuple(gt_elevation_grid.shape),
+            target_channel_index=target_channel_index,
             stitch_mode=stitch_mode,
             win_h=win_h,
             win_w=win_w,
@@ -123,6 +130,7 @@ def get_predicted_hexel(
                 predictions=predictions,
                 start_idx=start_idx,
                 gt_shape=tuple(gt_elevation_grid.data.shape),
+                target_channel_index=target_channel_index,
                 stitch_mode=stitch_mode,
                 win_h=win_h,
                 win_w=win_w,
@@ -147,6 +155,19 @@ def get_config_target_spec(config: Config) -> TargetSpec:
         if source.name == "grid" and isinstance(source.params, GridParams):
             return get_target_spec(source.params.target_name)
     return get_target_spec("bp")
+
+
+def get_target_channel_index(data_dir: str, modelling_approach: str, target: TargetSpec) -> int:
+    feature_map_path = os.path.join(data_dir, f"feature_channel_map_{modelling_approach}.json")
+    with open(feature_map_path) as f:
+        channel_feature_map = json.load(f)
+
+    channel_indices = channel_feature_map.get(target.channel_key)
+    if not channel_indices:
+        raise ValueError(
+            f"Missing target channel {target.channel_key!r} in {feature_map_path}. " f"Available keys: {list(channel_feature_map.keys())}"
+        )
+    return int(channel_indices[0])
 
 
 def calculate_hexel_metrics_pytorch(
@@ -226,6 +247,7 @@ def evaluate_and_visualize_hexels(
     modelling_approach = config.modelling_approach
     valid_mask_threshold = config.data.valid_mask_threshold
     target = get_config_target_spec(config)
+    target_channel_index = get_target_channel_index(data_dir=data_dir, modelling_approach=modelling_approach, target=target)
 
     max_target_val, min_target_val = get_range_output(root_dir=raw_data_dir, output_type=target.output_type)
 
@@ -264,6 +286,7 @@ def evaluate_and_visualize_hexels(
             modelling_approach=modelling_approach,
             out_norm=out_norm,
             stitch_mode="mean",
+            target_channel_index=target_channel_index,
             win_h=config.data_prep.win_h,
             win_w=config.data_prep.win_w,
         )
@@ -277,7 +300,7 @@ def evaluate_and_visualize_hexels(
             reference_profile=gt_elevation_grid_profile,
         )
 
-        visualize_burn_prob_grids(
+        visualize_target_grids(
             gt_grid=grid_gt,
             pred_grid=reconstructed_hexel_denorm,
             hex_id=hex_id,
