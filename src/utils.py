@@ -8,7 +8,7 @@ import torch
 from matplotlib import pyplot as plt
 from torch.utils.data import DataLoader
 
-from src.losses import BCELoss, BernoulliKLLoss, DiceLoss, FocalLoss, MAELoss, MSELoss
+from src.losses import BCELoss, BernoulliKLLoss, DiceLoss, FocalLoss, HuberLoss, MAELoss, MSELoss
 from src.metrics import (
     compute_auc_iou,
     compute_bias,
@@ -55,6 +55,8 @@ def build_single_loss(name: str) -> torch.nn.Module:
         return MSELoss()
     if name in ["mae", "maeloss"]:
         return MAELoss()
+    if name in ["huber", "huberloss", "smoothl1", "smooth_l1", "smoothl1loss"]:
+        return HuberLoss()
     if name in ["focal", "focalloss"]:
         return FocalLoss()
     if name in ["dice", "diceloss"]:

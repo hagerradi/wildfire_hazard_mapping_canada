@@ -49,6 +49,8 @@ class GridSource(DataSource):
         self.target = get_target_spec(params.target_name)
         self.feature_names_list = params.feature_names_list
         self.out_norm = params.out_norm
+        self.target_log_mean = params.target_log_mean
+        self.target_log_std = params.target_log_std
         self.fuel_feats_encoding = params.fuel_feats_encoding
         self.normalize_fuel_feats_ordinal = params.normalize_fuel_feats_ordinal
         self.num_fuel_classes = int(max(FUEL_GROUP_MAP.values()) + 1)
@@ -159,7 +161,12 @@ class GridSource(DataSource):
         # 7. Perform output normalizations
         if self.modelling_approach == "1":
             output_arr = output_burn_prob_norm(
-                output_arr=output_arr, burn_prob_max=self.TARGET_MAX, burn_prob_min=self.TARGET_MIN, out_norm=self.out_norm
+                output_arr=output_arr,
+                burn_prob_max=self.TARGET_MAX,
+                burn_prob_min=self.TARGET_MIN,
+                out_norm=self.out_norm,
+                target_log_mean=self.target_log_mean,
+                target_log_std=self.target_log_std,
             )
 
         if input_arr is not None:

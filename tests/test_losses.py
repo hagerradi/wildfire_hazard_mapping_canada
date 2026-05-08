@@ -7,6 +7,7 @@ from src.losses import (
     BernoulliKLLoss,
     DiceLoss,
     FocalLoss,
+    HuberLoss,
     MAELoss,
     MSELoss,
     WeightedLoss,
@@ -108,6 +109,37 @@ def test_mae_loss_with_mask(dummy_data):
 
 def test_mae_loss_all_masked(dummy_data):
     loss_fn = MAELoss()
+    logits, _, _ = dummy_data
+    targets = torch.zeros_like(logits)
+    mask = torch.zeros_like(logits)
+    result = loss_fn(logits, targets, mask)
+    assert torch.isfinite(result)
+
+
+# -------------------------
+# Huber
+# -------------------------
+
+
+def test_huber_loss_no_mask_uses_raw_outputs(dummy_data):
+    logits, targets, _ = dummy_data
+    loss_fn = HuberLoss(beta=1.0)
+    expected = F.smooth_l1_loss(logits, targets, beta=1.0, reduction="mean")
+    result = loss_fn(logits, targets)
+    assert torch.allclose(result, expected, atol=1e-6)
+
+
+def test_huber_loss_with_mask_uses_raw_outputs(dummy_data):
+    logits, targets, masks = dummy_data
+    loss_fn = HuberLoss(beta=1.0)
+    loss = F.smooth_l1_loss(logits, targets, beta=1.0, reduction="none")
+    expected = (loss * masks).sum() / masks.sum()
+    result = loss_fn(logits, targets, masks)
+    assert torch.allclose(result, expected, atol=1e-6)
+
+
+def test_huber_loss_all_masked_is_finite(dummy_data):
+    loss_fn = HuberLoss()
     logits, _, _ = dummy_data
     targets = torch.zeros_like(logits)
     mask = torch.zeros_like(logits)

@@ -118,13 +118,30 @@ def log_norm(out_arr: np.ndarray, multiplier: int = 1000) -> np.ndarray:
     return np.log1p(multiplier * out_arr) / np.log1p(multiplier)
 
 
-def output_burn_prob_norm(output_arr: np.ndarray, burn_prob_max: float, burn_prob_min: float, out_norm: str) -> np.ndarray:
+def output_burn_prob_norm(
+    output_arr: np.ndarray,
+    burn_prob_max: float,
+    burn_prob_min: float,
+    out_norm: str,
+    target_log_mean: float | None = None,
+    target_log_std: float | None = None,
+) -> np.ndarray:
     """
-    Normalize the output burn prob map
+    Normalize the output target map.
     """
     if out_norm == "min_max":
         output_arr = (output_arr - burn_prob_min) / (burn_prob_max - burn_prob_min)
         output_arr = np.clip(output_arr, 0.0, 1.0)
     elif out_norm == "log":
         output_arr = log_norm(output_arr).astype(np.float32)
+    elif out_norm == "log_standard":
+        if target_log_mean is None or target_log_std is None:
+            raise ValueError("target_log_mean and target_log_std are required for out_norm='log_standard'.")
+        if target_log_std <= 0.0:
+            raise ValueError(f"target_log_std must be positive for out_norm='log_standard', got {target_log_std}.")
+        output_arr = (np.log1p(np.clip(output_arr, a_min=0.0, a_max=None)) - target_log_mean) / target_log_std
+    elif out_norm in {"none", "total_iters", "season_cause_iters"}:
+        pass
+    else:
+        raise ValueError(f"Unsupported output normalization: {out_norm!r}")
     return output_arr
