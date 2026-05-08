@@ -46,7 +46,7 @@ We assume `save_dir` is set to `outputs/` for the following paths. For each hexe
 ````
 inference/
 └── outputs/
-    ├── predicted_hexels/                    # Reconstructed hexel grid of predicted burn probabilities and geospatial profile from ground truth as GeoTIFF files
+    ├── predicted_hexels/                    # Reconstructed hexel grid of predicted target values and geospatial profile from ground truth as GeoTIFF files
     ├── predicted_hexels_plot/               # Visualizations comparing ground truth vs predictions for each hexel
     └── predicted_patches/                   # Normalized patch predictions (N, C, H, W) as .npy files
 ````
