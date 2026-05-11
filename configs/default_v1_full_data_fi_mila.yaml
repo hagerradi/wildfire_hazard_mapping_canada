@@ -1,4 +1,4 @@
-# Full spatial-only FI baseline using the working Comet workspace.
+# Full spatial-only FI baseline using the AMLRT Comet workspace.
 save_dir: "experiments/fi_spatial_v3_full_mila_loghuber"
 
 modelling_approach: "1"
@@ -57,7 +57,7 @@ data:
 logger:
   enabled: True
   project_name: "nrcan05-wildfireriskmapping"
-  workspace: "mila"
+  workspace: "mila-amlrt"
   experiment_name: "fi_spatial_v3_full_mila_loghuber"
   tags: ["baseline", "full_data", "modelling_approach=1", "target=fi", "spatial_only", "data_samples_v3", "fuel_one_hot_encoding", "best_ckpt=loss", "loss=huber", "target_norm=log_standard"]
   log_every_n_step: 10
