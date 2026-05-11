@@ -23,10 +23,11 @@ def generate_diff_map(
     target_pattern: str,
     pred_dir: str,
     pred_pattern: str,
-    title: str,
+    title: str | None,
+    target_label: str = "Burn Probability",
     downsample_factor: int = 1,
     show_hex_borders: bool = True,
-    output_path: str = None,
+    output_path: str | None = None,
 ):
     target_folder = Path(target_dir)
     pred_folder = Path(pred_dir)
@@ -137,7 +138,7 @@ def generate_diff_map(
 
     if im:
         cbar = plt.colorbar(im, ax=ax, fraction=0.02, pad=0.04)
-        cbar.set_label("Burn Probability Error (Prediction - Target)", fontsize=12)
+        cbar.set_label(f"{target_label} Error (Prediction - Target)", fontsize=12)
 
     if output_path:
         plt.savefig(output_path, bbox_inches="tight", facecolor="white")
@@ -154,6 +155,7 @@ def main():
     parser.add_argument("--pred-pattern", type=str, default="*predicted.tif")
     parser.add_argument("--downsample", type=int, default=1)
     parser.add_argument("--title", type=str, default=None)
+    parser.add_argument("--target-label", type=str, default="Burn Probability", help="Target name for the colorbar label.")
     parser.add_argument("--output", type=str, default="experiments/diff_map.png")
     args = parser.parse_args()
 
@@ -163,6 +165,7 @@ def main():
         pred_dir=args.pred_dir,
         pred_pattern=args.pred_pattern,
         title=args.title,
+        target_label=args.target_label,
         downsample_factor=args.downsample,
         output_path=args.output,
     )
