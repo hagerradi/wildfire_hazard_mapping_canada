@@ -53,7 +53,7 @@ def visualize_target_grids(
     axes[0].set_ylabel("Northing (m)")
 
     # --- Ground Truth ---
-    im1 = axes[1].imshow(
+    axes[1].imshow(
         gt_grid,
         cmap="viridis",
         origin="upper",
