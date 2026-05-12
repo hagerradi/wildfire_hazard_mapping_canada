@@ -33,6 +33,22 @@ def compute_mae(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor |
     return loss.sum() / denom
 
 
+def compute_normalized_mae(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor | None = None, eps: float = 1e-8) -> torch.Tensor:
+    """Computes MAE normalized by the mean absolute target magnitude over valid pixels."""
+    preds = preds.float()
+    targets = targets.float()
+
+    if mask is None:
+        abs_error = torch.abs(preds - targets).mean()
+        target_scale = torch.abs(targets).mean().clamp_min(eps)
+        return abs_error / target_scale
+
+    valid = mask.to(dtype=preds.dtype)
+    abs_error_sum = (torch.abs(preds - targets) * valid).sum()
+    target_scale_sum = (torch.abs(targets) * valid).sum().clamp_min(eps)
+    return abs_error_sum / target_scale_sum
+
+
 def compute_spearman(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor | None = None) -> torch.Tensor:
     """
     Computes Spearman correlation per sample, then averages. Optionally uses a mask.

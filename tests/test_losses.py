@@ -12,6 +12,7 @@ from src.losses import (
     MSELoss,
     WeightedLoss,
 )
+from src.utils import build_single_loss
 
 
 @pytest.fixture
@@ -145,6 +146,17 @@ def test_huber_loss_all_masked_is_finite(dummy_data):
     mask = torch.zeros_like(logits)
     result = loss_fn(logits, targets, mask)
     assert torch.isfinite(result)
+
+
+def test_huber_loss_rejects_non_positive_beta():
+    with pytest.raises(ValueError, match="Huber beta must be positive"):
+        HuberLoss(beta=0.0)
+
+
+def test_build_single_loss_passes_huber_beta():
+    loss_fn = build_single_loss("huber", huber_beta=0.25)
+    assert isinstance(loss_fn, HuberLoss)
+    assert loss_fn.beta == 0.25
 
 
 # -------------------------

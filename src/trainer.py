@@ -109,12 +109,13 @@ class Trainer:
 
         # Setup loss
         loss_config = self.config.optimizer.loss
+        huber_beta = self.config.optimizer.huber_beta
         if isinstance(loss_config, str):  # loss is a string
-            self.loss_fn = build_single_loss(loss_config)
+            self.loss_fn = build_single_loss(loss_config, huber_beta=huber_beta)
         else:  # loss is a list
             loss_names = loss_config
             weights = self.config.optimizer.loss_weights
-            losses = {n: build_single_loss(n) for n in loss_names}
+            losses = {n: build_single_loss(n, huber_beta=huber_beta) for n in loss_names}
             self.loss_fn = WeightedLoss(losses=losses, weights=weights, normalize_weights=True)
 
         # Setup optimizer
@@ -143,7 +144,7 @@ class Trainer:
     def _validate_and_load_metrics(self) -> None:
         """Helper to validate and load metrics to be computed."""
         if not set(self.config.metrics).issubset(AVAILABLE_METRICS):
-            raise ValueError(f"Invalid metrics found." f"Available options: {list(AVAILABLE_METRICS)}")
+            raise ValueError(f"Invalid metrics found.Available options: {list(AVAILABLE_METRICS)}")
         self.metric_functions = {k: AVAILABLE_METRICS[k] for k in self.config.metrics}
 
     def _step(self, batch: Any) -> tuple[torch.Tensor, torch.Tensor, dict[str, torch.Tensor] | None, torch.Tensor, torch.Tensor]:

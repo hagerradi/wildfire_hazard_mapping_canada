@@ -87,7 +87,10 @@ class HuberLoss(nn.Module):
 
     def __init__(self, beta: float = 1.0, eps: float = 1e-8):
         super().__init__()
+        if beta <= 0.0:
+            raise ValueError(f"Huber beta must be positive, got {beta}.")
         self.eps = eps
+        self.beta = beta
         self.huber = nn.SmoothL1Loss(beta=beta, reduction="none")
 
     def forward(self, logits: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None):

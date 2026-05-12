@@ -36,6 +36,7 @@ class OptimizerConfig(BaseModel):
     lr: float = 1e-3
     loss: str | list[str]
     loss_weights: dict[str, float] = {}
+    huber_beta: float = Field(default=1.0, gt=0.0)
 
 
 class SchedulerConfig(BaseModel):

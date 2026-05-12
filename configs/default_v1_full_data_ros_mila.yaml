@@ -14,6 +14,7 @@ optimizer:
   name: "AdamW"
   lr: 7.0e-4
   loss: "huber"
+  huber_beta: 1.0
 
 lr_scheduler:
   name: "cosine_warmup"
@@ -62,4 +63,4 @@ logger:
   tags: ["baseline", "full_data", "modelling_approach=1", "target=ros", "spatial_only", "data_samples_v3", "fuel_one_hot_encoding", "best_ckpt=loss", "loss=huber", "target_norm=log_standard"]
   log_every_n_step: 10
 
-metrics: ["mse", "mae", "mae_top01", "mae_top02", "mae_top05", "mae_top10", "spearman", "bias", "ccc", "iou_top005", "iou_top01", "iou_top02", "iou_top05", "iou_top10", "auc_iou_top10", "auc_iou_full"]
+metrics: ["mse", "mae", "normalized_mae", "mae_top01", "mae_top02", "mae_top05", "mae_top10", "spearman", "bias", "ccc", "iou_top005", "iou_top01", "iou_top02", "iou_top05", "iou_top10", "auc_iou_top10", "auc_iou_full"]
