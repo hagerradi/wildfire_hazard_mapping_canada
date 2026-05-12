@@ -9,6 +9,7 @@ from torch.optim.lr_scheduler import LRScheduler, ReduceLROnPlateau
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
+from data_preparation.spatial.utils import get_range_output
 from src.config import Config, GridParams
 from src.datasets.targets import get_target_spec
 from src.logger import CometLogger
@@ -59,6 +60,9 @@ class Trainer:
         """
         Define model, loss function and optimizer.
         """
+
+        self._grid_params = self._get_grid_params()
+        self._target_spec = get_target_spec(self._grid_params.target_name) if self._grid_params is not None else get_target_spec("bp")
 
         # Flag to indicate we are including auxiliary features
         self.auxiliary = "auxiliary" in self.config.model.input_feature_list
@@ -133,13 +137,58 @@ class Trainer:
         # Validate and load metrics from config.
         self._validate_and_load_metrics()
 
-        self._use_sigmoid_predictions = self._should_use_sigmoid_predictions()
+        self._use_sigmoid_predictions = self._target_spec.probability_scale
+        self._configure_metric_target_transform()
 
-    def _should_use_sigmoid_predictions(self) -> bool:
+    def _get_grid_params(self) -> GridParams | None:
         for source in self.config.data.input_sources:
             if source.name == "grid" and isinstance(source.params, GridParams):
-                return get_target_spec(source.params.target_name).probability_scale
-        return True
+                return source.params
+        return None
+
+    def _configure_metric_target_transform(self) -> None:
+        self._metric_out_norm = "none"
+        self._metric_target_min = 0.0
+        self._metric_target_max = 1.0
+        self._metric_target_log_mean: float | None = None
+        self._metric_target_log_std: float | None = None
+
+        if self._grid_params is None:
+            return
+
+        self._metric_out_norm = self._grid_params.out_norm
+        if self._metric_out_norm == "min_max":
+            if self.config.data.raw_data_dir:
+                self._metric_target_max, self._metric_target_min = get_range_output(
+                    root_dir=self.config.data.raw_data_dir,
+                    output_type=self._target_spec.output_type,
+                )
+        elif self._metric_out_norm == "log_standard":
+            if self._grid_params.target_log_mean is None or self._grid_params.target_log_std is None:
+                raise ValueError("target_log_mean and target_log_std are required for out_norm='log_standard'.")
+            if self._grid_params.target_log_std <= 0.0:
+                raise ValueError(f"target_log_std must be positive for out_norm='log_standard', got {self._grid_params.target_log_std}.")
+            self._metric_target_log_mean = self._grid_params.target_log_mean
+            self._metric_target_log_std = self._grid_params.target_log_std
+        elif self._metric_out_norm not in {"log", "none", "total_iters", "season_cause_iters"}:
+            raise ValueError(f"Unsupported output normalization: {self._metric_out_norm!r}")
+
+    def _inverse_model_target_for_metrics(self, data: torch.Tensor) -> torch.Tensor:
+        data = data.float()
+
+        if self._metric_out_norm == "min_max":
+            return data * (self._metric_target_max - self._metric_target_min) + self._metric_target_min
+        if self._metric_out_norm == "log":
+            return torch.expm1(data * float(np.log1p(1000.0))) / 1000.0
+        if self._metric_out_norm == "log_standard":
+            if self._metric_target_log_mean is None or self._metric_target_log_std is None:
+                raise RuntimeError("log_standard metric transform was not configured.")
+            return torch.expm1(data * self._metric_target_log_std + self._metric_target_log_mean).clamp_min(0.0)
+
+        return data
+
+    def _prepare_metric_tensors(self, predictions: torch.Tensor, targets: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        return self._inverse_model_target_for_metrics(predictions), self._inverse_model_target_for_metrics(targets)
 
     def _validate_and_load_metrics(self) -> None:
         """Helper to validate and load metrics to be computed."""
@@ -238,8 +287,9 @@ class Trainer:
 
             # compute the metrics
             with torch.no_grad():
+                metric_predictions, metric_targets = self._prepare_metric_tensors(predictions.detach(), targets)
                 for name, metric_fn in self.metric_functions.items():
-                    value = metric_fn(predictions.detach(), targets, masks)
+                    value = metric_fn(metric_predictions, metric_targets, masks)
                     running_metrics[name] += value.item() * batch_size
                     if self.logger and self.global_step % self.log_every_n_step == 0:
                         self.logger.log_metrics({f"train_step_{name}": value.item()}, step=self.global_step)
@@ -295,8 +345,9 @@ class Trainer:
 
             # compute the metrics
             with torch.no_grad():
+                metric_predictions, metric_targets = self._prepare_metric_tensors(predictions.detach(), targets)
                 for name, metric_fn in self.metric_functions.items():
-                    value = metric_fn(predictions.detach(), targets, masks)
+                    value = metric_fn(metric_predictions, metric_targets, masks)
                     running_metrics[name] += value.item() * batch_size
 
                 if loss_parts is not None and running_loss_parts is not None:
