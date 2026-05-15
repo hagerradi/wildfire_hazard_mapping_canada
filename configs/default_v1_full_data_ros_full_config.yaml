@@ -60,8 +60,6 @@ data:
         feature_names_list: ["ignition_grid", "fuel_grid", "elevation_grid"]
         target_name: "ros"
         out_norm: "log_standard"
-        target_log_mean: 1.759765073915
-        target_log_std: 0.532782452748
         fuel_feats_encoding: "one_hot"
         normalize_fuel_feats_ordinal: True
         transforms_list: []

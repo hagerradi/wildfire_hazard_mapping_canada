@@ -19,7 +19,7 @@ from data_preparation.hexel_loader import load_spatial_features_per_hexel
 from data_preparation.paths import Paths
 from data_preparation.process_hexels_into_grids import get_split_hexel_window
 from data_preparation.process_tabular_data import build_weather_table, process_fire_size_distribution_table
-from data_preparation.spatial.utils import get_range_output, load_spatial_raster
+from data_preparation.spatial.utils import get_output_log_stats, get_range_output, load_spatial_raster
 from data_preparation.utils import find_hex_ids
 from inference.predictor import BurnRiskPredictor
 from src.datasets.dataset import MultiSourceDataset
@@ -263,6 +263,10 @@ def run_single_hexel_pipeline(
     target = get_target_spec_from_data_config(data_config)
     grid_params = get_grid_params_from_data_config(data_config)
     max_target_val, min_target_val = get_range_output(root_dir=str(data_dir), output_type=target.output_type)
+    target_log_mean = grid_params.get("target_log_mean")
+    target_log_std = grid_params.get("target_log_std")
+    if grid_params.get("out_norm", "min_max") == "log_standard" and (target_log_mean is None or target_log_std is None):
+        target_log_mean, target_log_std = get_output_log_stats(root_dir=str(data_dir), output_type=target.output_type)
     target_channel_index = get_target_channel_index(
         data_dir=str(processed_data_dir),
         modelling_approach=str(data_prep_config["modelling_approach"]),
@@ -277,8 +281,8 @@ def run_single_hexel_pipeline(
         max_target_val=max_target_val,
         hex_id=hex_id,
         out_norm=grid_params.get("out_norm", "min_max"),
-        target_log_mean=grid_params.get("target_log_mean"),
-        target_log_std=grid_params.get("target_log_std"),
+        target_log_mean=target_log_mean,
+        target_log_std=target_log_std,
         target_channel_index=target_channel_index,
     )
 
@@ -318,7 +322,7 @@ def main():
     parser.add_argument("--save_dir", type=str, default=None, help="Directory to save predictions and visualizations (overrides config).")
     args = parser.parse_args()
 
-    with open(args.config, "r") as f:
+    with open(args.config) as f:
         config = yaml.safe_load(f)
 
     # CLI args override config (use 'is not None' to allow falsy values like 0)
@@ -353,7 +357,7 @@ def main():
 
     elapsed_time = time.time() - start_time
     logger.info(
-        f"TIME - Pipeline for {len(hex_ids_to_run)} hexels processed. Total elapsed time: {elapsed_time:.2f} seconds ({elapsed_time/60:.2f} minutes)"
+        f"TIME - Pipeline for {len(hex_ids_to_run)} hexels processed. Total elapsed time: {elapsed_time:.2f} seconds ({elapsed_time / 60:.2f} minutes)"
     )
 
 

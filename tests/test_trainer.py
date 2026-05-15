@@ -286,17 +286,22 @@ def test_trainer_step(dummy_config, dummy_data):
     assert isinstance(loss, torch.Tensor)
 
 
-def test_metric_tensors_inverse_log_standard(tmp_path):
+def test_metric_tensors_inverse_log_standard(tmp_path, monkeypatch):
     mean = 2.0
     std = 0.5
+    seen = {}
+
+    def fake_get_output_log_stats(root_dir, output_type):
+        seen["log_stats"] = (root_dir, output_type)
+        return mean, std
+
+    monkeypatch.setattr("src.trainer.get_output_log_stats", fake_get_output_log_stats)
     config = _make_config(
         tmp_path,
         grid_params=GridParams(
             feature_names_list=["dummy_feat"],
             target_name="fi",
             out_norm="log_standard",
-            target_log_mean=mean,
-            target_log_std=std,
         ),
     )
     trainer = Trainer(config, spatial_input_channels=SPATIAL_CHANNELS)
@@ -307,6 +312,7 @@ def test_metric_tensors_inverse_log_standard(tmp_path):
 
     expected_predictions = torch.expm1(predictions * std + mean).clamp_min(0.0)
     expected_targets = torch.expm1(targets * std + mean).clamp_min(0.0)
+    assert seen["log_stats"] == ("", "fire_intensity")
     assert torch.allclose(metric_predictions, expected_predictions)
     assert torch.allclose(metric_targets, expected_targets)
 

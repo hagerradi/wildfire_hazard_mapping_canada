@@ -13,6 +13,7 @@ from data_preparation.paths import Paths
 from data_preparation.spatial.utils import (
     denormalize_burn_count,
     denormalize_burn_prob,
+    get_output_log_stats,
     get_range_output,
     load_spatial_raster,
 )
@@ -202,7 +203,7 @@ def get_target_channel_index(data_dir: str, modelling_approach: str, target: Tar
     channel_indices = channel_feature_map.get(target.channel_key)
     if not channel_indices:
         raise ValueError(
-            f"Missing target channel {target.channel_key!r} in {feature_map_path}. " f"Available keys: {list(channel_feature_map.keys())}"
+            f"Missing target channel {target.channel_key!r} in {feature_map_path}. Available keys: {list(channel_feature_map.keys())}"
         )
     return int(channel_indices[0])
 
@@ -294,6 +295,10 @@ def evaluate_and_visualize_hexels(
     target_channel_index = get_target_channel_index(data_dir=data_dir, modelling_approach=modelling_approach, target=target)
 
     max_target_val, min_target_val = get_range_output(root_dir=raw_data_dir, output_type=target.output_type)
+    target_log_mean = grid_params.target_log_mean if grid_params is not None else None
+    target_log_std = grid_params.target_log_std if grid_params is not None else None
+    if out_norm == "log_standard" and (target_log_mean is None or target_log_std is None):
+        target_log_mean, target_log_std = get_output_log_stats(root_dir=raw_data_dir, output_type=target.output_type)
 
     if isinstance(test_predictions, str):
         raise TypeError(f"Expected ndarray, but got string: {test_predictions}")
@@ -329,8 +334,8 @@ def evaluate_and_visualize_hexels(
             hex_id=hex_id,
             modelling_approach=modelling_approach,
             out_norm=out_norm,
-            target_log_mean=grid_params.target_log_mean if grid_params is not None else None,
-            target_log_std=grid_params.target_log_std if grid_params is not None else None,
+            target_log_mean=target_log_mean,
+            target_log_std=target_log_std,
             stitch_mode="mean",
             target_channel_index=target_channel_index,
             win_h=config.data_prep.win_h,
@@ -412,14 +417,14 @@ def evaluate_and_visualize_hexels(
 
     if metric_functions is not None and len(all_hexel_metrics) > 0:
         # get per-hexel metrics
-        for hex_id, hex_metric in zip(all_hex_ids, all_hexel_metrics):
+        for hex_id, hex_metric in zip(all_hex_ids, all_hexel_metrics, strict=False):
             hex_id_str = str(hex_id).zfill(2)
             for key, val in hex_metric.items():
                 # we create keys such as "hex12/mse" for clarity
                 hexel_metrics[f"hex{hex_id_str}/{key}"] = float(val) if not np.isnan(val) else float("nan")
 
         # get the aggregated averages over all hexels
-        for key in metric_functions.keys():
+        for key in metric_functions:
             mean_val = np.nanmean([hm[key] for hm in all_hexel_metrics if key in hm and not np.isnan(hm[key])])
             # we create keys such as "all/mse"
             hexel_metrics[f"all/{key}"] = float(mean_val)

@@ -140,9 +140,9 @@ def test_multi_source_integration(temp_data_dir):
     )
     sample = ds[0]
 
-    assert "grid" in sample.keys()
-    assert "weather" in sample.keys()
-    assert "fire_size" in sample.keys()
+    assert "grid" in sample
+    assert "weather" in sample
+    assert "fire_size" in sample
     input_arr, target, mask = sample["grid"]
     assert isinstance(input_arr, torch.Tensor)
     assert input_arr.shape[0] == 3
@@ -196,6 +196,39 @@ def test_build_dataset_passes_raw_data_dir_to_grid_source(temp_data_dir, monkeyp
     assert ds.sources["grid"].raw_data_dir == raw_data_dir
     assert seen["output"] == (raw_data_dir, "fire_burn_probability")
     assert seen["elevation"] == raw_data_dir
+
+
+def test_grid_source_computes_log_standard_stats_from_raw_data_dir(temp_data_dir, monkeypatch):
+    tmpdir, *_ = temp_data_dir
+    raw_data_dir = "/network/raw/source"
+    seen = {}
+    expected_mean = float(np.log1p(0.5))
+    expected_std = 2.0
+
+    def fake_get_output_log_stats(root_dir, output_type):
+        seen["log_stats"] = (root_dir, output_type)
+        return expected_mean, expected_std
+
+    monkeypatch.setattr("src.datasets.sources.grids.get_output_log_stats", fake_get_output_log_stats)
+    monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation", lambda root_dir: (1000.0, 0.0))
+
+    grid_params = GridParams(
+        feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],
+        target_name="fi",
+        out_norm="log_standard",
+        fuel_feats_encoding="ordinal",
+        normalize_fuel_feats_ordinal=True,
+    )
+
+    grid_source = GridSource(root_dir=tmpdir, raw_data_dir=raw_data_dir, params=grid_params, modelling_approach="1")
+    _, target, mask = grid_source.get_sample({"file_path": os.path.join(tmpdir, "sample_0.npy")})
+
+    assert seen["log_stats"] == (raw_data_dir, "fire_intensity")
+    assert grid_source.target_log_mean == expected_mean
+    assert grid_source.target_log_std == expected_std
+    target_np = target.squeeze(0).numpy()
+    mask_np = mask.squeeze(0).numpy()
+    np.testing.assert_allclose(target_np[mask_np], 0.0, atol=1e-6)
 
 
 def test_grid_source_rejects_invalid_explicit_raw_data_dir(temp_data_dir, monkeypatch):
@@ -378,7 +411,8 @@ def test_tabular_weighted_sampling(temp_data_dir):
         sample = fire_size_source.get_sample({"data": data})
 
         # Ensure we captured probabilities and that sample has expected shape
-        assert "p" in captured and captured["p"] is not None
+        assert "p" in captured
+        assert captured["p"] is not None
         assert sample.shape == (2, len(fire_size_feats))
 
         # Compute expected raw weights: for each zone, weight per candidate = count_in_patch / len(zone_cands)

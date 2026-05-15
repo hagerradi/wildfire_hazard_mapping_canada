@@ -9,7 +9,7 @@ from torch.optim.lr_scheduler import LRScheduler, ReduceLROnPlateau
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from data_preparation.spatial.utils import get_range_output
+from data_preparation.spatial.utils import get_output_log_stats, get_range_output
 from src.config import Config, GridParams
 from src.datasets.targets import get_target_spec
 from src.logger import CometLogger
@@ -164,12 +164,15 @@ class Trainer:
                     output_type=self._target_spec.output_type,
                 )
         elif self._metric_out_norm == "log_standard":
-            if self._grid_params.target_log_mean is None or self._grid_params.target_log_std is None:
-                raise ValueError("target_log_mean and target_log_std are required for out_norm='log_standard'.")
-            if self._grid_params.target_log_std <= 0.0:
-                raise ValueError(f"target_log_std must be positive for out_norm='log_standard', got {self._grid_params.target_log_std}.")
             self._metric_target_log_mean = self._grid_params.target_log_mean
             self._metric_target_log_std = self._grid_params.target_log_std
+            if self._metric_target_log_mean is None or self._metric_target_log_std is None:
+                self._metric_target_log_mean, self._metric_target_log_std = get_output_log_stats(
+                    root_dir=self.config.data.raw_data_dir,
+                    output_type=self._target_spec.output_type,
+                )
+            if self._metric_target_log_std <= 0.0:
+                raise ValueError(f"target_log_std must be positive for out_norm='log_standard', got {self._metric_target_log_std}.")
         elif self._metric_out_norm not in {"log", "none", "total_iters", "season_cause_iters"}:
             raise ValueError(f"Unsupported output normalization: {self._metric_out_norm!r}")
 

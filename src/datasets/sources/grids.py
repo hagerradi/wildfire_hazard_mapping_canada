@@ -5,7 +5,7 @@ from collections.abc import Callable
 import numpy as np
 import torch
 
-from data_preparation.spatial.utils import FUEL_GROUP_MAP, get_range_elevation, get_range_output
+from data_preparation.spatial.utils import FUEL_GROUP_MAP, get_output_log_stats, get_range_elevation, get_range_output
 from src.config import GridParams
 from src.datasets.sources.base import DataSource
 from src.datasets.targets import get_target_spec
@@ -66,6 +66,11 @@ class GridSource(DataSource):
                     label=self.target.label,
                     source_dir=self.raw_data_dir,
                 )
+        elif self.modelling_approach == "1" and self.out_norm == "log_standard":
+            if self.target_log_mean is None or self.target_log_std is None:
+                self.target_log_mean, self.target_log_std = get_output_log_stats(self.raw_data_dir, self.target.output_type)
+            if self.target_log_std <= 0.0:
+                raise ValueError(f"target_log_std must be positive for out_norm='log_standard', got {self.target_log_std}.")
 
         # 2. Update indices
         with open(os.path.join(self.root_dir, f"feature_channel_map_{self.modelling_approach}.json")) as f:
@@ -125,12 +130,7 @@ class GridSource(DataSource):
             )
 
     def get_sample(self, patch_info: dict):
-        if "data" in patch_info:
-            # Fast Path (Training)
-            data = patch_info["data"].astype(np.float32)
-        else:
-            # Slow Path (Debugging / Standalone)
-            data = np.load(patch_info["file_path"]).astype(np.float32)
+        data = patch_info["data"].astype(np.float32) if "data" in patch_info else np.load(patch_info["file_path"]).astype(np.float32)
 
         # 1. Separate inputs, output, and mask
         input_arr, output_arr = data[:, :, self.preprocess_channel_indices], data[:, :, self.output_channel_index]
