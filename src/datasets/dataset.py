@@ -88,7 +88,7 @@ def build_dataset(config: DataConfig, csv_name: str, modelling_approach: str = "
 
     for source_conf in config.input_sources:
         if source_conf.name not in AVAILABLE_DATA_SOURCES:
-            raise ValueError(f"Invalid source name '{source_conf.name} in config. " f"Supported sources are: {AVAILABLE_DATA_SOURCES}")
+            raise ValueError(f"Invalid source name '{source_conf.name} in config. Supported sources are: {AVAILABLE_DATA_SOURCES}")
 
         # Setup transforms
         is_train = "train" in csv_name.lower()

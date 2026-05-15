@@ -1,6 +1,7 @@
 import os
 import random
 from collections.abc import Callable
+from contextlib import suppress
 from functools import partial
 
 import numpy as np
@@ -266,10 +267,8 @@ def seed_everything(seed: int = 42, deterministic: bool = True):
     # For PyTorch >= 1.8
     # Outside 'if cuda' because PyTorch has deterministic CPU algorithms too.
     if deterministic:
-        try:
+        with suppress(Exception):
             torch.use_deterministic_algorithms(True)
-        except Exception:
-            pass
 
     print(f"[Info] Seed set to: {seed}")
 

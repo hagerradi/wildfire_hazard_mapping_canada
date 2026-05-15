@@ -2,9 +2,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.datasets.postprocessing.utils import denormalize_model_target, get_hexel_binary_maps, get_stitched_windows
+from src.datasets.postprocessing.utils import get_hexel_binary_maps, get_stitched_windows
 from src.datasets.postprocessing.visualize_predictions import get_distribution_axis_limit
-from src.datasets.utils import output_target_norm
+from src.datasets.utils import denormalize_output_target, output_target_norm
 
 
 def test_get_stitched_windows_uses_target_channel_mask(tmp_path):
@@ -62,10 +62,10 @@ def test_log_standard_target_transform_roundtrip():
         target_log_mean=mean,
         target_log_std=std,
     )
-    recovered = denormalize_model_target(
+    recovered = denormalize_output_target(
         data=normalized,
-        min_val=0.0,
-        max_val=10.0,
+        target_min=0.0,
+        target_max=10.0,
         out_norm="log_standard",
         target_log_mean=mean,
         target_log_std=std,

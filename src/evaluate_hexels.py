@@ -90,7 +90,7 @@ def main() -> None:
         raise ValueError("[Checkpoint] checkpoint file not found or invalid...")  # noqa: B904
 
     if model_ckpt is not None:
-        print(f"[Checkpoint] Loaded epoch={model_ckpt.get('epoch', 'N/A')} " f"Checkpoint Metrics={model_ckpt.get('metric_value', 'N/A')}")
+        print(f"[Checkpoint] Loaded epoch={model_ckpt.get('epoch', 'N/A')} Checkpoint Metrics={model_ckpt.get('metric_value', 'N/A')}")
 
     # ---------- Evaluation ----------
 
@@ -113,7 +113,7 @@ def main() -> None:
 
         channel_map = None
         if json_files:
-            with open(json_files[0], "r") as f:
+            with open(json_files[0]) as f:
                 channel_map = json.load(f)
 
         # save path for visualization figure (if True)
@@ -145,7 +145,7 @@ def main() -> None:
         # print metrics in terminal and log into comet
         print_and_log_eval_metrics(test_metrics=test_metrics, hexel_metrics=hexel_metrics, experiment_logger=trainer.logger)
 
-    print(f"=======Total Evaluation Time {round(time.time()-start_time, 3)}s========")
+    print(f"=======Total Evaluation Time {round(time.time() - start_time, 3)}s========")
     print(f"=======Prediction Time {round(preds_time, 3)}s========")
 
 

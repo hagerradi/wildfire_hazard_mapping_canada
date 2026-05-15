@@ -12,6 +12,7 @@ from tqdm import tqdm
 from data_preparation.spatial.utils import get_output_log_stats, get_range_output
 from src.config import Config, GridParams
 from src.datasets.targets import get_target_spec
+from src.datasets.utils import denormalize_output_target
 from src.logger import CometLogger
 from src.losses import WeightedLoss
 from src.models.unet import BaselineUNet, MultiSourceUNet
@@ -176,22 +177,33 @@ class Trainer:
         elif self._metric_out_norm not in {"log", "none", "total_iters", "season_cause_iters"}:
             raise ValueError(f"Unsupported output normalization: {self._metric_out_norm!r}")
 
-    def _inverse_model_target_for_metrics(self, data: torch.Tensor) -> torch.Tensor:
-        data = data.float()
-
-        if self._metric_out_norm == "min_max":
-            return data * (self._metric_target_max - self._metric_target_min) + self._metric_target_min
-        if self._metric_out_norm == "log":
-            return torch.expm1(data * float(np.log1p(1000.0))) / 1000.0
-        if self._metric_out_norm == "log_standard":
-            if self._metric_target_log_mean is None or self._metric_target_log_std is None:
-                raise RuntimeError("log_standard metric transform was not configured.")
-            return torch.expm1(data * self._metric_target_log_std + self._metric_target_log_mean).clamp_min(0.0)
-
-        return data
-
     def _prepare_metric_tensors(self, predictions: torch.Tensor, targets: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        return self._inverse_model_target_for_metrics(predictions), self._inverse_model_target_for_metrics(targets)
+        if self._metric_out_norm == "log_standard" and (self._metric_target_log_mean is None or self._metric_target_log_std is None):
+            raise RuntimeError("log_standard metric transform was not configured.")
+
+        metric_predictions = cast(
+            torch.Tensor,
+            denormalize_output_target(
+                data=predictions,
+                target_min=self._metric_target_min,
+                target_max=self._metric_target_max,
+                out_norm=self._metric_out_norm,
+                target_log_mean=self._metric_target_log_mean,
+                target_log_std=self._metric_target_log_std,
+            ),
+        )
+        metric_targets = cast(
+            torch.Tensor,
+            denormalize_output_target(
+                data=targets,
+                target_min=self._metric_target_min,
+                target_max=self._metric_target_max,
+                out_norm=self._metric_out_norm,
+                target_log_mean=self._metric_target_log_mean,
+                target_log_std=self._metric_target_log_std,
+            ),
+        )
+        return metric_predictions, metric_targets
 
     def _validate_and_load_metrics(self) -> None:
         """Helper to validate and load metrics to be computed."""

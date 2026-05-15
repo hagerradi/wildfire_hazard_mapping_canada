@@ -216,10 +216,10 @@ def test_auc_iou_completely_disjoint():
 def test_auc_iou_invalid_k_values(dummy_data):
     preds, targets = dummy_data
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="k_values must be a tuple"):
         compute_auc_iou(preds, targets, k_values="all")  # type: ignore
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="k_values must be a tuple"):
         compute_auc_iou(preds, targets, k_values=[0.01, 0.10])  # type: ignore
 
 

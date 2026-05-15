@@ -86,7 +86,7 @@ def main() -> None:
             return
 
     if best_ckpt is not None:
-        print(f"[Checkpoint] Loaded epoch={best_ckpt.get('epoch', 'N/A')} " f"Checkpoint Metrics={best_ckpt.get('metric_value', 'N/A')}")
+        print(f"[Checkpoint] Loaded epoch={best_ckpt.get('epoch', 'N/A')} Checkpoint Metrics={best_ckpt.get('metric_value', 'N/A')}")
 
     # ---------- Evaluation ----------
     print("\n[Evaluation] Running on test set...")

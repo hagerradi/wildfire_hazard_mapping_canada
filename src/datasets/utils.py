@@ -1,4 +1,7 @@
+from typing import overload
+
 import numpy as np
+import torch
 
 from data_preparation.spatial.utils import FUEL_GROUP_MAP
 
@@ -145,3 +148,74 @@ def output_target_norm(
     else:
         raise ValueError(f"Unsupported output normalization: {out_norm!r}")
     return output_arr
+
+
+@overload
+def denormalize_output_target(
+    data: torch.Tensor,
+    target_min: float,
+    target_max: float,
+    out_norm: str,
+    target_log_mean: float | None = None,
+    target_log_std: float | None = None,
+    multiplier: float = 1000.0,
+) -> torch.Tensor: ...
+
+
+@overload
+def denormalize_output_target(
+    data: np.ndarray,
+    target_min: float,
+    target_max: float,
+    out_norm: str,
+    target_log_mean: float | None = None,
+    target_log_std: float | None = None,
+    multiplier: float = 1000.0,
+) -> np.ndarray: ...
+
+
+def denormalize_output_target(
+    data: np.ndarray | torch.Tensor,
+    target_min: float,
+    target_max: float,
+    out_norm: str,
+    target_log_mean: float | None = None,
+    target_log_std: float | None = None,
+    multiplier: float = 1000.0,
+) -> np.ndarray | torch.Tensor:
+    """
+    Reverse target normalization to recover values in the original target scale.
+    """
+    if out_norm == "log_standard":
+        if target_log_mean is None or target_log_std is None:
+            raise ValueError("target_log_mean and target_log_std are required for out_norm='log_standard'.")
+        if target_log_std <= 0.0:
+            raise ValueError(f"target_log_std must be positive for out_norm='log_standard', got {target_log_std}.")
+        log_mean = target_log_mean
+        log_std = target_log_std
+    else:
+        log_mean = 0.0
+        log_std = 1.0
+
+    if isinstance(data, torch.Tensor):
+        data = data.float()
+        if out_norm == "min_max":
+            return data * (target_max - target_min) + target_min
+        if out_norm == "log":
+            return torch.expm1(data * float(np.log1p(multiplier))) / multiplier
+        if out_norm == "log_standard":
+            return torch.expm1(data * log_std + log_mean).clamp_min(0.0)
+        if out_norm in {"none", "total_iters", "season_cause_iters"}:
+            return data
+    else:
+        data = data.astype("float32")
+        if out_norm == "min_max":
+            return (data * (target_max - target_min) + target_min).astype("float32")
+        if out_norm == "log":
+            return (np.expm1(data * np.log1p(multiplier)) / multiplier).astype("float32")
+        if out_norm == "log_standard":
+            return np.clip(np.expm1(data * log_std + log_mean), 0.0, None).astype("float32")
+        if out_norm in {"none", "total_iters", "season_cause_iters"}:
+            return data
+
+    raise ValueError(f"Unsupported output normalization: {out_norm!r}")

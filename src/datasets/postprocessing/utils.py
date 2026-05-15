@@ -12,7 +12,6 @@ from rasterio.profiles import Profile
 from data_preparation.paths import Paths
 from data_preparation.spatial.utils import (
     denormalize_burn_count,
-    denormalize_target,
     get_output_log_stats,
     get_range_output,
     load_spatial_raster,
@@ -26,6 +25,7 @@ from src.datasets.postprocessing.visualize_predictions import (
     visualize_target_grids,
 )
 from src.datasets.targets import TargetSpec, get_target_spec
+from src.datasets.utils import denormalize_output_target
 from src.logger import CometLogger
 
 
@@ -118,10 +118,10 @@ def get_predicted_hexel(
             win_h=win_h,
             win_w=win_w,
         )
-        reconstructed_hexel_denorm = denormalize_model_target(
+        reconstructed_hexel_denorm = denormalize_output_target(
             data=reconstructed_hexel,
-            min_val=min_target_val,
-            max_val=max_target_val,
+            target_min=min_target_val,
+            target_max=max_target_val,
             out_norm=out_norm,
             target_log_mean=target_log_mean,
             target_log_std=target_log_std,
@@ -175,24 +175,6 @@ def get_config_grid_params(config: Config) -> GridParams | None:
 def as_float_array_with_nan(data: np.ndarray) -> np.ndarray:
     data_ma = np.ma.masked_invalid(np.ma.asarray(data).astype("float32"))
     return np.asarray(data_ma.filled(np.nan), dtype=np.float32)
-
-
-def denormalize_model_target(
-    data: np.ndarray,
-    min_val: float,
-    max_val: float,
-    out_norm: str,
-    target_log_mean: float | None = None,
-    target_log_std: float | None = None,
-) -> np.ndarray:
-    if out_norm == "log_standard":
-        if target_log_mean is None or target_log_std is None:
-            raise ValueError("target_log_mean and target_log_std are required for out_norm='log_standard'.")
-        if target_log_std <= 0.0:
-            raise ValueError(f"target_log_std must be positive for out_norm='log_standard', got {target_log_std}.")
-        return np.clip(np.expm1(data.astype("float32") * target_log_std + target_log_mean), 0.0, None).astype("float32")
-
-    return denormalize_target(data=data, min_val=min_val, max_val=max_val, out_norm=out_norm)
 
 
 def get_target_channel_index(data_dir: str, modelling_approach: str, target: TargetSpec) -> int:
