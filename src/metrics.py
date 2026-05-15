@@ -347,7 +347,7 @@ def compute_topK_mae(
     preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor | None = None, percentile: float = 0.90
 ) -> torch.Tensor:
     """
-    Computes the MAE specifically for the Top-K probability pixels.
+    Computes the MAE specifically over the top-K target pixels.
     """
     batch_size = preds.size(0)
     flat_preds = preds.reshape(batch_size, -1)

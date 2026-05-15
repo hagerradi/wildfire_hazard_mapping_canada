@@ -4,7 +4,7 @@ import pytest
 
 from src.datasets.postprocessing.utils import denormalize_model_target, get_hexel_binary_maps, get_stitched_windows
 from src.datasets.postprocessing.visualize_predictions import get_distribution_axis_limit
-from src.datasets.utils import output_burn_prob_norm
+from src.datasets.utils import output_target_norm
 
 
 def test_get_stitched_windows_uses_target_channel_mask(tmp_path):
@@ -54,10 +54,10 @@ def test_log_standard_target_transform_roundtrip():
     mean = 1.25
     std = 0.5
 
-    normalized = output_burn_prob_norm(
+    normalized = output_target_norm(
         output_arr=raw,
-        burn_prob_max=10.0,
-        burn_prob_min=0.0,
+        target_max=10.0,
+        target_min=0.0,
         out_norm="log_standard",
         target_log_mean=mean,
         target_log_std=std,
@@ -78,7 +78,7 @@ def test_log_standard_target_transform_requires_stats():
     raw = np.array([[1.0]], dtype=np.float32)
 
     with pytest.raises(ValueError, match="target_log_mean"):
-        output_burn_prob_norm(output_arr=raw, burn_prob_max=1.0, burn_prob_min=0.0, out_norm="log_standard")
+        output_target_norm(output_arr=raw, target_max=1.0, target_min=0.0, out_norm="log_standard")
 
 
 def test_get_hexel_binary_maps_respects_masked_arrays(recwarn):

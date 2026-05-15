@@ -113,15 +113,15 @@ def one_hot_encode(arr: np.ndarray, channel_idx: int, num_classes: int) -> np.nd
 
 def log_norm(out_arr: np.ndarray, multiplier: int = 1000) -> np.ndarray:
     """
-    Normalize the output burn prob array using log norm
+    Normalize the output target array using log norm.
     """
     return np.log1p(multiplier * out_arr) / np.log1p(multiplier)
 
 
-def output_burn_prob_norm(
+def output_target_norm(
     output_arr: np.ndarray,
-    burn_prob_max: float,
-    burn_prob_min: float,
+    target_max: float,
+    target_min: float,
     out_norm: str,
     target_log_mean: float | None = None,
     target_log_std: float | None = None,
@@ -130,7 +130,7 @@ def output_burn_prob_norm(
     Normalize the output target map.
     """
     if out_norm == "min_max":
-        output_arr = (output_arr - burn_prob_min) / (burn_prob_max - burn_prob_min)
+        output_arr = (output_arr - target_min) / (target_max - target_min)
         output_arr = np.clip(output_arr, 0.0, 1.0)
     elif out_norm == "log":
         output_arr = log_norm(output_arr).astype(np.float32)

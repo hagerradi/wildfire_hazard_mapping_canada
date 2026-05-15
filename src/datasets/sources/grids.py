@@ -9,7 +9,7 @@ from data_preparation.spatial.utils import FUEL_GROUP_MAP, get_output_log_stats,
 from src.config import GridParams
 from src.datasets.sources.base import DataSource
 from src.datasets.targets import get_target_spec
-from src.datasets.utils import fill_nan_channel_mean_numpy, one_hot_encode, output_burn_prob_norm
+from src.datasets.utils import fill_nan_channel_mean_numpy, one_hot_encode, output_target_norm
 
 
 class GridSource(DataSource):
@@ -31,7 +31,7 @@ class GridSource(DataSource):
             feature_names_list (list): List of features being used for training ((options: None or feature list)
                 All feats: ["ignition_grid", "fuel_grid", "elevation_grid", "wind_grid"])
             target_name (str): Output target to train against. Supported: bp, fi, ros.
-            out_norm (str): How to normalize the output burn counts for modelling approach 2. [Options: total_iters, season_cause_iters, min_max]
+            out_norm (str): How to normalize the output target.
             fuel_feats_encoding(str): How to process the fuel features [Options: ordinal, one_hot]
             normalize_fuel_feats_ordinal (bool): If we want to normalize the ordinal encoded fuel feats
             modelling_approach (str): The approach used for modelling
@@ -136,10 +136,10 @@ class GridSource(DataSource):
 
         # 7. Perform output normalizations
         if self.modelling_approach == "1":
-            output_arr = output_burn_prob_norm(
+            output_arr = output_target_norm(
                 output_arr=output_arr,
-                burn_prob_max=self.TARGET_MAX,
-                burn_prob_min=self.TARGET_MIN,
+                target_max=self.TARGET_MAX,
+                target_min=self.TARGET_MIN,
                 out_norm=self.out_norm,
                 target_log_mean=self.target_log_mean,
                 target_log_std=self.target_log_std,

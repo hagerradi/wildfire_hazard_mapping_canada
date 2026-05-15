@@ -14,7 +14,7 @@ def visualize_target_grids(
     hex_id: str,
     save_dir: str,
     experiment_logger: CometLogger | None = None,
-    target_label: str = "Burn Probability",
+    target_label: str = "Target",
 ):
     """
     Visualizes Ground Truth, Prediction, and Difference (GT - Prediction), side-by-side.
@@ -103,9 +103,6 @@ def visualize_target_grids(
     plt.close(fig)
 
 
-visualize_burn_prob_grids = visualize_target_grids
-
-
 def visualize_hexel_iou(
     gt_grid: np.ndarray,
     pred_grid: np.ndarray,
@@ -114,7 +111,7 @@ def visualize_hexel_iou(
     hex_id: str,
     save_dir: str,
     percentile: float,
-    target_label: str = "Burn Probability",
+    target_label: str = "Target",
 ):
     """
     Visualize target and prediction maps, their binary TopK hotspots,
@@ -182,7 +179,7 @@ def plot_hexbin_distribution(
     hex_id: str | int,
     save_dir: str,
     experiment_logger: CometLogger | None = None,
-    target_label: str = "Burn Probability",
+    target_label: str = "Target",
     probability_scale: bool = True,
 ) -> None:
     """
@@ -229,7 +226,7 @@ def plot_histogram_distribution(
     save_dir: str,
     experiment_logger: CometLogger | None = None,
     num_bins: int = 100,
-    target_label: str = "Burn Probability",
+    target_label: str = "Target",
     probability_scale: bool = True,
 ) -> None:
     """

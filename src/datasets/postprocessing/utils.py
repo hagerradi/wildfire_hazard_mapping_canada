@@ -12,7 +12,7 @@ from rasterio.profiles import Profile
 from data_preparation.paths import Paths
 from data_preparation.spatial.utils import (
     denormalize_burn_count,
-    denormalize_burn_prob,
+    denormalize_target,
     get_output_log_stats,
     get_range_output,
     load_spatial_raster,
@@ -192,7 +192,7 @@ def denormalize_model_target(
             raise ValueError(f"target_log_std must be positive for out_norm='log_standard', got {target_log_std}.")
         return np.clip(np.expm1(data.astype("float32") * target_log_std + target_log_mean), 0.0, None).astype("float32")
 
-    return denormalize_burn_prob(data=data, min_val=min_val, max_val=max_val, out_norm=out_norm)
+    return denormalize_target(data=data, min_val=min_val, max_val=max_val, out_norm=out_norm)
 
 
 def get_target_channel_index(data_dir: str, modelling_approach: str, target: TargetSpec) -> int:

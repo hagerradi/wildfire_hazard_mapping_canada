@@ -398,10 +398,8 @@ def denormalize_burn_count(data: np.ndarray, min_val: float, max_val: float) -> 
     return data * (max_val - min_val) + min_val
 
 
-def denormalize_burn_prob(
-    data: np.ndarray, min_val: float, max_val: float, out_norm: str = "min_max", multiplier: int = 1000
-) -> np.ndarray:
-    """Reverse the count normalization to recover true probs."""
+def denormalize_target(data: np.ndarray, min_val: float, max_val: float, out_norm: str = "min_max", multiplier: int = 1000) -> np.ndarray:
+    """Reverse target normalization to recover values in the original target scale."""
     data = data.astype("float32")
     if out_norm == "min_max":
         data = data * (max_val - min_val) + min_val
