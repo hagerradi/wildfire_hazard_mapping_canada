@@ -41,7 +41,6 @@ class GridSource(DataSource):
 
         self.root_dir = root_dir
         self.raw_data_dir = raw_data_dir if raw_data_dir is not None else os.path.dirname(self.root_dir)
-        self._validate_raw_ranges = raw_data_dir is not None
         self.params = params
         self.modelling_approach = modelling_approach
         self.transform = transform
@@ -59,13 +58,6 @@ class GridSource(DataSource):
         self.TARGET_MAX, self.TARGET_MIN = 1.0, 0.0
         if self.modelling_approach == "1" and self.out_norm == "min_max":
             self.TARGET_MAX, self.TARGET_MIN = get_range_output(self.raw_data_dir, self.target.output_type)
-            if self._validate_raw_ranges:
-                self._validate_range(
-                    max_value=self.TARGET_MAX,
-                    min_value=self.TARGET_MIN,
-                    label=self.target.label,
-                    source_dir=self.raw_data_dir,
-                )
         elif self.modelling_approach == "1" and self.out_norm == "log_standard":
             if self.target_log_mean is None or self.target_log_std is None:
                 self.target_log_mean, self.target_log_std = get_output_log_stats(self.raw_data_dir, self.target.output_type)
@@ -112,22 +104,6 @@ class GridSource(DataSource):
                     self.input_channel_indices = updated_input_channel_indices
         # 3. normalization for elevation grid
         self.ELEVATION_MAX, self.ELEVATION_MIN = get_range_elevation(self.raw_data_dir)
-        if self._validate_raw_ranges:
-            self._validate_range(
-                max_value=self.ELEVATION_MAX,
-                min_value=self.ELEVATION_MIN,
-                label="elevation",
-                source_dir=self.raw_data_dir,
-            )
-
-    @staticmethod
-    def _validate_range(max_value: float, min_value: float, label: str, source_dir: str) -> None:
-        if not np.isfinite(max_value) or not np.isfinite(min_value) or max_value <= min_value:
-            raise ValueError(
-                f"Invalid {label} normalization range from raw_data_dir={source_dir!r}: "
-                f"min={min_value}, max={max_value}. Check that raw_data_dir points to the raw hexel dataset, "
-                "not only the prepared patch directory."
-            )
 
     def get_sample(self, patch_info: dict):
         data = patch_info["data"].astype(np.float32) if "data" in patch_info else np.load(patch_info["file_path"]).astype(np.float32)

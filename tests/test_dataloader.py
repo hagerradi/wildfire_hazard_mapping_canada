@@ -9,6 +9,7 @@ import pytest
 import torch
 import torchvision.transforms.functional as F
 
+from data_preparation.spatial import utils as spatial_utils
 from src.config import DataConfig, DataSourceConfig, GridParams, TabularParams
 from src.datasets.dataset import MultiSourceDataset, build_dataset
 from src.datasets.sources import GridSource, TabularSource
@@ -93,6 +94,12 @@ def temp_data_dir():
 
     finally:
         shutil.rmtree(tmpdir)
+
+
+@pytest.fixture(autouse=True)
+def stable_grid_ranges(monkeypatch):
+    monkeypatch.setattr("src.datasets.sources.grids.get_range_output", lambda root_dir, output_type: (1.0, 0.0))
+    monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation", lambda root_dir: (1000.0, 0.0))
 
 
 def test_multi_source_integration(temp_data_dir):
@@ -210,7 +217,6 @@ def test_grid_source_computes_log_standard_stats_from_raw_data_dir(temp_data_dir
         return expected_mean, expected_std
 
     monkeypatch.setattr("src.datasets.sources.grids.get_output_log_stats", fake_get_output_log_stats)
-    monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation", lambda root_dir: (1000.0, 0.0))
 
     grid_params = GridParams(
         feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],
@@ -231,23 +237,18 @@ def test_grid_source_computes_log_standard_stats_from_raw_data_dir(temp_data_dir
     np.testing.assert_allclose(target_np[mask_np], 0.0, atol=1e-6)
 
 
-def test_grid_source_rejects_invalid_explicit_raw_data_dir(temp_data_dir, monkeypatch):
-    tmpdir, _, _, _, _, _, _, _ = temp_data_dir
+def test_get_range_output_rejects_invalid_range(monkeypatch):
+    monkeypatch.setattr(spatial_utils, "find_hex_ids", lambda root_dir: [])
 
-    monkeypatch.setattr(
-        "src.datasets.sources.grids.get_range_output",
-        lambda root_dir, output_type: (float("-inf"), float("inf")),
-    )
-    monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation", lambda root_dir: (1000.0, 0.0))
+    with pytest.raises(ValueError, match="Invalid fire_burn_probability normalization range"):
+        spatial_utils.get_range_output("/bad/raw", "fire_burn_probability")
 
-    grid_params = GridParams(
-        feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],
-        out_norm="min_max",
-        fuel_feats_encoding="ordinal",
-    )
 
-    with pytest.raises(ValueError, match="Invalid Burn Probability normalization range"):
-        GridSource(root_dir=tmpdir, raw_data_dir="/bad/raw", params=grid_params, modelling_approach="1")
+def test_get_range_elevation_rejects_invalid_range(monkeypatch):
+    monkeypatch.setattr(spatial_utils, "find_hex_ids", lambda root_dir: [])
+
+    with pytest.raises(ValueError, match="Invalid elevation normalization range"):
+        spatial_utils.get_range_elevation("/bad/raw")
 
 
 def test_grid_one_hot_encoding(temp_data_dir):

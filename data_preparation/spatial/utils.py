@@ -297,9 +297,18 @@ def get_range_elevation(root_dir: str) -> tuple[float, float]:
         paths = Paths(hex_id=hex_id, root_dir=root_dir)
         path_elev_grid = paths.elevation_grid(hex_id=hex_id)
         elevation_grid = load_raster(str(path_elev_grid))
-        masked_data = np.ma.masked_equal(elevation_grid, -9999)
-        max_value = max(max_value, masked_data.max())
-        min_value = min(min_value, masked_data.min())
+        masked_data = np.ma.masked_invalid(np.ma.masked_equal(elevation_grid, -9999))
+        values = masked_data.compressed()
+        if values.size == 0:
+            continue
+        max_value = max(max_value, float(np.max(values)))
+        min_value = min(min_value, float(np.min(values)))
+
+    if not np.isfinite(max_value) or not np.isfinite(min_value) or max_value <= min_value:
+        raise ValueError(
+            f"Invalid elevation normalization range from root_dir={root_dir!r}: min={min_value}, max={max_value}. "
+            "Check that root_dir points to the raw hexel dataset, not only the prepared patch directory."
+        )
     return float(max_value), float(min_value)
 
 
@@ -327,10 +336,19 @@ def get_range_output(root_dir: str, output_type: str) -> tuple[float, float]:
         paths = Paths(hex_id=hex_id, root_dir=root_dir)
         output_path = getattr(paths, path_methods[output_type])()
         output_grid = load_raster(str(output_path))
+        output_values = np.ma.masked_invalid(output_grid).compressed()
+        if output_values.size == 0:
+            continue
 
-        max_value = max(max_value, float(output_grid.max()))
-        min_value = min(min_value, float(output_grid.min()))
+        max_value = max(max_value, float(np.max(output_values)))
+        min_value = min(min_value, float(np.min(output_values)))
 
+    if not np.isfinite(max_value) or not np.isfinite(min_value) or max_value <= min_value:
+        raise ValueError(
+            f"Invalid {output_type} normalization range from root_dir={root_dir!r}: "
+            f"min={min_value}, max={max_value}. Check that root_dir points to the raw hexel dataset, "
+            "not only the prepared patch directory."
+        )
     return max_value, min_value
 
 
