@@ -104,6 +104,7 @@ def _make_config(
     *,
     logger_enabled: bool = False,
     input_feature_list: list[str] | None = None,
+    grid_params: GridParams | None = None,
     auxiliary_hidden_dims: dict | None = None,
     auxiliary_embed_dims: dict | None = None,
     auxiliary_feature_encoder_poolings: dict | None = None,
@@ -138,7 +139,7 @@ def _make_config(
             input_sources=[
                 DataSourceConfig(
                     name="grid",
-                    params=GridParams(feature_names_list=["dummy_feat"]),
+                    params=grid_params or GridParams(feature_names_list=["dummy_feat"]),
                 )
             ],
         ),
@@ -283,6 +284,37 @@ def test_trainer_step(dummy_config, dummy_data):
     preds, loss, loss_parts, targets, masks = trainer._step(batch)
     assert preds.shape == targets.shape
     assert isinstance(loss, torch.Tensor)
+
+
+def test_metric_tensors_inverse_log_standard(tmp_path, monkeypatch):
+    mean = 2.0
+    std = 0.5
+    seen = {}
+
+    def fake_get_output_log_stats(root_dir, output_type):
+        seen["log_stats"] = (root_dir, output_type)
+        return mean, std
+
+    monkeypatch.setattr("src.trainer.get_output_log_stats", fake_get_output_log_stats)
+    config = _make_config(
+        tmp_path,
+        grid_params=GridParams(
+            feature_names_list=["dummy_feat"],
+            target_name="fi",
+            out_norm="log_standard",
+        ),
+    )
+    trainer = Trainer(config, spatial_input_channels=SPATIAL_CHANNELS)
+
+    predictions = torch.tensor([[[[0.0, 1.0]]]])
+    targets = torch.tensor([[[[-1.0, 0.5]]]])
+    metric_predictions, metric_targets = trainer._prepare_metric_tensors(predictions, targets)
+
+    expected_predictions = torch.expm1(predictions * std + mean).clamp_min(0.0)
+    expected_targets = torch.expm1(targets * std + mean).clamp_min(0.0)
+    assert seen["log_stats"] == ("", "fire_intensity")
+    assert torch.allclose(metric_predictions, expected_predictions)
+    assert torch.allclose(metric_targets, expected_targets)
 
 
 def test_train_epoch_runs(dummy_config, dummy_data):

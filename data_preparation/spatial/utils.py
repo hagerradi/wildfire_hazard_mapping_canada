@@ -133,7 +133,7 @@ def clip_array_to_mask(
     mask_gdf = gpd.read_file(mask_path).to_crs(crs)
 
     if nodata is None:
-        nodata = profile.get("nodata", None)
+        nodata = profile.get("nodata")
 
     data_to_write = raster.filled(nodata) if np.ma.isMaskedArray(raster) and nodata is not None else np.asarray(raster)
 
@@ -176,10 +176,7 @@ def clip_array_to_mask(
     clipped = out_image[0]
 
     if filled:
-        if nodata is not None:
-            clipped = np.ma.masked_equal(clipped, nodata)
-        else:
-            clipped = np.ma.masked_array(clipped)
+        clipped = np.ma.masked_equal(clipped, nodata) if nodata is not None else np.ma.masked_array(clipped)
     else:
         if not np.ma.isMaskedArray(clipped):
             clipped = np.ma.masked_array(clipped)
@@ -238,10 +235,7 @@ def reproject_raster(
     """Reproject an already loaded raster while preserving mask/nodata and updating profile."""
     height, width = raster.shape
 
-    if src_nodata is not None:
-        src_filled = raster.filled(src_nodata)
-    else:
-        src_filled = raster.filled()
+    src_filled = raster.filled(src_nodata) if src_nodata is not None else raster.filled()
 
     has_reference_grid = dst_transform is not None and dst_width is not None and dst_height is not None
 
@@ -277,10 +271,7 @@ def reproject_raster(
         resampling=resampling,
     )
 
-    if src_nodata is not None:
-        dst_masked = np.ma.masked_equal(dst, src_nodata)
-    else:
-        dst_masked = np.ma.masked_array(dst)
+    dst_masked = np.ma.masked_equal(dst, src_nodata) if src_nodata is not None else np.ma.masked_array(dst)
 
     out_profile = profile.copy()
     out_profile.update(
@@ -306,9 +297,18 @@ def get_range_elevation(root_dir: str) -> tuple[float, float]:
         paths = Paths(hex_id=hex_id, root_dir=root_dir)
         path_elev_grid = paths.elevation_grid(hex_id=hex_id)
         elevation_grid = load_raster(str(path_elev_grid))
-        masked_data = np.ma.masked_equal(elevation_grid, -9999)
-        max_value = max(max_value, masked_data.max())
-        min_value = min(min_value, masked_data.min())
+        masked_data = np.ma.masked_invalid(np.ma.masked_equal(elevation_grid, -9999))
+        values = masked_data.compressed()
+        if values.size == 0:
+            continue
+        max_value = max(max_value, float(np.max(values)))
+        min_value = min(min_value, float(np.min(values)))
+
+    if not np.isfinite(max_value) or not np.isfinite(min_value) or max_value <= min_value:
+        raise ValueError(
+            f"Invalid elevation normalization range from root_dir={root_dir!r}: min={min_value}, max={max_value}. "
+            "Check that root_dir points to the raw hexel dataset, not only the prepared patch directory."
+        )
     return float(max_value), float(min_value)
 
 
@@ -336,26 +336,63 @@ def get_range_output(root_dir: str, output_type: str) -> tuple[float, float]:
         paths = Paths(hex_id=hex_id, root_dir=root_dir)
         output_path = getattr(paths, path_methods[output_type])()
         output_grid = load_raster(str(output_path))
+        output_values = np.ma.masked_invalid(output_grid).compressed()
+        if output_values.size == 0:
+            continue
 
-        max_value = max(max_value, float(output_grid.max()))
-        min_value = min(min_value, float(output_grid.min()))
+        max_value = max(max_value, float(np.max(output_values)))
+        min_value = min(min_value, float(np.min(output_values)))
 
+    if not np.isfinite(max_value) or not np.isfinite(min_value) or max_value <= min_value:
+        raise ValueError(
+            f"Invalid {output_type} normalization range from root_dir={root_dir!r}: "
+            f"min={min_value}, max={max_value}. Check that root_dir points to the raw hexel dataset, "
+            "not only the prepared patch directory."
+        )
     return max_value, min_value
+
+
+def get_output_log_stats(root_dir: str, output_type: str) -> tuple[float, float]:
+    """
+    Get global mean/std of log1p target values for one output type across all valid hexels.
+    """
+    path_methods = {
+        "fire_intensity": "output_fire_intensity",
+        "fire_ros": "output_ros",
+        "fire_burn_probability": "output_burn_prob",
+    }
+
+    if output_type not in path_methods:
+        raise ValueError(f"Unsupported output_type: {output_type}")
+
+    count = 0
+    total = 0.0
+    total_sq = 0.0
+
+    for hex_id in find_hex_ids(root_dir):
+        paths = Paths(hex_id=hex_id, root_dir=root_dir)
+        output_path = getattr(paths, path_methods[output_type])()
+        output_grid = load_raster(str(output_path))
+        output_values = np.ma.masked_invalid(output_grid).compressed().astype(np.float64, copy=False)
+        if output_values.size == 0:
+            continue
+        log_values = np.log1p(np.clip(output_values, a_min=0.0, a_max=None))
+        count += int(log_values.size)
+        total += float(log_values.sum())
+        total_sq += float(np.square(log_values).sum())
+
+    if count == 0:
+        raise ValueError(f"No valid target pixels found for output_type={output_type!r} in root_dir={root_dir!r}.")
+
+    mean = total / count
+    variance = max((total_sq / count) - mean**2, 0.0)
+    std = float(np.sqrt(variance))
+    if not np.isfinite(std) or std <= 0.0:
+        raise ValueError(f"Invalid log-standard normalization std for output_type={output_type!r} in root_dir={root_dir!r}: {std}.")
+    return float(mean), std
 
 
 def denormalize_burn_count(data: np.ndarray, min_val: float, max_val: float) -> np.ndarray:
     """Reverse the count normalization to recover true counts."""
     data = data.astype("float32")
     return data * (max_val - min_val) + min_val
-
-
-def denormalize_burn_prob(
-    data: np.ndarray, min_val: float, max_val: float, out_norm: str = "min_max", multiplier: int = 1000
-) -> np.ndarray:
-    """Reverse the count normalization to recover true probs."""
-    data = data.astype("float32")
-    if out_norm == "min_max":
-        data = data * (max_val - min_val) + min_val
-    elif out_norm == "log":
-        data = np.expm1(data * np.log1p(multiplier)) / multiplier
-    return data.astype("float32")

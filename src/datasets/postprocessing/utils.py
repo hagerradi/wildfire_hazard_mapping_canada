@@ -1,4 +1,5 @@
 import functools
+import json
 import os
 from collections.abc import Callable
 
@@ -11,18 +12,20 @@ from rasterio.profiles import Profile
 from data_preparation.paths import Paths
 from data_preparation.spatial.utils import (
     denormalize_burn_count,
-    denormalize_burn_prob,
+    get_output_log_stats,
     get_range_output,
     load_spatial_raster,
 )
-from src.config import Config
+from src.config import Config, GridParams
 from src.datasets.postprocessing.stitch_hexel import stitch_windows
 from src.datasets.postprocessing.visualize_predictions import (
     plot_hexbin_distribution,
     plot_histogram_distribution,
-    visualize_burn_prob_grids,
     visualize_hexel_iou,
+    visualize_target_grids,
 )
+from src.datasets.targets import TargetSpec, get_target_spec
+from src.datasets.utils import denormalize_output_target
 from src.logger import CometLogger
 
 
@@ -49,6 +52,7 @@ def get_stitched_windows(
     predictions: np.ndarray,
     start_idx: int,
     gt_shape: tuple,
+    target_channel_index: int = 0,
     stitch_mode: str = "mean",
     win_h: int = 128,
     win_w: int = 128,
@@ -59,8 +63,11 @@ def get_stitched_windows(
     all_data_points, all_locations, all_masks = [], [], []
     for i, data in enumerate(np.array(df)):
         path = data[0]
-        array = np.load(os.path.join(base_dir, path))[:, :, 0]
-        mask = ~np.isnan(array)
+        array = np.load(os.path.join(base_dir, path))
+        if target_channel_index >= array.shape[2]:
+            raise ValueError(f"target_channel_index={target_channel_index} is out of bounds for patch with shape {array.shape}.")
+        target_array = array[:, :, target_channel_index]
+        mask = ~np.isnan(target_array)
         all_data_points.append(predictions[start_idx + i].reshape((win_h, win_w)))
         all_locations.append((data[5], data[6]))
         all_masks.append(mask.reshape((win_h, win_w)))
@@ -78,7 +85,10 @@ def get_predicted_hexel(
     hex_id: str,
     modelling_approach: str = "1",
     out_norm: str = "min_max",
+    target_log_mean: float | None = None,
+    target_log_std: float | None = None,
     stitch_mode: str = "mean",
+    target_channel_index: int = 0,
     win_h: int = 128,
     win_w: int = 128,
 ) -> tuple[np.ndarray, Profile]:
@@ -93,8 +103,8 @@ def get_predicted_hexel(
         path=all_paths.elevation_grid(hex_id=hex_id), actual_mask_path=all_paths.mask_grid_actual(hex_id=hex_id)
     )
 
-    # clip predictions between 0 and 1 in case of outliers
-    predictions = np.clip(predictions, 0, 1)
+    if out_norm in {"min_max", "log"}:
+        predictions = np.clip(predictions, 0, 1)
 
     if modelling_approach == "1":
         reconstructed_hexel = get_stitched_windows(
@@ -103,12 +113,18 @@ def get_predicted_hexel(
             predictions=predictions,
             start_idx=start_idx,
             gt_shape=tuple(gt_elevation_grid.shape),
+            target_channel_index=target_channel_index,
             stitch_mode=stitch_mode,
             win_h=win_h,
             win_w=win_w,
         )
-        reconstructed_hexel_denorm = denormalize_burn_prob(
-            data=reconstructed_hexel, min_val=min_target_val, max_val=max_target_val, out_norm=out_norm
+        reconstructed_hexel_denorm = denormalize_output_target(
+            data=reconstructed_hexel,
+            target_min=min_target_val,
+            target_max=max_target_val,
+            out_norm=out_norm,
+            target_log_mean=target_log_mean,
+            target_log_std=target_log_std,
         )
         gt_elevation_grid_profile.update(dtype="float32", compress="lzw", nodata=-9999)  # type: ignore
     else:
@@ -122,6 +138,7 @@ def get_predicted_hexel(
                 predictions=predictions,
                 start_idx=start_idx,
                 gt_shape=tuple(gt_elevation_grid.data.shape),
+                target_channel_index=target_channel_index,
                 stitch_mode=stitch_mode,
                 win_h=win_h,
                 win_w=win_w,
@@ -141,13 +158,48 @@ def get_predicted_hexel(
     return reconstructed_hexel_denorm, gt_elevation_grid_profile
 
 
+def get_config_target_spec(config: Config) -> TargetSpec:
+    for source in config.data.input_sources:
+        if source.name == "grid" and isinstance(source.params, GridParams):
+            return get_target_spec(source.params.target_name)
+    return get_target_spec("bp")
+
+
+def get_config_grid_params(config: Config) -> GridParams | None:
+    for source in config.data.input_sources:
+        if source.name == "grid" and isinstance(source.params, GridParams):
+            return source.params
+    return None
+
+
+def as_float_array_with_nan(data: np.ndarray) -> np.ndarray:
+    data_ma = np.ma.masked_invalid(np.ma.asarray(data).astype("float32"))
+    return np.asarray(data_ma.filled(np.nan), dtype=np.float32)
+
+
+def get_target_channel_index(data_dir: str, modelling_approach: str, target: TargetSpec) -> int:
+    feature_map_path = os.path.join(data_dir, f"feature_channel_map_{modelling_approach}.json")
+    with open(feature_map_path) as f:
+        channel_feature_map = json.load(f)
+
+    channel_indices = channel_feature_map.get(target.channel_key)
+    if not channel_indices:
+        raise ValueError(
+            f"Missing target channel {target.channel_key!r} in {feature_map_path}. Available keys: {list(channel_feature_map.keys())}"
+        )
+    return int(channel_indices[0])
+
+
 def calculate_hexel_metrics_pytorch(
     gt_grid: np.ndarray, pred_grid: np.ndarray, device: torch.device, metric_functions: dict[str, Callable]
 ) -> dict[str, float]:
     """
     Utils to convert 2D numpy hexels into torch tensors to run the global per-hexel eval. metrics.
     """
-    valid_mask_np = ~np.isnan(gt_grid) & ~np.isnan(pred_grid)
+    gt_grid = as_float_array_with_nan(gt_grid)
+    pred_grid = as_float_array_with_nan(pred_grid)
+
+    valid_mask_np = np.isfinite(gt_grid) & np.isfinite(pred_grid)
     valid_mask_np = valid_mask_np & (gt_grid >= 0.0)
 
     gt_clean = np.nan_to_num(gt_grid, nan=0.0)
@@ -171,7 +223,10 @@ def get_hexel_binary_maps(pred_grid: np.ndarray, gt_grid: np.ndarray, percentile
     """
     Utils to get the Top K percentile thresholds (binary maps) for full 2D numpy hexel grids.
     """
-    valid_mask = ~np.isnan(gt_grid) & ~np.isnan(pred_grid)
+    gt_grid = as_float_array_with_nan(gt_grid)
+    pred_grid = as_float_array_with_nan(pred_grid)
+
+    valid_mask = np.isfinite(gt_grid) & np.isfinite(pred_grid)
 
     p_valid = pred_grid[valid_mask]
     t_valid = gt_grid[valid_mask]
@@ -217,8 +272,15 @@ def evaluate_and_visualize_hexels(
     raw_data_dir = config.data.raw_data_dir
     modelling_approach = config.modelling_approach
     valid_mask_threshold = config.data.valid_mask_threshold
+    target = get_config_target_spec(config)
+    grid_params = get_config_grid_params(config)
+    target_channel_index = get_target_channel_index(data_dir=data_dir, modelling_approach=modelling_approach, target=target)
 
-    max_target_val, min_target_val = get_range_output(root_dir=raw_data_dir, output_type="fire_burn_probability")
+    max_target_val, min_target_val = get_range_output(root_dir=raw_data_dir, output_type=target.output_type)
+    target_log_mean = grid_params.target_log_mean if grid_params is not None else None
+    target_log_std = grid_params.target_log_std if grid_params is not None else None
+    if out_norm == "log_standard" and (target_log_mean is None or target_log_std is None):
+        target_log_mean, target_log_std = get_output_log_stats(root_dir=raw_data_dir, output_type=target.output_type)
 
     if isinstance(test_predictions, str):
         raise TypeError(f"Expected ndarray, but got string: {test_predictions}")
@@ -254,25 +316,30 @@ def evaluate_and_visualize_hexels(
             hex_id=hex_id,
             modelling_approach=modelling_approach,
             out_norm=out_norm,
+            target_log_mean=target_log_mean,
+            target_log_std=target_log_std,
             stitch_mode="mean",
+            target_channel_index=target_channel_index,
             win_h=config.data_prep.win_h,
             win_w=config.data_prep.win_w,
         )
         save_predicted_hexels(reconstructed_hexel_denorm, gt_elevation_grid_profile, hex_id, config.save_dir)
         # Save the hex as plt plot
         all_paths = Paths(hex_id=hex_id, root_dir=raw_data_dir)
+        target_path = getattr(all_paths, target.path_method)()
         grid_gt, _ = load_spatial_raster(
-            path=all_paths.output_burn_prob(),
+            path=target_path,
             actual_mask_path=all_paths.mask_grid_actual(hex_id=hex_id),
             reference_profile=gt_elevation_grid_profile,
         )
 
-        visualize_burn_prob_grids(
+        visualize_target_grids(
             gt_grid=grid_gt,
             pred_grid=reconstructed_hexel_denorm,
             hex_id=hex_id,
             save_dir=config.save_dir,
             experiment_logger=experiment_logger,
+            target_label=target.label,
         )
 
         # plot and save hexbin figures (for calibration)
@@ -282,6 +349,8 @@ def evaluate_and_visualize_hexels(
             hex_id=hex_id,
             save_dir=config.save_dir,
             experiment_logger=experiment_logger,
+            target_label=target.label,
+            probability_scale=target.probability_scale,
         )
 
         # plot and save hist. figures
@@ -291,6 +360,8 @@ def evaluate_and_visualize_hexels(
             hex_id=hex_id,
             save_dir=config.save_dir,
             experiment_logger=experiment_logger,
+            target_label=target.label,
+            probability_scale=target.probability_scale,
         )
 
         # compute per-hexel metrics
@@ -310,7 +381,16 @@ def evaluate_and_visualize_hexels(
             # generate the TopK IoU plots
             for p in percentiles_to_plot:
                 pred_bin, gt_bin = get_hexel_binary_maps(reconstructed_hexel_denorm, grid_gt, percentile=p)
-                visualize_hexel_iou(grid_gt, reconstructed_hexel_denorm, gt_bin, pred_bin, hex_id, config.save_dir, p)
+                visualize_hexel_iou(
+                    grid_gt,
+                    reconstructed_hexel_denorm,
+                    gt_bin,
+                    pred_bin,
+                    hex_id,
+                    config.save_dir,
+                    p,
+                    target_label=target.label,
+                )
 
         print(f"=======Saved subplots for hex{hex_id}==============")
 
@@ -319,14 +399,14 @@ def evaluate_and_visualize_hexels(
 
     if metric_functions is not None and len(all_hexel_metrics) > 0:
         # get per-hexel metrics
-        for hex_id, hex_metric in zip(all_hex_ids, all_hexel_metrics):
+        for hex_id, hex_metric in zip(all_hex_ids, all_hexel_metrics, strict=False):
             hex_id_str = str(hex_id).zfill(2)
             for key, val in hex_metric.items():
                 # we create keys such as "hex12/mse" for clarity
                 hexel_metrics[f"hex{hex_id_str}/{key}"] = float(val) if not np.isnan(val) else float("nan")
 
         # get the aggregated averages over all hexels
-        for key in metric_functions.keys():
+        for key in metric_functions:
             mean_val = np.nanmean([hm[key] for hm in all_hexel_metrics if key in hm and not np.isnan(hm[key])])
             # we create keys such as "all/mse"
             hexel_metrics[f"all/{key}"] = float(mean_val)

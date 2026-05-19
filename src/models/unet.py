@@ -197,7 +197,7 @@ class MultiSourceUNet(UNetBase):
         # Get the dims. of all extra auxiliary features.
         auxillary_dims: dict[str, int] = {}
         if self.auxiliary_input_dims:
-            for name in self.auxiliary_input_dims.keys():
+            for name in self.auxiliary_input_dims:
                 auxillary_dims[name] = self.auxiliary_embed_dims.get(name, 64)
 
         return MultiSourceBottleneck(
@@ -233,7 +233,7 @@ class MultiSourceUNet(UNetBase):
         # Extra auxiliary encoders path.
         x_wind = None
         if self.auxiliary_input_dims and x_auxiliary is not None:
-            for name in self.auxiliary_input_dims.keys():
+            for name in self.auxiliary_input_dims:
                 if name in x_auxiliary:
                     encoder_aux = self.encoder[name]  # type: ignore
                     encoder_emb = encoder_aux(x_auxiliary[name])

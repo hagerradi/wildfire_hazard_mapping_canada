@@ -1,4 +1,3 @@
-import numpy as np
 import pandas as pd
 
 # features of fire weather list to include

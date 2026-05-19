@@ -9,7 +9,10 @@ from torch.optim.lr_scheduler import LRScheduler, ReduceLROnPlateau
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from src.config import Config
+from data_preparation.spatial.utils import get_output_log_stats, get_range_output
+from src.config import Config, GridParams
+from src.datasets.targets import get_target_spec
+from src.datasets.utils import denormalize_output_target
 from src.logger import CometLogger
 from src.losses import WeightedLoss
 from src.models.unet import BaselineUNet, MultiSourceUNet
@@ -59,6 +62,9 @@ class Trainer:
         Define model, loss function and optimizer.
         """
 
+        self._grid_params = self._get_grid_params()
+        self._target_spec = get_target_spec(self._grid_params.target_name) if self._grid_params is not None else get_target_spec("bp")
+
         # Flag to indicate we are including auxiliary features
         self.auxiliary = "auxiliary" in self.config.model.input_feature_list
 
@@ -67,7 +73,7 @@ class Trainer:
             if not self.auxiliary_input_dims:
                 raise ValueError("Config requests auxiliary features, but no auxiliary dim. were detected.")
 
-            print(f"[Trainer] Mode: Multi-Source (Spatial + auxiliary)")
+            print("[Trainer] Mode: Multi-Source (Spatial + auxiliary)")
             print(f"[Trainer] Spatial Channels: {self.spatial_input_channels}, Auxiliary Dim: {self.auxiliary_input_dims}")
 
             self.model = MultiSourceUNet(
@@ -108,12 +114,13 @@ class Trainer:
 
         # Setup loss
         loss_config = self.config.optimizer.loss
+        huber_beta = self.config.optimizer.huber_beta
         if isinstance(loss_config, str):  # loss is a string
-            self.loss_fn = build_single_loss(loss_config)
+            self.loss_fn = build_single_loss(loss_config, huber_beta=huber_beta)
         else:  # loss is a list
             loss_names = loss_config
             weights = self.config.optimizer.loss_weights
-            losses = {n: build_single_loss(n) for n in loss_names}
+            losses = {n: build_single_loss(n, huber_beta=huber_beta) for n in loss_names}
             self.loss_fn = WeightedLoss(losses=losses, weights=weights, normalize_weights=True)
 
         # Setup optimizer
@@ -131,10 +138,77 @@ class Trainer:
         # Validate and load metrics from config.
         self._validate_and_load_metrics()
 
+        self._use_sigmoid_predictions = self._target_spec.probability_scale
+        self._configure_metric_target_transform()
+
+    def _get_grid_params(self) -> GridParams | None:
+        for source in self.config.data.input_sources:
+            if source.name == "grid" and isinstance(source.params, GridParams):
+                return source.params
+        return None
+
+    def _configure_metric_target_transform(self) -> None:
+        self._metric_out_norm = "none"
+        self._metric_target_min = 0.0
+        self._metric_target_max = 1.0
+        self._metric_target_log_mean: float | None = None
+        self._metric_target_log_std: float | None = None
+
+        if self._grid_params is None:
+            return
+
+        self._metric_out_norm = self._grid_params.out_norm
+        if self._metric_out_norm == "min_max":
+            if self.config.data.raw_data_dir:
+                self._metric_target_max, self._metric_target_min = get_range_output(
+                    root_dir=self.config.data.raw_data_dir,
+                    output_type=self._target_spec.output_type,
+                )
+        elif self._metric_out_norm == "log_standard":
+            self._metric_target_log_mean = self._grid_params.target_log_mean
+            self._metric_target_log_std = self._grid_params.target_log_std
+            if self._metric_target_log_mean is None or self._metric_target_log_std is None:
+                self._metric_target_log_mean, self._metric_target_log_std = get_output_log_stats(
+                    root_dir=self.config.data.raw_data_dir,
+                    output_type=self._target_spec.output_type,
+                )
+            if self._metric_target_log_std <= 0.0:
+                raise ValueError(f"target_log_std must be positive for out_norm='log_standard', got {self._metric_target_log_std}.")
+        elif self._metric_out_norm not in {"log", "none", "total_iters", "season_cause_iters"}:
+            raise ValueError(f"Unsupported output normalization: {self._metric_out_norm!r}")
+
+    def _prepare_metric_tensors(self, predictions: torch.Tensor, targets: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        if self._metric_out_norm == "log_standard" and (self._metric_target_log_mean is None or self._metric_target_log_std is None):
+            raise RuntimeError("log_standard metric transform was not configured.")
+
+        metric_predictions = cast(
+            torch.Tensor,
+            denormalize_output_target(
+                data=predictions,
+                target_min=self._metric_target_min,
+                target_max=self._metric_target_max,
+                out_norm=self._metric_out_norm,
+                target_log_mean=self._metric_target_log_mean,
+                target_log_std=self._metric_target_log_std,
+            ),
+        )
+        metric_targets = cast(
+            torch.Tensor,
+            denormalize_output_target(
+                data=targets,
+                target_min=self._metric_target_min,
+                target_max=self._metric_target_max,
+                out_norm=self._metric_out_norm,
+                target_log_mean=self._metric_target_log_mean,
+                target_log_std=self._metric_target_log_std,
+            ),
+        )
+        return metric_predictions, metric_targets
+
     def _validate_and_load_metrics(self) -> None:
         """Helper to validate and load metrics to be computed."""
         if not set(self.config.metrics).issubset(AVAILABLE_METRICS):
-            raise ValueError(f"Invalid metrics found." f"Available options: {list(AVAILABLE_METRICS)}")
+            raise ValueError(f"Invalid metrics found.Available options: {list(AVAILABLE_METRICS)}")
         self.metric_functions = {k: AVAILABLE_METRICS[k] for k in self.config.metrics}
 
     def _step(self, batch: Any) -> tuple[torch.Tensor, torch.Tensor, dict[str, torch.Tensor] | None, torch.Tensor, torch.Tensor]:
@@ -165,7 +239,8 @@ class Trainer:
             total_loss = cast(torch.Tensor, loss_out)
             loss_parts = None
 
-        return torch.sigmoid(predictions), total_loss, loss_parts, targets, masks
+        metric_predictions = torch.sigmoid(predictions) if self._use_sigmoid_predictions else predictions
+        return metric_predictions, total_loss, loss_parts, targets, masks
 
     @staticmethod
     def _are_metrics_better(curr: list[float], best: list[float], modes: list[str]):
@@ -227,8 +302,9 @@ class Trainer:
 
             # compute the metrics
             with torch.no_grad():
+                metric_predictions, metric_targets = self._prepare_metric_tensors(predictions.detach(), targets)
                 for name, metric_fn in self.metric_functions.items():
-                    value = metric_fn(predictions.detach(), targets, masks)
+                    value = metric_fn(metric_predictions, metric_targets, masks)
                     running_metrics[name] += value.item() * batch_size
                     if self.logger and self.global_step % self.log_every_n_step == 0:
                         self.logger.log_metrics({f"train_step_{name}": value.item()}, step=self.global_step)
@@ -284,8 +360,9 @@ class Trainer:
 
             # compute the metrics
             with torch.no_grad():
+                metric_predictions, metric_targets = self._prepare_metric_tensors(predictions.detach(), targets)
                 for name, metric_fn in self.metric_functions.items():
-                    value = metric_fn(predictions.detach(), targets, masks)
+                    value = metric_fn(metric_predictions, metric_targets, masks)
                     running_metrics[name] += value.item() * batch_size
 
                 if loss_parts is not None and running_loss_parts is not None:

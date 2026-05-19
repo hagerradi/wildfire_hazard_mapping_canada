@@ -8,8 +8,13 @@ from matplotlib.patches import Patch
 from src.logger import CometLogger
 
 
-def visualize_burn_prob_grids(
-    gt_grid: np.ndarray, pred_grid: np.ndarray, hex_id: str, save_dir: str, experiment_logger: CometLogger | None = None
+def visualize_target_grids(
+    gt_grid: np.ndarray,
+    pred_grid: np.ndarray,
+    hex_id: str,
+    save_dir: str,
+    experiment_logger: CometLogger | None = None,
+    target_label: str = "Target",
 ):
     """
     Visualizes Ground Truth, Prediction, and Difference (GT - Prediction), side-by-side.
@@ -33,7 +38,7 @@ def visualize_burn_prob_grids(
 
     # Create figure
     fig, axes = plt.subplots(1, 3, figsize=(16, 6), constrained_layout=True)
-    fig.suptitle(f"Burn Probability Prediction — Hex {hex_id}", fontsize=16)
+    fig.suptitle(f"{target_label} Prediction — Hex {hex_id}", fontsize=16)
 
     # --- Prediction ---
     im2 = axes[0].imshow(
@@ -48,7 +53,7 @@ def visualize_burn_prob_grids(
     axes[0].set_ylabel("Northing (m)")
 
     # --- Ground Truth ---
-    im1 = axes[1].imshow(
+    axes[1].imshow(
         gt_grid,
         cmap="viridis",
         origin="upper",
@@ -77,7 +82,7 @@ def visualize_burn_prob_grids(
         shrink=0.85,
         pad=0.02,
     )
-    cbar_shared.set_label("Burn Probability")
+    cbar_shared.set_label(target_label)
 
     # Separate colorbar for difference plot only
     cbar_diff = fig.colorbar(
@@ -99,10 +104,17 @@ def visualize_burn_prob_grids(
 
 
 def visualize_hexel_iou(
-    gt_grid: np.ndarray, pred_grid: np.ndarray, gt_bin: np.ndarray, pred_bin: np.ndarray, hex_id: str, save_dir: str, percentile: float
+    gt_grid: np.ndarray,
+    pred_grid: np.ndarray,
+    gt_bin: np.ndarray,
+    pred_bin: np.ndarray,
+    hex_id: str,
+    save_dir: str,
+    percentile: float,
+    target_label: str = "Target",
 ):
     """
-    Visualize targets and preds burn prob. maps, their binary TopK hotspots,
+    Visualize target and prediction maps, their binary TopK hotspots,
     contours of those hotspots, and the overlay map.
     """
     top_pct = round((1.0 - percentile) * 100.0, 2)
@@ -115,7 +127,7 @@ def visualize_hexel_iou(
     inferred_vmax = max(np.nanmax(gt_grid), np.nanmax(pred_grid))
 
     fig, axes = plt.subplots(2, 2, figsize=(14, 12), layout="constrained")
-    fig.suptitle(f"Top {top_pct_str}% Burn Probability Hotspots - Hex {hex_id}", fontsize=20)
+    fig.suptitle(f"Top {top_pct_str}% {target_label} Hotspots - Hex {hex_id}", fontsize=20)
 
     # get topK contours for visualization
     _ = axes[0, 0].imshow(pred_grid, cmap="viridis", origin="upper", vmin=0, vmax=inferred_vmax)
@@ -126,7 +138,7 @@ def visualize_hexel_iou(
     axes[0, 1].contour(np.nan_to_num(gt_bin), levels=[0.5], colors="white", linewidths=0.4, alpha=0.7)
     axes[0, 1].set_title(f"Ground Truth with Top {top_pct_str}% Contours")
 
-    fig.colorbar(im2, ax=axes[0, 1], label="Burn Probability", shrink=0.8)
+    fig.colorbar(im2, ax=axes[0, 1], label=target_label, shrink=0.8)
 
     # overlap visuals
     h, w = gt_grid.shape
@@ -162,10 +174,16 @@ def visualize_hexel_iou(
 
 
 def plot_hexbin_distribution(
-    gt_grid: np.ndarray, pred_grid: np.ndarray, hex_id: str | int, save_dir: str, experiment_logger: CometLogger | None = None
+    gt_grid: np.ndarray,
+    pred_grid: np.ndarray,
+    hex_id: str | int,
+    save_dir: str,
+    experiment_logger: CometLogger | None = None,
+    target_label: str = "Target",
+    probability_scale: bool = True,
 ) -> None:
     """
-    Generates and saves a 2D hex binning histogram comparing preds vs. target probabilities.
+    Generates and saves a 2D hex binning histogram comparing predictions vs. target values.
     """
     hex_id_str = str(hex_id).zfill(2)
 
@@ -173,23 +191,16 @@ def plot_hexbin_distribution(
     gt_vals = gt_grid[valid_mask]
     pred_vals = pred_grid[valid_mask]
 
-    # set dynamic max limit and default fallback
-    if len(gt_vals) > 0 and len(pred_vals) > 0:
-        actual_max = float(max(np.max(gt_vals), np.max(pred_vals)))
-        max_limit = min(1.0, actual_max * 1.05)
-        if max_limit == 0.0:
-            max_limit = 0.15
-    else:
-        max_limit = 0.15
+    max_limit = get_distribution_axis_limit(gt_vals, pred_vals, probability_scale=probability_scale)
 
     fig, ax = plt.subplots(figsize=(8, 6))
     hb = ax.hexbin(gt_vals, pred_vals, gridsize=100, cmap="inferno_r", bins="log", mincnt=1)
 
     ax.plot([0, max_limit], [0, max_limit], color="red", linestyle="--", linewidth=2, label="Perfect Alignment")
 
-    ax.set_title(f"Probabilities Distribution: Preds vs Targets (GT) - Hex {hex_id_str}")
-    ax.set_xlabel("Ground Truth Probability")
-    ax.set_ylabel("Predicted Probability")
+    ax.set_title(f"{target_label} Distribution: Preds vs Targets (GT) - Hex {hex_id_str}")
+    ax.set_xlabel(f"Ground Truth {target_label}")
+    ax.set_ylabel(f"Predicted {target_label}")
 
     ax.set_xlim(0, max_limit)
     ax.set_ylim(0, max_limit)
@@ -215,10 +226,12 @@ def plot_histogram_distribution(
     save_dir: str,
     experiment_logger: CometLogger | None = None,
     num_bins: int = 100,
+    target_label: str = "Target",
+    probability_scale: bool = True,
 ) -> None:
     """
     Generates and saves an overlaid 1D histogram comparing the global distributions
-    of preds and targets probs on a log. scale.
+    of predictions and targets on a log. scale.
     """
     hex_id_str = str(hex_id).zfill(2)
 
@@ -226,13 +239,7 @@ def plot_histogram_distribution(
     gt_vals = gt_grid[valid_mask]
     pred_vals = pred_grid[valid_mask]
 
-    # set dynamic max limit and default fallback
-    if len(gt_vals) > 0 and len(pred_vals) > 0:
-        max_val = float(max(np.max(gt_vals), np.max(pred_vals)))
-        if max_val == 0.0:
-            max_val = 0.15
-    else:
-        max_val = 0.15
+    max_val = get_distribution_axis_limit(gt_vals, pred_vals, probability_scale=probability_scale)
 
     shared_bins = np.linspace(0.0, max_val, num=num_bins)
     fig, ax = plt.subplots(figsize=(10, 6), dpi=300)
@@ -240,8 +247,8 @@ def plot_histogram_distribution(
     ax.hist(gt_vals, bins=shared_bins.tolist(), color="blue", alpha=0.5, log=True, label="Ground Truth")
     ax.hist(pred_vals, bins=shared_bins.tolist(), color="orange", alpha=0.5, log=True, label="Prediction")
 
-    ax.set_title(f"Overlayed Input Distributions (Log Scale) - Hex {hex_id_str}", fontsize=14)
-    ax.set_xlabel("Burn Probability", fontsize=12)
+    ax.set_title(f"{target_label} Distribution (Log Scale) - Hex {hex_id_str}", fontsize=14)
+    ax.set_xlabel(target_label, fontsize=12)
     ax.set_ylabel("Pixel Count (Log Scale)", fontsize=12)
 
     ax.legend(fontsize=12)
@@ -255,3 +262,18 @@ def plot_histogram_distribution(
 
     if experiment_logger is not None:
         experiment_logger.log_image(out_hist_path, name=f"hist_dist_hex_{hex_id_str}")
+
+
+def get_distribution_axis_limit(gt_vals: np.ndarray, pred_vals: np.ndarray, probability_scale: bool) -> float:
+    fallback = 0.15 if probability_scale else 1.0
+    if len(gt_vals) == 0 or len(pred_vals) == 0:
+        return fallback
+
+    actual_max = float(max(np.max(gt_vals), np.max(pred_vals)))
+    if not np.isfinite(actual_max) or actual_max <= 0.0:
+        return fallback
+
+    axis_limit = actual_max * 1.05
+    if probability_scale:
+        axis_limit = min(1.0, axis_limit)
+    return axis_limit

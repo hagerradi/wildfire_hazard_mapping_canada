@@ -1,5 +1,4 @@
 import numpy as np
-import pandas as pd
 
 
 def stitch_windows(
@@ -24,7 +23,7 @@ def stitch_windows(
         accumulator = np.zeros(original_shape, dtype=dtype)
         counter = np.zeros(original_shape, dtype=dtype)
 
-        for window, mask, (r, c) in zip(windows, masks, coords):
+        for window, mask, (r, c) in zip(windows, masks, coords, strict=False):
             window = np.array(window, copy=True)
             window[~mask] = 0.0
             h_win, w_win = window.shape[:2]
@@ -51,7 +50,7 @@ def stitch_windows(
         # Initialize with negative infinity so any real data (even negative) will override it
         accumulator = np.full(original_shape, -np.inf, dtype=dtype)
 
-        for window, mask, (r, c) in zip(windows, masks, coords):
+        for window, mask, (r, c) in zip(windows, masks, coords, strict=False):
             window = np.array(window, copy=True)
             h_win, w_win = window.shape[:2]
             window[~mask] = -np.inf

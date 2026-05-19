@@ -62,7 +62,7 @@ def setup_augmentations(config: DataSourceConfig):
     unknown_keys = set(transforms_list) - valid_keys
 
     if unknown_keys:
-        raise ValueError(f"Invalid transforms found in config: {unknown_keys}.\n" f"Allowed options are: {list(valid_keys)}")
+        raise ValueError(f"Invalid transforms found in config: {unknown_keys}.\nAllowed options are: {list(valid_keys)}")
 
     selected = [mapping[name] for name in transforms_list]
     return Compose(selected, prob=augmentation_prob)

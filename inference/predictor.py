@@ -9,6 +9,7 @@ from typing import Any
 
 import torch
 
+from src.datasets.targets import get_target_spec
 from src.models.unet import BaselineUNet, MultiSourceUNet
 
 logger = logging.getLogger(__name__)
@@ -52,7 +53,17 @@ class BurnRiskPredictor:
         self.model = model
         self.device = device
         self.config = config
+        self._use_sigmoid_predictions = self._should_use_sigmoid_predictions()
         self.model.eval()
+
+    def _should_use_sigmoid_predictions(self) -> bool:
+        if self.config is None:
+            return True
+        for source in self.config.get("data", {}).get("input_sources", []):
+            if source.get("name") == "grid":
+                target_name = source.get("params", {}).get("target_name", "bp")
+                return get_target_spec(target_name).probability_scale
+        return True
 
     @classmethod
     def from_checkpoint(
@@ -157,8 +168,11 @@ class BurnRiskPredictor:
 
         predictions = self.model(spatial_inputs, auxiliary_inputs if auxiliary_inputs else None)
 
+        if self._use_sigmoid_predictions:
+            predictions = torch.sigmoid(predictions)
+
         # Move predictions to CPU before returning
-        return torch.sigmoid(predictions).cpu()
+        return predictions.cpu()
 
     def __call__(
         self,

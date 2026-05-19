@@ -115,10 +115,7 @@ def generate_data_samples(
     task_id: int = 0,
     num_tasks: int = 1,
 ):
-    if save_dir:
-        out_dir = save_dir
-    else:
-        out_dir = os.path.join(root_dir, f"data_samples_approach_{modelling_approach}")
+    out_dir = save_dir or os.path.join(root_dir, f"data_samples_approach_{modelling_approach}")
     os.makedirs(out_dir, exist_ok=True)
     os.makedirs(os.path.join(out_dir, "numpy_files"), exist_ok=True)
     completed_hex_ids = get_processed_hex_ids(out_dir)

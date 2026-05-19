@@ -1,6 +1,7 @@
 import os
 import random
 from collections.abc import Callable
+from contextlib import suppress
 from functools import partial
 
 import numpy as np
@@ -8,7 +9,7 @@ import torch
 from matplotlib import pyplot as plt
 from torch.utils.data import DataLoader
 
-from src.losses import BCELoss, BernoulliKLLoss, DiceLoss, FocalLoss, MAELoss, MSELoss
+from src.losses import BCELoss, BernoulliKLLoss, DiceLoss, FocalLoss, HuberLoss, MAELoss, MSELoss
 from src.metrics import (
     compute_auc_iou,
     compute_bias,
@@ -16,6 +17,7 @@ from src.metrics import (
     compute_kl_divergence,
     compute_mae,
     compute_mse,
+    compute_normalized_mae,
     compute_spearman,
     compute_ssim,
     compute_topK_iou,
@@ -25,6 +27,8 @@ from src.metrics import (
 AVAILABLE_METRICS: dict[str, Callable[..., torch.Tensor]] = {
     "mse": compute_mse,
     "mae": compute_mae,
+    "normalized_mae": compute_normalized_mae,
+    "nmae": compute_normalized_mae,
     "spearman": compute_spearman,
     "ssim": compute_ssim,
     "bias": compute_bias,
@@ -47,7 +51,7 @@ AVAILABLE_METRICS: dict[str, Callable[..., torch.Tensor]] = {
 AVAILABLE_LR_SCHEDULERS = ["onecycle", "cosine_warmup", "plateau", "multistep"]
 
 
-def build_single_loss(name: str) -> torch.nn.Module:
+def build_single_loss(name: str, huber_beta: float = 1.0) -> torch.nn.Module:
     name = str(name).lower()
     if name in ["bce", "bceloss"]:
         return BCELoss()
@@ -55,6 +59,8 @@ def build_single_loss(name: str) -> torch.nn.Module:
         return MSELoss()
     if name in ["mae", "maeloss"]:
         return MAELoss()
+    if name in ["huber", "huberloss", "smoothl1", "smooth_l1", "smoothl1loss"]:
+        return HuberLoss(beta=huber_beta)
     if name in ["focal", "focalloss"]:
         return FocalLoss()
     if name in ["dice", "diceloss"]:
@@ -261,10 +267,8 @@ def seed_everything(seed: int = 42, deterministic: bool = True):
     # For PyTorch >= 1.8
     # Outside 'if cuda' because PyTorch has deterministic CPU algorithms too.
     if deterministic:
-        try:
+        with suppress(Exception):
             torch.use_deterministic_algorithms(True)
-        except Exception:
-            pass
 
     print(f"[Info] Seed set to: {seed}")
 

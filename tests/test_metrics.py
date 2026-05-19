@@ -9,6 +9,7 @@ from src.metrics import (
     compute_kl_divergence,
     compute_mae,
     compute_mse,
+    compute_normalized_mae,
     compute_spearman,
     compute_ssim,
     compute_topK_iou,
@@ -55,6 +56,23 @@ def test_mae_perfect_match_with_mask():
     mask = torch.ones_like(data)
     loss = compute_mae(data, data, mask=mask)
     assert torch.isclose(loss, torch.tensor(0.0))
+
+
+def test_normalized_mae_known_values():
+    preds = torch.tensor([[[[2.0, 1.0], [4.0, 2.0]]]])
+    targets = torch.tensor([[[[1.0, 1.0], [2.0, 2.0]]]])
+    expected = torch.tensor(3.0 / 6.0)
+    result = compute_normalized_mae(preds, targets)
+    assert torch.isclose(result, expected)
+
+
+def test_normalized_mae_with_mask():
+    preds = torch.tensor([[[[2.0, 100.0], [4.0, 2.0]]]])
+    targets = torch.tensor([[[[1.0, 100.0], [2.0, 2.0]]]])
+    mask = torch.tensor([[[[1.0, 0.0], [1.0, 1.0]]]])
+    expected = torch.tensor(3.0 / 5.0)
+    result = compute_normalized_mae(preds, targets, mask=mask)
+    assert torch.isclose(result, expected)
 
 
 def test_spearman_perfect_correlation():
@@ -198,10 +216,10 @@ def test_auc_iou_completely_disjoint():
 def test_auc_iou_invalid_k_values(dummy_data):
     preds, targets = dummy_data
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="k_values must be a tuple"):
         compute_auc_iou(preds, targets, k_values="all")  # type: ignore
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="k_values must be a tuple"):
         compute_auc_iou(preds, targets, k_values=[0.01, 0.10])  # type: ignore
 
 

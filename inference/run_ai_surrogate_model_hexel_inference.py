@@ -19,11 +19,13 @@ from data_preparation.hexel_loader import load_spatial_features_per_hexel
 from data_preparation.paths import Paths
 from data_preparation.process_hexels_into_grids import get_split_hexel_window
 from data_preparation.process_tabular_data import build_weather_table, process_fire_size_distribution_table
-from data_preparation.spatial.utils import load_spatial_raster
+from data_preparation.spatial.utils import get_output_log_stats, get_range_output, load_spatial_raster
 from data_preparation.utils import find_hex_ids
 from inference.predictor import BurnRiskPredictor
 from src.datasets.dataset import MultiSourceDataset
-from src.datasets.postprocessing.utils import get_predicted_hexel, save_predicted_hexels, visualize_burn_prob_grids
+from src.datasets.postprocessing.utils import get_predicted_hexel, get_target_channel_index, save_predicted_hexels
+from src.datasets.postprocessing.visualize_predictions import visualize_target_grids
+from src.datasets.targets import TargetSpec, get_target_spec
 from src.datasets.utils import get_data_source_class, get_data_source_param_class, get_dataset_dimensions
 
 logging.basicConfig(
@@ -148,6 +150,22 @@ def create_dataset(processed_data_dir: Path, hex_id: str, config_dict: dict) -> 
     )
 
 
+def get_target_spec_from_data_config(data_config: dict) -> TargetSpec:
+    """Read target metadata from checkpoint data config, defaulting to BP for older checkpoints."""
+    for source in data_config.get("input_sources", []):
+        if source.get("name") == "grid":
+            target_name = source.get("params", {}).get("target_name", "bp")
+            return get_target_spec(target_name)
+    return get_target_spec("bp")
+
+
+def get_grid_params_from_data_config(data_config: dict) -> dict[str, Any]:
+    for source in data_config.get("input_sources", []):
+        if source.get("name") == "grid":
+            return source.get("params", {})
+    return {}
+
+
 def run_single_hexel_pipeline(
     checkpoint_path: Path,
     data_dir: Path,
@@ -176,7 +194,7 @@ def run_single_hexel_pipeline(
         save_dir: Directory to save predictions and visualizations.
 
     Returns:
-        Reconstructed hexel grid of burn probabilities (denormalized), and the ground truth elevation grid profile (for visualization).
+        Reconstructed target hexel grid (denormalized), and the ground truth elevation grid profile.
     """
     # Step 1: Load checkpoint
     logger.info("Step 1: Loading checkpoint and config...")
@@ -242,15 +260,30 @@ def run_single_hexel_pipeline(
 
     # Step 7: Post-process predictions back to denormalized hexel
     logger.info("Step 7: Post-processing prediction patches into denormalized hexel...")
-    grid_source = dataset.sources["grid"]
+    target = get_target_spec_from_data_config(data_config)
+    grid_params = get_grid_params_from_data_config(data_config)
+    max_target_val, min_target_val = get_range_output(root_dir=str(data_dir), output_type=target.output_type)
+    target_log_mean = grid_params.get("target_log_mean")
+    target_log_std = grid_params.get("target_log_std")
+    if grid_params.get("out_norm", "min_max") == "log_standard" and (target_log_mean is None or target_log_std is None):
+        target_log_mean, target_log_std = get_output_log_stats(root_dir=str(data_dir), output_type=target.output_type)
+    target_channel_index = get_target_channel_index(
+        data_dir=str(processed_data_dir),
+        modelling_approach=str(data_prep_config["modelling_approach"]),
+        target=target,
+    )
     reconstructed_hexel_denorm, gt_elevation_grid_profile = get_predicted_hexel(
         base_dir=str(processed_data_dir),
         raw_data_dir=str(data_dir),
         test_df=dataset.metadata,
         predictions=predictions,
-        min_target_val=grid_source.BURN_PROB_MIN.item(),  # type: ignore[attr-defined]
-        max_target_val=grid_source.BURN_PROB_MAX.item(),  # type: ignore[attr-defined]
+        min_target_val=min_target_val,
+        max_target_val=max_target_val,
         hex_id=hex_id,
+        out_norm=grid_params.get("out_norm", "min_max"),
+        target_log_mean=target_log_mean,
+        target_log_std=target_log_std,
+        target_channel_index=target_channel_index,
     )
 
     # Step 8: Save reconstructed hexel and visualization
@@ -258,8 +291,19 @@ def run_single_hexel_pipeline(
         predicted_hexel=reconstructed_hexel_denorm, hexel_profile=gt_elevation_grid_profile, hex_id=hex_id, save_dir=str(save_dir)
     )
     all_paths = Paths(hex_id=hex_id, root_dir=data_dir)
-    gt_grid, _ = load_spatial_raster(path=all_paths.output_burn_prob(), actual_mask_path=all_paths.mask_grid_actual(hex_id=hex_id))
-    visualize_burn_prob_grids(gt_grid=gt_grid, pred_grid=reconstructed_hexel_denorm, hex_id=hex_id, save_dir=str(save_dir))
+    target_path = getattr(all_paths, target.path_method)()
+    gt_grid, _ = load_spatial_raster(
+        path=target_path,
+        actual_mask_path=all_paths.mask_grid_actual(hex_id=hex_id),
+        reference_profile=gt_elevation_grid_profile,
+    )
+    visualize_target_grids(
+        gt_grid=gt_grid,
+        pred_grid=reconstructed_hexel_denorm,
+        hex_id=hex_id,
+        save_dir=str(save_dir),
+        target_label=target.label,
+    )
     logger.info(f"Step 8: Saved reconstructed hexel and visualization for hexel {hex_id} in {save_dir}")
 
     return reconstructed_hexel_denorm, gt_elevation_grid_profile
@@ -278,7 +322,7 @@ def main():
     parser.add_argument("--save_dir", type=str, default=None, help="Directory to save predictions and visualizations (overrides config).")
     args = parser.parse_args()
 
-    with open(args.config, "r") as f:
+    with open(args.config) as f:
         config = yaml.safe_load(f)
 
     # CLI args override config (use 'is not None' to allow falsy values like 0)
@@ -292,7 +336,7 @@ def main():
 
     # Resolve "all" into the list of available hex IDs
     if hex_id == "all":
-        hex_ids_to_run = sorted(find_hex_ids(str(Path(config["data_dir"]))))
+        hex_ids_to_run = sorted(find_hex_ids(str(Path(data_dir))))
         logger.info(f"Running inference for all hexels: {hex_ids_to_run}")
     else:
         hex_ids_to_run = [hex_id]
@@ -302,18 +346,18 @@ def main():
     for hid in hex_ids_to_run:
         logger.info(f"\n\n========== Hexel {hid} ==========\n")
         run_single_hexel_pipeline(
-            checkpoint_path=Path(config["checkpoint_path"]),
-            data_dir=Path(config["data_dir"]),
+            checkpoint_path=Path(checkpoint_path),
+            data_dir=Path(data_dir),
             hex_id=hid,
             batch_size=batch_size,
             num_workers=num_workers,
             prepare_data=prepare_data,
-            save_dir=save_dir,
+            save_dir=Path(save_dir),
         )
 
     elapsed_time = time.time() - start_time
     logger.info(
-        f"TIME - Pipeline for {len(hex_ids_to_run)} hexels processed. Total elapsed time: {elapsed_time:.2f} seconds ({elapsed_time/60:.2f} minutes)"
+        f"TIME - Pipeline for {len(hex_ids_to_run)} hexels processed. Total elapsed time: {elapsed_time:.2f} seconds ({elapsed_time / 60:.2f} minutes)"
     )
 
 

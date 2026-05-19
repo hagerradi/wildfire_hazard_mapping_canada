@@ -9,8 +9,9 @@ import pytest
 import torch
 import torchvision.transforms.functional as F
 
-from src.config import DataSourceConfig, GridParams, TabularParams
-from src.datasets.dataset import MultiSourceDataset
+from data_preparation.spatial import utils as spatial_utils
+from src.config import DataConfig, DataSourceConfig, GridParams, TabularParams
+from src.datasets.dataset import MultiSourceDataset, build_dataset
 from src.datasets.sources import GridSource, TabularSource
 from src.datasets.transforms import setup_augmentations
 
@@ -58,6 +59,8 @@ def temp_data_dir():
             # Add some NaNs to input channels
             arr[:, :, 3] = 100.0  # Force fire zone channel to be '100.0' so it matches weather CSV below.
             arr[:, :, 4] = 0.25  # Keep bp_out_grid deterministic.
+            arr[:, :, 5] = 0.50  # Keep fi_out_grid deterministic.
+            arr[:, :, 6] = 0.75  # Keep ros_out_grid deterministic.
             arr[1, 1, :] = np.nan
             arr[10, 20, :] = np.nan
             np.save(os.path.join(tmpdir, fname), arr)
@@ -91,6 +94,12 @@ def temp_data_dir():
 
     finally:
         shutil.rmtree(tmpdir)
+
+
+@pytest.fixture(autouse=True)
+def stable_grid_ranges(monkeypatch):
+    monkeypatch.setattr("src.datasets.sources.grids.get_range_output", lambda root_dir, output_type: (1.0, 0.0))
+    monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation", lambda root_dir: (1000.0, 0.0))
 
 
 def test_multi_source_integration(temp_data_dir):
@@ -138,9 +147,9 @@ def test_multi_source_integration(temp_data_dir):
     )
     sample = ds[0]
 
-    assert "grid" in sample.keys()
-    assert "weather" in sample.keys()
-    assert "fire_size" in sample.keys()
+    assert "grid" in sample
+    assert "weather" in sample
+    assert "fire_size" in sample
     input_arr, target, mask = sample["grid"]
     assert isinstance(input_arr, torch.Tensor)
     assert input_arr.shape[0] == 3
@@ -153,6 +162,93 @@ def test_multi_source_integration(temp_data_dir):
     assert weather.shape == (2, len(weather_feats))
     fire_size = sample["fire_size"]
     assert fire_size.shape == (2, len(fire_size_feats))
+
+
+def test_build_dataset_passes_raw_data_dir_to_grid_source(temp_data_dir, monkeypatch):
+    tmpdir, train_csv, _, _, _, _, _, _ = temp_data_dir
+    raw_data_dir = "/network/raw/source"
+    seen = {}
+
+    def fake_get_range_output(root_dir, output_type):
+        seen["output"] = (root_dir, output_type)
+        return 1.0, 0.0
+
+    def fake_get_range_elevation(root_dir):
+        seen["elevation"] = root_dir
+        return 1000.0, 0.0
+
+    monkeypatch.setattr("src.datasets.sources.grids.get_range_output", fake_get_range_output)
+    monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation", fake_get_range_elevation)
+
+    config = DataConfig(
+        root_dir=tmpdir,
+        raw_data_dir=raw_data_dir,
+        train_split=train_csv,
+        val_split="val.csv",
+        test_split="test.csv",
+        input_sources=[
+            DataSourceConfig(
+                name="grid",
+                params=GridParams(
+                    feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],
+                    out_norm="min_max",
+                    fuel_feats_encoding="ordinal",
+                ),
+            )
+        ],
+    )
+
+    ds = build_dataset(config=config, csv_name=train_csv, modelling_approach="1")
+
+    assert ds.sources["grid"].raw_data_dir == raw_data_dir
+    assert seen["output"] == (raw_data_dir, "fire_burn_probability")
+    assert seen["elevation"] == raw_data_dir
+
+
+def test_grid_source_computes_log_standard_stats_from_raw_data_dir(temp_data_dir, monkeypatch):
+    tmpdir, *_ = temp_data_dir
+    raw_data_dir = "/network/raw/source"
+    seen = {}
+    expected_mean = float(np.log1p(0.5))
+    expected_std = 2.0
+
+    def fake_get_output_log_stats(root_dir, output_type):
+        seen["log_stats"] = (root_dir, output_type)
+        return expected_mean, expected_std
+
+    monkeypatch.setattr("src.datasets.sources.grids.get_output_log_stats", fake_get_output_log_stats)
+
+    grid_params = GridParams(
+        feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],
+        target_name="fi",
+        out_norm="log_standard",
+        fuel_feats_encoding="ordinal",
+        normalize_fuel_feats_ordinal=True,
+    )
+
+    grid_source = GridSource(root_dir=tmpdir, raw_data_dir=raw_data_dir, params=grid_params, modelling_approach="1")
+    _, target, mask = grid_source.get_sample({"file_path": os.path.join(tmpdir, "sample_0.npy")})
+
+    assert seen["log_stats"] == (raw_data_dir, "fire_intensity")
+    assert grid_source.target_log_mean == expected_mean
+    assert grid_source.target_log_std == expected_std
+    target_np = target.squeeze(0).numpy()
+    mask_np = mask.squeeze(0).numpy()
+    np.testing.assert_allclose(target_np[mask_np], 0.0, atol=1e-6)
+
+
+def test_get_range_output_rejects_invalid_range(monkeypatch):
+    monkeypatch.setattr(spatial_utils, "find_hex_ids", lambda root_dir: [])
+
+    with pytest.raises(ValueError, match="Invalid fire_burn_probability normalization range"):
+        spatial_utils.get_range_output("/bad/raw", "fire_burn_probability")
+
+
+def test_get_range_elevation_rejects_invalid_range(monkeypatch):
+    monkeypatch.setattr(spatial_utils, "find_hex_ids", lambda root_dir: [])
+
+    with pytest.raises(ValueError, match="Invalid elevation normalization range"):
+        spatial_utils.get_range_elevation("/bad/raw")
 
 
 def test_grid_one_hot_encoding(temp_data_dir):
@@ -316,7 +412,8 @@ def test_tabular_weighted_sampling(temp_data_dir):
         sample = fire_size_source.get_sample({"data": data})
 
         # Ensure we captured probabilities and that sample has expected shape
-        assert "p" in captured and captured["p"] is not None
+        assert "p" in captured
+        assert captured["p"] is not None
         assert sample.shape == (2, len(fire_size_feats))
 
         # Compute expected raw weights: for each zone, weight per candidate = count_in_patch / len(zone_cands)
@@ -330,10 +427,19 @@ def test_tabular_weighted_sampling(temp_data_dir):
         np.random.choice = original_choice
 
 
-def test_grid_output_channel_from_feature_map(temp_data_dir):
+@pytest.mark.parametrize(
+    ("target_name", "expected_value"),
+    [
+        ("bp", 0.25),
+        ("fi", 0.50),
+        ("ros", 0.75),
+    ],
+)
+def test_grid_output_channel_from_feature_map(temp_data_dir, target_name, expected_value):
     tmpdir, *_ = temp_data_dir
     grid_params = GridParams(
         feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],
+        target_name=target_name,
         out_norm="none",
         fuel_feats_encoding="ordinal",
         normalize_fuel_feats_ordinal=True,
@@ -342,4 +448,25 @@ def test_grid_output_channel_from_feature_map(temp_data_dir):
     _, target, mask = grid_source.get_sample({"file_path": os.path.join(tmpdir, "sample_0.npy")})
     target_np = target.squeeze(0).numpy()
     mask_np = mask.squeeze(0).numpy()
-    np.testing.assert_allclose(target_np[mask_np], 0.25, rtol=1e-6, atol=1e-6)
+    np.testing.assert_allclose(target_np[mask_np], expected_value, rtol=1e-6, atol=1e-6)
+
+
+def test_grid_target_nan_excluded_from_mask(temp_data_dir):
+    tmpdir, *_ = temp_data_dir
+    sample_path = os.path.join(tmpdir, "sample_0.npy")
+    arr = np.load(sample_path)
+    arr[0, 0, 5] = np.nan
+    np.save(sample_path, arr)
+
+    grid_params = GridParams(
+        feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],
+        target_name="fi",
+        out_norm="none",
+        fuel_feats_encoding="ordinal",
+        normalize_fuel_feats_ordinal=True,
+    )
+    grid_source = GridSource(root_dir=tmpdir, params=grid_params, modelling_approach="1")
+    _, target, mask = grid_source.get_sample({"file_path": sample_path})
+
+    assert not mask.squeeze(0).numpy()[0, 0]
+    assert target.squeeze(0).numpy()[0, 0] == 0.0
