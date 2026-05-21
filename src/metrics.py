@@ -2,7 +2,6 @@
 import torch
 import torch.nn.functional as F
 from torchmetrics.functional.image import structural_similarity_index_measure
-from torchmetrics.functional.regression import spearman_corrcoef
 
 
 def compute_mse(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor | None = None, eps: float = 1e-8) -> torch.Tensor:
@@ -49,6 +48,39 @@ def compute_normalized_mae(preds: torch.Tensor, targets: torch.Tensor, mask: tor
     return abs_error_sum / target_scale_sum
 
 
+def _rank_data_average_ties(data: torch.Tensor) -> torch.Tensor:
+    """Return flattened average-tie ranks, avoiding int32 overflow on large hexels."""
+    flat = data.reshape(-1)
+    n = flat.numel()
+    order = flat.argsort()
+    ranks = torch.empty(n, dtype=torch.float64, device=flat.device)
+    ranks[order] = torch.arange(1, n + 1, dtype=torch.float64, device=flat.device)
+    _, inverse, counts = torch.unique(flat, sorted=True, return_inverse=True, return_counts=True)
+    rank_sums = torch.zeros(counts.numel(), dtype=torch.float64, device=flat.device)
+    rank_sums.scatter_add_(0, inverse, ranks)
+    mean_ranks = rank_sums / counts.to(dtype=torch.float64)
+    return mean_ranks[inverse]
+
+
+def _spearman_corrcoef(preds: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+    """
+    Helper to compute Spearman correlation for a single sample (1D pred and target tensors).
+    Returns scalar tensor.
+    This mirrors torchmetric.functional.regression.spearman but keeps ranks sums in float64 so large hexels with tied values don't overflow.
+    """
+    if preds.numel() < 2:
+        return torch.tensor(float("nan"), device=preds.device)
+
+    pred_ranks = _rank_data_average_ties(preds)
+    target_ranks = _rank_data_average_ties(targets)
+    pred_diff = pred_ranks - pred_ranks.mean()
+    target_diff = target_ranks - target_ranks.mean()
+    denom = torch.linalg.vector_norm(pred_diff) * torch.linalg.vector_norm(target_diff)
+    if denom == 0:
+        return torch.tensor(float("nan"), device=preds.device)
+    return torch.clamp(torch.sum(pred_diff * target_diff) / denom, -1.0, 1.0)
+
+
 def compute_spearman(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor | None = None) -> torch.Tensor:
     """
     Computes Spearman correlation per sample, then averages. Optionally uses a mask.
@@ -62,7 +94,7 @@ def compute_spearman(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Ten
     corrs = []
     if mask is None:
         for i in range(batch_size):
-            corrs.append(spearman_corrcoef(flat_preds[i], flat_targets[i]))
+            corrs.append(_spearman_corrcoef(flat_preds[i], flat_targets[i]))
     else:
         valid_mask = mask.bool().reshape(batch_size, -1)  # True = valid
         for i in range(batch_size):
@@ -70,9 +102,9 @@ def compute_spearman(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Ten
             if sample_valid_mask.sum() < min_valid:
                 corrs.append(torch.tensor(float("nan"), device=preds.device))
                 continue
-            corrs.append(spearman_corrcoef(flat_preds[i][sample_valid_mask], flat_targets[i][sample_valid_mask]))
+            corrs.append(_spearman_corrcoef(flat_preds[i][sample_valid_mask], flat_targets[i][sample_valid_mask]))
 
-    return torch.nanmean(torch.stack(corrs))
+    return torch.nanmean(torch.stack(corrs)).to(dtype=preds.dtype)
 
 
 def compute_ssim(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor | None = None) -> torch.Tensor:

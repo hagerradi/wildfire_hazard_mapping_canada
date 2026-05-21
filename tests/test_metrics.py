@@ -90,6 +90,20 @@ def test_spearman_perfect_correlation_with_mask():
     assert torch.isclose(score, torch.tensor(1.0), atol=1e-4)
 
 
+def test_spearman_handles_large_tied_targets_without_rank_overflow():
+    preds = torch.arange(100_000, dtype=torch.float32).reshape(1, 1, -1)
+    targets = torch.cat(
+        [
+            torch.zeros(50_000, dtype=torch.float32),
+            torch.ones(50_000, dtype=torch.float32),
+        ]
+    ).reshape(1, 1, -1)
+
+    score = compute_spearman(preds, targets)
+
+    assert score == pytest.approx(0.866025, rel=1e-4)
+
+
 def test_ssim_range(dummy_data):
     preds, targets = dummy_data
     score = compute_ssim(preds, targets)
