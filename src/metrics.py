@@ -66,6 +66,7 @@ def _spearman_corrcoef(preds: torch.Tensor, targets: torch.Tensor) -> torch.Tens
     """
     Helper to compute Spearman correlation for a single sample (1D pred and target tensors).
     Returns scalar tensor.
+    This mirrors torchmetric.functional.regression.spearman but keeps ranks sums in float64 so large hexels with tied values don't overflow.
     """
     if preds.numel() < 2:
         return torch.tensor(float("nan"), device=preds.device)
