@@ -10,10 +10,11 @@ import torch
 import torchvision.transforms.functional as F
 
 from data_preparation.spatial import utils as spatial_utils
-from src.config import DataConfig, DataSourceConfig, GridParams, TabularParams
+from src.config import DataConfig, DataSourceConfig, GridParams, SpatializedTabularParams, TabularParams
 from src.datasets.dataset import MultiSourceDataset, build_dataset
-from src.datasets.sources import GridSource, TabularSource
+from src.datasets.sources import GridSource, SpatializedTabularSource, TabularSource
 from src.datasets.transforms import setup_augmentations
+from src.datasets.utils import get_dataset_dimensions
 
 
 @pytest.fixture
@@ -162,6 +163,87 @@ def test_multi_source_integration(temp_data_dir):
     assert weather.shape == (2, len(weather_feats))
     fire_size = sample["fire_size"]
     assert fire_size.shape == (2, len(fire_size_feats))
+
+
+def test_spatialized_tabular_source_rasterizes_zone_summaries(temp_data_dir):
+    tmpdir, _, _, _, weather_csv, weather_feats, _, _ = temp_data_dir
+
+    params = SpatializedTabularParams(
+        csv_name=weather_csv,
+        feature_names_list=weather_feats[:2],
+        fire_weather_zone_id_col="WeatherZone",
+        include_missing_mask=True,
+    )
+    source = SpatializedTabularSource(root_dir=tmpdir, params=params, modelling_approach="1")
+
+    sample = source.get_sample({"file_path": os.path.join(tmpdir, "sample_0.npy")})
+    expected_zone_100 = (
+        pd.read_csv(os.path.join(tmpdir, weather_csv))
+        .query("WeatherZone == 100")[weather_feats[:2]]
+        .mean(axis=0)
+        .to_numpy(dtype=np.float32)
+    )
+
+    assert sample.shape == (3, 32, 32)
+    np.testing.assert_allclose(sample[:2, 0, 0].numpy(), expected_zone_100)
+    assert sample[-1, 0, 0].item() == 0.0
+    assert sample[-1, 1, 1].item() == 1.0
+
+
+def test_spatialized_tabular_source_rejects_fractional_zone_ids(temp_data_dir):
+    tmpdir, _, _, _, weather_csv, weather_feats, _, _ = temp_data_dir
+    data = np.load(os.path.join(tmpdir, "sample_0.npy"))
+    data[0, 0, 3] = 100.5
+
+    params = SpatializedTabularParams(
+        csv_name=weather_csv,
+        feature_names_list=weather_feats[:2],
+        fire_weather_zone_id_col="WeatherZone",
+    )
+    source = SpatializedTabularSource(root_dir=tmpdir, params=params, modelling_approach="1")
+
+    with pytest.raises(ValueError, match="non-integer zone id"):
+        source.get_sample({"data": data})
+
+
+def test_build_dataset_appends_spatialized_tabular_channels_to_grid(temp_data_dir):
+    tmpdir, train_csv, _, _, weather_csv, weather_feats, _, _ = temp_data_dir
+
+    config = DataConfig(
+        root_dir=tmpdir,
+        raw_data_dir=tmpdir,
+        train_split=train_csv,
+        val_split="val.csv",
+        test_split="test.csv",
+        input_sources=[
+            DataSourceConfig(
+                name="grid",
+                params=GridParams(
+                    feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],
+                    out_norm="min_max",
+                    fuel_feats_encoding="ordinal",
+                ),
+            ),
+            DataSourceConfig(
+                name="spatialized_weather",
+                params=SpatializedTabularParams(
+                    csv_name=weather_csv,
+                    feature_names_list=weather_feats[:2],
+                    fire_weather_zone_id_col="WeatherZone",
+                ),
+            ),
+        ],
+    )
+
+    dataset = build_dataset(config=config, csv_name=train_csv, modelling_approach="1")
+    spatial_channels, auxiliary_dims = get_dataset_dimensions(dataset)
+    sample = dataset[0]
+
+    assert spatial_channels == 5
+    assert auxiliary_dims == {}
+    assert set(sample) == {"grid"}
+    inputs, _, _ = sample["grid"]
+    assert inputs.shape == (5, 32, 32)
 
 
 def test_build_dataset_passes_raw_data_dir_to_grid_source(temp_data_dir, monkeypatch):

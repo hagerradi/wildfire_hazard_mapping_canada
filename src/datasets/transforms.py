@@ -70,8 +70,6 @@ def setup_augmentations(config: DataSourceConfig):
 
 def get_transforms(config: DataSourceConfig):
     """Returns Compose of DataSource specific transforms"""
-    transforms_list = None
     if config.name == "grid":
-        transforms_list = setup_augmentations(config)
-    else:
-        return transforms_list
+        return setup_augmentations(config)
+    return None

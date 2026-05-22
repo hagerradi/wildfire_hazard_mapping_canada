@@ -5,7 +5,8 @@ import torch
 
 from data_preparation.spatial.utils import FUEL_GROUP_MAP
 
-AVAILABLE_DATA_SOURCES = ["grid", "weather", "fire_size"]
+SPATIALIZED_TABULAR_SOURCE_NAMES = {"spatialized_weather", "spatialized_fire_size"}
+AVAILABLE_DATA_SOURCES = ["grid", "weather", "fire_size", *sorted(SPATIALIZED_TABULAR_SOURCE_NAMES)]
 MAX_FUEL_GRID = float(max(FUEL_GROUP_MAP.values()))
 
 
@@ -21,6 +22,10 @@ def get_data_source_class(name: str):
         from src.datasets.sources import TabularSource
 
         return TabularSource
+    elif name in SPATIALIZED_TABULAR_SOURCE_NAMES:
+        from src.datasets.sources import SpatializedTabularSource
+
+        return SpatializedTabularSource
     else:
         raise ValueError(f"Unknown data source type: {name}. Available: {AVAILABLE_DATA_SOURCES}")
 
@@ -37,6 +42,10 @@ def get_data_source_param_class(name: str):
         from src.config import TabularParams
 
         return TabularParams
+    elif name in SPATIALIZED_TABULAR_SOURCE_NAMES:
+        from src.config import SpatializedTabularParams
+
+        return SpatializedTabularParams
     else:
         raise ValueError(f"Unknown data source type: {name}. Available: {AVAILABLE_DATA_SOURCES}")
 
@@ -53,6 +62,8 @@ def get_dataset_dimensions(dataset) -> tuple[int | None, dict[str, int]]:
     for name, source in sources.items():
         if name == "grid":
             spatial_channels = source.input_dim()
+        elif name in SPATIALIZED_TABULAR_SOURCE_NAMES:
+            spatial_channels = (spatial_channels or 0) + source.input_dim()
         else:
             auxiliary_input_dims[name] = source.input_dim()
 

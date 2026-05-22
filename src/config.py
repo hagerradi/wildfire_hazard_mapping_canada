@@ -1,5 +1,7 @@
 # base configurations for experiments
-from pydantic import BaseModel, Field
+from typing import Any
+
+from pydantic import BaseModel, Field, model_validator
 
 
 class LoggerConfig(BaseModel):
@@ -92,9 +94,46 @@ class TabularParams(BaseModel):
     feature_to_bias: str | None = None  # The feature to bias sampling towards if sampling_bias is not None
 
 
+class SpatializedTabularParams(TabularParams):
+    """Parameters for rasterizing zone-level tabular features onto patch pixels."""
+
+    zone_channel_key: str = "firezones_grid"
+    aggregation: str = "mean"
+    include_missing_mask: bool = False
+    missing_value_strategy: str = "global_mean"
+    shuffle_lut: bool = False
+    shuffle_seed: int = 42
+
+
 class DataSourceConfig(BaseModel):
     name: str
-    params: GridParams | TabularParams
+    params: GridParams | TabularParams | SpatializedTabularParams
+
+    @model_validator(mode="before")
+    @classmethod
+    def parse_params_for_source(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+
+        name = data.get("name")
+        params = data.get("params")
+        if not isinstance(name, str) or not isinstance(params, dict):
+            return data
+
+        param_classes = {
+            "grid": GridParams,
+            "weather": TabularParams,
+            "fire_size": TabularParams,
+            "spatialized_weather": SpatializedTabularParams,
+            "spatialized_fire_size": SpatializedTabularParams,
+        }
+        param_class = param_classes.get(name)
+        if param_class is None:
+            return data
+
+        parsed = dict(data)
+        parsed["params"] = param_class(**params)
+        return parsed
 
 
 class DataConfig(BaseModel):
