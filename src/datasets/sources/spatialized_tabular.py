@@ -59,6 +59,29 @@ class SpatializedTabularSource(DataSource):
         if self.shuffle_lut:
             self._shuffle_lut_values()
 
+    def _integer_zone_ids_from_csv(self, zone_ids: pd.Series) -> pd.Series:
+        numeric_zone_ids = pd.to_numeric(zone_ids, errors="coerce")
+        invalid_numeric_mask = zone_ids.notna() & numeric_zone_ids.isna()
+        if invalid_numeric_mask.any():
+            bad_value = zone_ids[invalid_numeric_mask].iloc[0]
+            raise ValueError(f"Zone column {self.zone_id_col!r} in {self.csv_name!r} contains non-numeric zone id {bad_value!r}.")
+
+        present_mask = numeric_zone_ids.notna()
+        present_values = numeric_zone_ids[present_mask].to_numpy(dtype=np.float64)
+        non_finite_mask = ~np.isfinite(present_values)
+        if non_finite_mask.any():
+            bad_value = float(present_values[non_finite_mask][0])
+            raise ValueError(f"Zone column {self.zone_id_col!r} in {self.csv_name!r} contains non-finite zone id {bad_value}.")
+
+        rounded_values = np.rint(present_values)
+        if not np.allclose(present_values, rounded_values, atol=1e-3):
+            bad_value = float(present_values[np.argmax(np.abs(present_values - rounded_values))])
+            raise ValueError(f"Zone column {self.zone_id_col!r} in {self.csv_name!r} contains non-integer zone id {bad_value}.")
+
+        integer_zone_ids = pd.Series(pd.NA, index=zone_ids.index, dtype="Int64")
+        integer_zone_ids.loc[present_mask] = rounded_values.astype(np.int64)
+        return integer_zone_ids
+
     def _build_lut(self, df: pd.DataFrame) -> dict[int, np.ndarray]:
         aggregations = {
             "mean": "mean",
@@ -69,7 +92,10 @@ class SpatializedTabularSource(DataSource):
         if self.aggregation not in aggregations:
             raise ValueError(f"Unsupported spatialized tabular aggregation {self.aggregation!r}. Supported values: {sorted(aggregations)}")
 
-        grouped = df.groupby(self.zone_id_col, dropna=True)[self.feature_names_list].agg(aggregations[self.aggregation])
+        normalized_df = df.copy()
+        zone_id_key = "__spatialized_tabular_zone_id"
+        normalized_df[zone_id_key] = self._integer_zone_ids_from_csv(df[self.zone_id_col])
+        grouped = normalized_df.groupby(zone_id_key, dropna=True)[self.feature_names_list].agg(aggregations[self.aggregation])
         grouped = grouped.dropna(how="any")
         return {int(zone): row.to_numpy(dtype=np.float32) for zone, row in grouped.iterrows()}
 

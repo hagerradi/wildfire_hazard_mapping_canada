@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from functools import lru_cache
 
 import torch
 import torch.nn as nn
@@ -7,12 +8,20 @@ import torch.nn.functional as F
 from src.models.utils import conv_block, double_conv_block
 
 
+@lru_cache(maxsize=64)
+def _coord_grids(height: int, width: int, device: str, dtype: torch.dtype) -> tuple[torch.Tensor, torch.Tensor]:
+    y_coord = torch.linspace(-1.0, 1.0, height, device=torch.device(device), dtype=dtype).view(1, 1, height, 1)
+    y_coord = y_coord.expand(1, 1, height, width)
+    x_coord = torch.linspace(-1.0, 1.0, width, device=torch.device(device), dtype=dtype).view(1, 1, 1, width)
+    x_coord = x_coord.expand(1, 1, height, width)
+    return y_coord, x_coord
+
+
 def append_coord_channels(x: torch.Tensor) -> torch.Tensor:
     """Append patch-local y/x coordinates normalized to [-1, 1]."""
     batch_size, _, height, width = x.shape
-    y_coord = torch.linspace(-1.0, 1.0, height, device=x.device, dtype=x.dtype).view(1, 1, height, 1)
+    y_coord, x_coord = _coord_grids(height, width, str(x.device), x.dtype)
     y_coord = y_coord.expand(batch_size, 1, height, width)
-    x_coord = torch.linspace(-1.0, 1.0, width, device=x.device, dtype=x.dtype).view(1, 1, 1, width)
     x_coord = x_coord.expand(batch_size, 1, height, width)
     return torch.cat([x, y_coord, x_coord], dim=1)
 

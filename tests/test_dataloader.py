@@ -206,6 +206,24 @@ def test_spatialized_tabular_source_rejects_fractional_zone_ids(temp_data_dir):
         source.get_sample({"data": data})
 
 
+def test_spatialized_tabular_source_rejects_fractional_csv_zone_ids(temp_data_dir):
+    tmpdir, _, _, _, weather_csv, weather_feats, _, _ = temp_data_dir
+    weather_df = pd.read_csv(os.path.join(tmpdir, weather_csv))
+    weather_df["WeatherZone"] = weather_df["WeatherZone"].astype(float)
+    weather_df.loc[0, "WeatherZone"] = 100.5
+    bad_weather_csv = "weather_table_fractional_zone.csv"
+    weather_df.to_csv(os.path.join(tmpdir, bad_weather_csv), index=False)
+
+    params = SpatializedTabularParams(
+        csv_name=bad_weather_csv,
+        feature_names_list=weather_feats[:2],
+        fire_weather_zone_id_col="WeatherZone",
+    )
+
+    with pytest.raises(ValueError, match="non-integer zone id"):
+        SpatializedTabularSource(root_dir=tmpdir, params=params, modelling_approach="1")
+
+
 def test_build_dataset_appends_spatialized_tabular_channels_to_grid(temp_data_dir):
     tmpdir, train_csv, _, _, weather_csv, weather_feats, _, _ = temp_data_dir
 
