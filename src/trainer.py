@@ -84,6 +84,7 @@ class Trainer:
                 use_skip_connections=self.config.model.use_skip_connections,
                 use_transpose_conv=self.config.model.use_transpose_conv,
                 use_activation_after_upsampling=self.config.model.use_activation_after_upsampling,
+                use_coordconv=self.config.model.use_coordconv,
                 auxiliary_input_dims=self.auxiliary_input_dims,
                 auxiliary_hidden_dims=self.config.model.auxiliary_hidden_dims,
                 auxiliary_embed_dims=self.config.model.auxiliary_embed_dims,
@@ -102,6 +103,7 @@ class Trainer:
                 use_skip_connections=self.config.model.use_skip_connections,
                 use_transpose_conv=self.config.model.use_transpose_conv,
                 use_activation_after_upsampling=self.config.model.use_activation_after_upsampling,
+                use_coordconv=self.config.model.use_coordconv,
             )
 
         self.model.to(self.device)

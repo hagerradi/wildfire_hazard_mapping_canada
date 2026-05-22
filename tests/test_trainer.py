@@ -277,6 +277,15 @@ def test_trainer_setup(dummy_config):
     assert "mse" in trainer.metric_functions
 
 
+def test_trainer_passes_coordconv_to_model(tmp_path):
+    config = _make_config(tmp_path)
+    config.model.use_coordconv = True
+
+    trainer = Trainer(config, spatial_input_channels=SPATIAL_CHANNELS)
+
+    assert trainer.model.use_coordconv is True
+
+
 def test_trainer_step(dummy_config, dummy_data):
     trainer = Trainer(dummy_config, spatial_input_channels=SPATIAL_CHANNELS)
     patch_trainer(trainer)

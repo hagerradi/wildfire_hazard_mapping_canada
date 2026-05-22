@@ -26,6 +26,7 @@ class ModelConfig(BaseModel):
     use_skip_connections: bool = True
     use_transpose_conv: bool = False
     use_activation_after_upsampling: bool = False
+    use_coordconv: bool = False
 
     # specific to auxiliary model
     auxiliary_hidden_dims: dict[str, list[int] | dict[str, list[int]]] = {"weather": [32, 64]}
