@@ -105,6 +105,39 @@ class HuberLoss(nn.Module):
         return loss.sum() / denom
 
 
+class RegressionPearsonLoss(nn.Module):
+    """Pearson correlation loss, 1 - r, on raw regression outputs."""
+
+    def __init__(self, eps: float = 1e-8):
+        super().__init__()
+        self.eps = eps
+
+    def forward(self, logits: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None):
+        preds = logits.flatten(1).float()
+        targets = targets.flatten(1).float()
+        mask_flat = None if mask is None else mask.bool().flatten(1)
+
+        correlations = []
+        for idx in range(preds.shape[0]):
+            pred_i = preds[idx]
+            target_i = targets[idx]
+            if mask_flat is not None:
+                valid = mask_flat[idx]
+                pred_i = pred_i[valid]
+                target_i = target_i[valid]
+            if pred_i.numel() < 2:
+                continue
+
+            pred_centered = pred_i - pred_i.mean()
+            target_centered = target_i - target_i.mean()
+            denom = pred_centered.norm() * target_centered.norm()
+            correlations.append((pred_centered * target_centered).sum() / denom.clamp_min(self.eps))
+
+        if not correlations:
+            return logits.new_tensor(0.0)
+        return 1.0 - torch.stack(correlations).mean()
+
+
 class DiceLoss(nn.Module):
     """
     Soft Dice loss for segmentation.

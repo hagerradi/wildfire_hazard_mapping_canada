@@ -10,6 +10,7 @@ from src.losses import (
     HuberLoss,
     MAELoss,
     MSELoss,
+    RegressionPearsonLoss,
     WeightedLoss,
 )
 from src.utils import build_single_loss
@@ -157,6 +158,38 @@ def test_build_single_loss_passes_huber_beta():
     loss_fn = build_single_loss("huber", huber_beta=0.25)
     assert isinstance(loss_fn, HuberLoss)
     assert loss_fn.beta == 0.25
+
+
+def test_regression_pearson_loss_is_zero_for_perfect_predictions():
+    targets = torch.tensor([[[[0.0, 1.0], [2.0, 3.0]]]])
+    mask = torch.ones_like(targets, dtype=torch.bool)
+
+    loss = RegressionPearsonLoss()(targets, targets, mask)
+
+    assert torch.allclose(loss, torch.tensor(0.0), atol=1e-6)
+
+
+def test_regression_pearson_loss_handles_inverse_predictions():
+    targets = torch.tensor([[[[0.0, 1.0], [2.0, 3.0]]]])
+    predictions = -targets
+    mask = torch.ones_like(targets, dtype=torch.bool)
+
+    loss = RegressionPearsonLoss()(predictions, targets, mask)
+
+    assert torch.allclose(loss, torch.tensor(2.0), atol=1e-6)
+
+
+def test_regression_pearson_loss_all_masked_is_finite():
+    targets = torch.tensor([[[[0.0, 1.0], [2.0, 3.0]]]])
+    mask = torch.zeros_like(targets, dtype=torch.bool)
+
+    loss = RegressionPearsonLoss()(targets, targets, mask)
+
+    assert torch.isfinite(loss)
+
+
+def test_build_single_loss_supports_raw_pearson():
+    assert isinstance(build_single_loss("raw_pearson"), RegressionPearsonLoss)
 
 
 # -------------------------
