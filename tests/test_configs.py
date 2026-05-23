@@ -23,6 +23,7 @@ def test_spatialized_fi_ros_configs_parse_to_expected_sources():
 
         assert config.model.input_feature_list == ["spatial"]
         assert config.model.use_coordconv is True
+        assert config.evaluation.robust_plot_percentile == 99.0
         assert isinstance(sources["spatialized_weather"], SpatializedTabularParams)
         assert isinstance(sources["spatialized_fire_size"], SpatializedTabularParams)
         assert sources["spatialized_weather"].include_missing_mask is True

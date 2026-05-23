@@ -62,6 +62,7 @@ class EvaluationConfig(BaseModel):
     best_ckpt_metrics: list[str] = ["spearman"]  # metric to choose best checkpoint
     best_ckpt_metrics_mode: list[str] = ["max"]  # max, or min
     checkpoint_filename: str = "best.pth"
+    robust_plot_percentile: float | None = Field(default=None, gt=0.0, le=100.0)
 
 
 class GridParams(BaseModel):

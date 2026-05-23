@@ -32,6 +32,7 @@ evaluation:
   best_ckpt_metrics: ["spearman"]
   best_ckpt_metrics_mode: ["max"]
   checkpoint_filename: "best.pth"
+  robust_plot_percentile: 99.0
 
 data:
   root_dir: "/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA/data_samples_v3"
