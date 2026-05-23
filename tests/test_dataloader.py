@@ -45,6 +45,7 @@ def temp_data_dir():
             {
                 "filename": filenames,
                 "valid_ratio": valid_ratios,
+                "hex_id": [1, 2, 3],
             }
         )
         train_csv = "train.csv"
@@ -262,6 +263,33 @@ def test_build_dataset_appends_spatialized_tabular_channels_to_grid(temp_data_di
     assert set(sample) == {"grid"}
     inputs, _, _ = sample["grid"]
     assert inputs.shape == (5, 32, 32)
+
+
+def test_build_dataset_can_return_patch_metadata(temp_data_dir):
+    tmpdir, train_csv, _, _, _, _, _, _ = temp_data_dir
+    config = DataConfig(
+        root_dir=tmpdir,
+        raw_data_dir=tmpdir,
+        train_split=train_csv,
+        val_split="val.csv",
+        test_split="test.csv",
+        include_patch_metadata=True,
+        input_sources=[
+            DataSourceConfig(
+                name="grid",
+                params=GridParams(
+                    feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],
+                    out_norm="min_max",
+                    fuel_feats_encoding="ordinal",
+                ),
+            )
+        ],
+    )
+
+    dataset = build_dataset(config=config, csv_name=train_csv, modelling_approach="1")
+    sample = dataset[0]
+
+    assert sample["patch_metadata"]["hex_id"].item() == 1
 
 
 def test_build_dataset_passes_raw_data_dir_to_grid_source(temp_data_dir, monkeypatch):
@@ -570,3 +598,106 @@ def test_grid_target_nan_excluded_from_mask(temp_data_dir):
 
     assert not mask.squeeze(0).numpy()[0, 0]
     assert target.squeeze(0).numpy()[0, 0] == 0.0
+
+
+def test_grid_source_appends_terrain_derivatives_from_elevation(temp_data_dir, monkeypatch):
+    tmpdir, *_ = temp_data_dir
+    monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation", lambda *_args, **_kwargs: (3100.0, 0.0))
+
+    sample_path = os.path.join(tmpdir, "sample_0.npy")
+    arr = np.zeros((32, 32, 7), dtype=np.float32)
+    arr[:, :, 1] = np.broadcast_to(np.arange(32, dtype=np.float32) * 100.0, (32, 32))
+    arr[:, :, 4] = 0.25
+    np.save(sample_path, arr)
+
+    grid_params = GridParams(
+        feature_names_list=["elevation_grid"],
+        target_name="bp",
+        out_norm="none",
+        terrain_derivatives=["slope", "aspect_sin", "aspect_cos"],
+        terrain_cell_size_m=100.0,
+    )
+    grid_source = GridSource(root_dir=tmpdir, params=grid_params, modelling_approach="1")
+
+    inputs, _, _ = grid_source.get_sample({"file_path": sample_path})
+
+    assert grid_source.input_dim() == 4
+    assert inputs.shape == (4, 32, 32)
+    torch.testing.assert_close(inputs[1], torch.full((32, 32), 0.5), rtol=1e-5, atol=1e-5)
+    torch.testing.assert_close(inputs[2], torch.full((32, 32), -1.0), rtol=1e-5, atol=1e-5)
+    torch.testing.assert_close(inputs[3], torch.zeros((32, 32)), rtol=1e-5, atol=1e-5)
+
+
+def test_grid_source_terrain_derivatives_are_computed_after_transforms(temp_data_dir, monkeypatch):
+    tmpdir, *_ = temp_data_dir
+    monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation", lambda *_args, **_kwargs: (3100.0, 0.0))
+
+    sample_path = os.path.join(tmpdir, "sample_0.npy")
+    arr = np.zeros((32, 32, 7), dtype=np.float32)
+    arr[:, :, 1] = np.broadcast_to(np.arange(32, dtype=np.float32) * 100.0, (32, 32))
+    arr[:, :, 4] = 0.25
+    np.save(sample_path, arr)
+
+    def hflip_transform(x, target, mask):
+        return F.hflip(x), F.hflip(target), F.hflip(mask)
+
+    grid_params = GridParams(
+        feature_names_list=["elevation_grid"],
+        target_name="bp",
+        out_norm="none",
+        terrain_derivatives=["aspect_sin"],
+        terrain_cell_size_m=100.0,
+    )
+    grid_source = GridSource(root_dir=tmpdir, params=grid_params, modelling_approach="1", transform=hflip_transform)
+
+    inputs, _, _ = grid_source.get_sample({"file_path": sample_path})
+
+    torch.testing.assert_close(inputs[-1], torch.full((32, 32), 1.0), rtol=1e-5, atol=1e-5)
+
+
+def test_grid_source_sets_flat_terrain_aspect_to_zero(temp_data_dir, monkeypatch):
+    tmpdir, *_ = temp_data_dir
+    monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation", lambda *_args, **_kwargs: (1000.0, 0.0))
+
+    sample_path = os.path.join(tmpdir, "sample_0.npy")
+    arr = np.zeros((32, 32, 7), dtype=np.float32)
+    arr[:, :, 1] = 500.0
+    arr[:, :, 4] = 0.25
+    np.save(sample_path, arr)
+
+    grid_params = GridParams(
+        feature_names_list=["elevation_grid"],
+        target_name="bp",
+        out_norm="none",
+        terrain_derivatives=["slope", "aspect_sin", "aspect_cos"],
+        terrain_cell_size_m=100.0,
+    )
+    grid_source = GridSource(root_dir=tmpdir, params=grid_params, modelling_approach="1")
+
+    inputs, _, _ = grid_source.get_sample({"file_path": sample_path})
+
+    torch.testing.assert_close(inputs[1:], torch.zeros((3, 32, 32)), rtol=1e-5, atol=1e-5)
+
+
+def test_grid_source_terrain_derivatives_require_elevation(temp_data_dir):
+    tmpdir, *_ = temp_data_dir
+    grid_params = GridParams(
+        feature_names_list=["ignition_grid"],
+        target_name="bp",
+        terrain_derivatives=["slope"],
+    )
+
+    with pytest.raises(ValueError, match="requires 'elevation_grid'"):
+        GridSource(root_dir=tmpdir, params=grid_params, modelling_approach="1")
+
+
+def test_grid_source_rejects_unknown_terrain_derivatives(temp_data_dir):
+    tmpdir, *_ = temp_data_dir
+    grid_params = GridParams(
+        feature_names_list=["elevation_grid"],
+        target_name="bp",
+        terrain_derivatives=["aspect_degrees"],
+    )
+
+    with pytest.raises(ValueError, match="Invalid terrain_derivatives"):
+        GridSource(root_dir=tmpdir, params=grid_params, modelling_approach="1")

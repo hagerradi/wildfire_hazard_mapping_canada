@@ -56,6 +56,15 @@ class GridDataset(torch.utils.data.Dataset):
         return {"grid": (inputs, targets, masks)}
 
 
+class PatchMetadataDataset(GridDataset):
+    """Spatial dataset with the hex IDs needed by hex-summary losses."""
+
+    def __getitem__(self, idx: int) -> dict:
+        item = super().__getitem__(idx)
+        item["patch_metadata"] = {"hex_id": torch.tensor(idx + 1, dtype=torch.long)}
+        return item
+
+
 class WeatherDataset(GridDataset):
     """Spatial + weather tabular dataset."""
 
@@ -293,6 +302,37 @@ def test_trainer_step(dummy_config, dummy_data):
     preds, loss, loss_parts, targets, masks = trainer._step(batch)
     assert preds.shape == targets.shape
     assert isinstance(loss, torch.Tensor)
+
+
+def test_trainer_passes_patch_metadata_to_hex_rank_loss(tmp_path):
+    config = _make_config(tmp_path)
+    config.optimizer.loss = ["kl", "ccc", "hex_mean_pairwise_rank", "hex_top10_pairwise_rank"]
+    config.optimizer.loss_weights = {
+        "kl": 0.45,
+        "ccc": 0.45,
+        "hex_mean_pairwise_rank": 0.05,
+        "hex_top10_pairwise_rank": 0.05,
+    }
+    config.data.include_patch_metadata = True
+    trainer = Trainer(config, spatial_input_channels=SPATIAL_CHANNELS)
+    batch = next(iter(DataLoader(PatchMetadataDataset(size=2), batch_size=2)))
+
+    _, loss, loss_parts, _, _ = trainer._step(batch)
+
+    assert torch.isfinite(loss)
+    assert loss_parts is not None
+    assert set(loss_parts) == set(config.optimizer.loss)
+
+
+def test_trainer_rejects_hex_rank_loss_without_patch_metadata(tmp_path):
+    config = _make_config(tmp_path)
+    config.optimizer.loss = ["kl", "hex_mean_pairwise_rank"]
+    config.optimizer.loss_weights = {"kl": 0.9, "hex_mean_pairwise_rank": 0.1}
+    trainer = Trainer(config, spatial_input_channels=SPATIAL_CHANNELS)
+    batch = next(iter(DataLoader(GridDataset(size=2), batch_size=2)))
+
+    with pytest.raises(ValueError, match="requires patch metadata"):
+        trainer._step(batch)
 
 
 def test_metric_tensors_inverse_log_standard(tmp_path, monkeypatch):

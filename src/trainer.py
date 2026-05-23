@@ -223,16 +223,24 @@ class Trainer:
             raise ValueError("Batch is missing required 'grid' data.")
         inputs, targets, masks = [t.to(self.device) for t in batch["grid"]]
 
+        patch_metadata = batch.get("patch_metadata")
+
         # Unpack all potential auxiliary data
         auxiliary_data = {}
         for key, value in batch.items():
-            if key == "grid":
+            if key in {"grid", "patch_metadata"}:
                 continue
             auxiliary_data[key] = value.to(self.device)
 
         predictions = self.model(inputs, auxiliary_data)
 
-        loss_out = self.loss_fn(predictions, targets, masks)
+        if getattr(self.loss_fn, "requires_patch_metadata", False):
+            if patch_metadata is None:
+                raise ValueError("Configured loss requires patch metadata, but batch does not include 'patch_metadata'.")
+            patch_metadata = {key: value.to(self.device) for key, value in patch_metadata.items()}
+            loss_out = self.loss_fn(predictions, targets, masks, patch_metadata=patch_metadata)
+        else:
+            loss_out = self.loss_fn(predictions, targets, masks)
 
         # Support if it is a single loss or weighted loss
         if isinstance(loss_out, tuple):

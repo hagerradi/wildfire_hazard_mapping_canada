@@ -9,7 +9,18 @@ import torch
 from matplotlib import pyplot as plt
 from torch.utils.data import DataLoader
 
-from src.losses import BCELoss, BernoulliKLLoss, DiceLoss, FocalLoss, HuberLoss, MAELoss, MSELoss, RegressionPearsonLoss
+from src.losses import (
+    BCELoss,
+    BernoulliKLLoss,
+    CCCLoss,
+    DiceLoss,
+    FocalLoss,
+    HexSummaryLoss,
+    HuberLoss,
+    MAELoss,
+    MSELoss,
+    RegressionPearsonLoss,
+)
 from src.metrics import (
     compute_auc_iou,
     compute_bias,
@@ -59,6 +70,8 @@ def build_single_loss(name: str, huber_beta: float = 1.0) -> torch.nn.Module:
         return MSELoss()
     if name in ["mae", "maeloss"]:
         return MAELoss()
+    if name in ["ccc", "cccloss"]:
+        return CCCLoss()
     if name in ["huber", "huberloss", "smoothl1", "smooth_l1", "smoothl1loss"]:
         return HuberLoss(beta=huber_beta)
     if name in ["raw_pearson", "regression_pearson", "regressionpearsonloss", "raw_corr"]:
@@ -69,6 +82,18 @@ def build_single_loss(name: str, huber_beta: float = 1.0) -> torch.nn.Module:
         return DiceLoss()
     if name in ["klloss", "kl", "bernoullikl", "bernoulliklloss"]:
         return BernoulliKLLoss()
+    if name in ["hex_mean_pearson", "hex_summary_mean_pearson"]:
+        return HexSummaryLoss(summary="mean", correlation="pearson")
+    if name in ["hex_top10_pearson", "hex_summary_top10_pearson"]:
+        return HexSummaryLoss(summary="topk_mean", correlation="pearson", top_fraction=0.10)
+    if name in ["hex_mean_ccc", "hex_summary_mean_ccc"]:
+        return HexSummaryLoss(summary="mean", correlation="ccc")
+    if name in ["hex_top10_ccc", "hex_summary_top10_ccc"]:
+        return HexSummaryLoss(summary="topk_mean", correlation="ccc", top_fraction=0.10)
+    if name in ["hex_mean_pairwise_rank", "hex_summary_mean_pairwise_rank"]:
+        return HexSummaryLoss(summary="mean", correlation="pairwise_rank")
+    if name in ["hex_top10_pairwise_rank", "hex_summary_top10_pairwise_rank"]:
+        return HexSummaryLoss(summary="topk_mean", correlation="pairwise_rank", top_fraction=0.10)
     raise ValueError(f"Unknown loss type: {name}")
 
 

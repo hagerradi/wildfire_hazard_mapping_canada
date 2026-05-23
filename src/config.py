@@ -78,6 +78,8 @@ class GridParams(BaseModel):
     normalize_fuel_feats_ordinal: bool = True
     transforms_list: list[str] = Field(default_factory=list)
     augmentation_prob: float = 0.0
+    terrain_derivatives: list[str] = Field(default_factory=list)
+    terrain_cell_size_m: float = Field(default=100.0, gt=0.0)
 
 
 class TabularParams(BaseModel):
@@ -149,6 +151,7 @@ class DataConfig(BaseModel):
     test_split: str
     filename_col: str = "filename"
     valid_mask_threshold: float = 0.01
+    include_patch_metadata: bool = False
 
     input_sources: list[DataSourceConfig]
 

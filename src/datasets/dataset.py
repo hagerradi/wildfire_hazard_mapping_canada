@@ -28,6 +28,7 @@ class MultiSourceDataset(Dataset):
         valid_mask_threshold: float = 0.01,
         sources: dict[str, DataSource] | None = None,
         grid_transform=None,
+        include_patch_metadata: bool = False,
     ):
         """
         Args:
@@ -45,6 +46,7 @@ class MultiSourceDataset(Dataset):
         self.valid_mask_threshold = valid_mask_threshold
         self.filename_col = filename_col
         self.grid_transform = grid_transform
+        self.include_patch_metadata = include_patch_metadata
         if not os.path.exists(self.metadata_path):
             raise FileNotFoundError(f"Metadata not found at: {self.metadata_path}")
         metadata_df = pd.read_csv(self.metadata_path)
@@ -85,6 +87,10 @@ class MultiSourceDataset(Dataset):
                 raise ValueError("Configured grid transform requires a 'grid' source.")
             inputs, targets, masks = sample["grid"]
             sample["grid"] = self.grid_transform(inputs, targets, masks)
+        if self.include_patch_metadata:
+            if "hex_id" not in patch_info:
+                raise KeyError("Patch metadata requested but split row does not contain 'hex_id'.")
+            sample["patch_metadata"] = {"hex_id": torch.tensor(int(patch_info["hex_id"]), dtype=torch.long)}
         return sample
 
     def __len__(self):
@@ -133,6 +139,7 @@ def build_dataset(config: DataConfig, csv_name: str, modelling_approach: str = "
         valid_mask_threshold=config.valid_mask_threshold,
         sources=sources,
         grid_transform=grid_transform,
+        include_patch_metadata=config.include_patch_metadata,
     )
     return dataset
 

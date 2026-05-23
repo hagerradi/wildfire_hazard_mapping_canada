@@ -5,8 +5,10 @@ import torch.nn.functional as F
 from src.losses import (
     BCELoss,
     BernoulliKLLoss,
+    CCCLoss,
     DiceLoss,
     FocalLoss,
+    HexSummaryLoss,
     HuberLoss,
     MAELoss,
     MSELoss,
@@ -85,6 +87,44 @@ def test_mse_loss_all_masked(dummy_data):
     mask = torch.zeros_like(logits)
     result = loss_fn(logits, targets, mask)
     assert torch.isfinite(result)
+
+
+def test_ccc_loss_is_zero_for_perfect_probability_predictions():
+    targets = torch.tensor([[[[0.2, 0.4], [0.6, 0.8]]]])
+    logits = torch.logit(targets)
+    loss = CCCLoss()(logits, targets, torch.ones_like(targets, dtype=torch.bool))
+    assert torch.allclose(loss, torch.tensor(0.0), atol=1e-6)
+
+
+def test_hex_summary_pairwise_rank_requires_patch_metadata():
+    targets = torch.tensor(
+        [
+            [[[0.1, 0.2], [0.3, 0.4]]],
+            [[[0.6, 0.7], [0.8, 0.9]]],
+        ]
+    )
+    logits = torch.logit(targets.clamp(1e-4, 1 - 1e-4))
+    masks = torch.ones_like(targets, dtype=torch.bool)
+
+    with pytest.raises(ValueError, match="requires patch_metadata"):
+        HexSummaryLoss(correlation="pairwise_rank")(logits, targets, masks)
+
+
+def test_hex_summary_pairwise_rank_uses_hex_metadata():
+    targets = torch.tensor(
+        [
+            [[[0.1, 0.2], [0.3, 0.4]]],
+            [[[0.6, 0.7], [0.8, 0.9]]],
+        ]
+    )
+    logits = torch.logit(targets.clamp(1e-4, 1 - 1e-4))
+    masks = torch.ones_like(targets, dtype=torch.bool)
+    metadata = {"hex_id": torch.tensor([1, 2])}
+
+    loss = HexSummaryLoss(correlation="pairwise_rank")(logits, targets, masks, patch_metadata=metadata)
+
+    assert torch.isfinite(loss)
+    assert loss.item() < 0.7
 
 
 # -------------------------
@@ -190,6 +230,12 @@ def test_regression_pearson_loss_all_masked_is_finite():
 
 def test_build_single_loss_supports_raw_pearson():
     assert isinstance(build_single_loss("raw_pearson"), RegressionPearsonLoss)
+
+
+def test_build_single_loss_supports_bp_ccc_and_hex_rank_losses():
+    assert isinstance(build_single_loss("ccc"), CCCLoss)
+    assert isinstance(build_single_loss("hex_mean_pairwise_rank"), HexSummaryLoss)
+    assert isinstance(build_single_loss("hex_top10_pairwise_rank"), HexSummaryLoss)
 
 
 # -------------------------
