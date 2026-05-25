@@ -29,7 +29,7 @@ training:
   log_every_n_epoch: 1
 
 evaluation:
-  best_ckpt_metrics: ["spearman"]
+  best_ckpt_metrics: ["ccc"]
   best_ckpt_metrics_mode: ["max"]
   checkpoint_filename: "best.pth"
   robust_plot_percentile: 99.0
@@ -52,8 +52,6 @@ data:
         feature_names_list: ["ignition_grid", "fuel_grid", "elevation_grid"]
         target_name: "fi"
         out_norm: "log_standard"
-        target_log_mean: 7.923288536666
-        target_log_std: 1.127596617984
         fuel_feats_encoding: "one_hot"
         normalize_fuel_feats_ordinal: true
         transforms_list: []
@@ -113,7 +111,7 @@ logger:
     - "coordconv=patch_local"
     - "data_samples_v3"
     - "fuel_one_hot_encoding"
-    - "best_ckpt=spearman"
+    - "best_ckpt=ccc"
     - "loss=huber_raw_pearson"
     - "target_norm=log_standard"
     - "tabular_fusion=spatialized"

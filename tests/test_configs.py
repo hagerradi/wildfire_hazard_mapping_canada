@@ -45,6 +45,11 @@ def test_spatialized_fi_ros_configs_reference_supported_losses_and_metrics():
         config = _load_config(path)
         loss_names = config.optimizer.loss if isinstance(config.optimizer.loss, list) else [config.optimizer.loss]
 
+        assert config.data.input_sources[0].params.target_log_mean is None
+        assert config.data.input_sources[0].params.target_log_std is None
+        assert config.evaluation.best_ckpt_metrics == ["ccc"]
+        assert config.evaluation.best_ckpt_metrics_mode == ["max"]
+        assert "best_ckpt=ccc" in config.logger.tags
         for loss_name in loss_names:
             build_single_loss(loss_name, huber_beta=config.optimizer.huber_beta)
         for metric_name in config.metrics:

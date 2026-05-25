@@ -1,4 +1,4 @@
-# ROS colleague-ready config: CoordConv + spatialized weather/fire-size + terrain derivatives.
+# ROS best-model config: spatialized weather/fire-size + missing masks + terrain derivatives.
 save_dir: "experiments/ros_full_config_v3_coordconv_spatialized_weather_fire_size_missing_mask_terrain"
 
 modelling_approach: "1"
@@ -29,7 +29,7 @@ training:
   log_every_n_epoch: 1
 
 evaluation:
-  best_ckpt_metrics: ["spearman"]
+  best_ckpt_metrics: ["ccc"]
   best_ckpt_metrics_mode: ["max"]
   checkpoint_filename: "best.pth"
   robust_plot_percentile: 99.0
@@ -52,8 +52,6 @@ data:
         feature_names_list: ["ignition_grid", "fuel_grid", "elevation_grid"]
         target_name: "ros"
         out_norm: "log_standard"
-        target_log_mean: 1.759765073915
-        target_log_std: 0.532782452748
         fuel_feats_encoding: "one_hot"
         normalize_fuel_feats_ordinal: true
         transforms_list: []
@@ -115,13 +113,12 @@ logger:
     - "coordconv=patch_local"
     - "data_samples_v3"
     - "fuel_one_hot_encoding"
-    - "best_ckpt=spearman"
+    - "best_ckpt=ccc"
     - "loss=huber_raw_pearson"
     - "target_norm=log_standard"
     - "tabular_fusion=spatialized"
-    - "spatialized_sources=weather_fire_size_missing_mask"
-    - "tabular_aggregation=mean"
-    - "missing_mask=true"
+    - "spatialized_sources=weather_fire_size"
+    - "missing_masks=weather_fire_size"
     - "terrain_derivatives=slope_aspect"
   log_every_n_step: 10
 
