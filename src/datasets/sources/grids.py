@@ -151,7 +151,7 @@ class GridSource(DataSource):
             raise ValueError(f"Expected dim 0 or 1 for finite differences, got {dim}.")
         return grad
 
-    def _terrain_derivative_channels(self, input_arr: torch.Tensor) -> list[torch.Tensor]:
+    def _compute_terrain_derivative_channels(self, input_arr: torch.Tensor) -> list[torch.Tensor]:
         if self.elevation_input_channel_index is None:
             raise RuntimeError("terrain_derivatives requires a resolved elevation input channel.")
 
@@ -178,7 +178,7 @@ class GridSource(DataSource):
     def _append_terrain_derivative_channels(self, input_arr: torch.Tensor) -> torch.Tensor:
         if not self.terrain_derivatives:
             return input_arr
-        terrain_channels = self._terrain_derivative_channels(input_arr)
+        terrain_channels = self._compute_terrain_derivative_channels(input_arr)
         return torch.cat([input_arr, *[channel.unsqueeze(0) for channel in terrain_channels]], dim=0)
 
     def get_sample(self, patch_info: dict):
@@ -229,7 +229,8 @@ class GridSource(DataSource):
         # 7. Apply transforms if provided
         if self.transform:
             input_arr, output_arr, mask = self.transform(input_arr, output_arr, mask)
-        input_arr = self._append_terrain_derivative_channels(input_arr)
+        if self.terrain_derivatives:
+            input_arr = self._append_terrain_derivative_channels(input_arr)
 
         return (input_arr, output_arr, mask)  # (C, H, W), (1, H, W), (1, H, W)
 
