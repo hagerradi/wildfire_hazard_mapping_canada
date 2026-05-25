@@ -24,7 +24,7 @@ class BurnRiskPredictor:
 
     Example:
         # Assuming you have a trained model checkpoint and prepared input tensors:
-        >>> predictor = BurnRiskPredictor.from_checkpoint(checkpoint_path="models/best.pth", spatial_channels=10, auxiliary_input_dims={"weather": 7, "fire_size": 5})
+        >>> predictor = BurnRiskPredictor.from_checkpoint(checkpoint_path="models/best.pth", spatial_channels=10, auxiliary_input_dims={"tabular_weather": 7, "tabular_fire_size": 5})
         >>> predictions = predictor(spatial_batch, auxiliary_batch)
 
         # Assuming you loaded model and config separately (not most common usage):

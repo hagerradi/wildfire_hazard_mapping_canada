@@ -29,9 +29,9 @@ class ModelConfig(BaseModel):
     use_coordconv: bool = False
 
     # specific to auxiliary model
-    auxiliary_hidden_dims: dict[str, list[int] | dict[str, list[int]]] = {"weather": [32, 64]}
-    auxiliary_embed_dims: dict[str, int] = {"weather": 128}
-    auxiliary_feature_encoder_poolings: dict[str, str] = {"weather": "max"}
+    auxiliary_hidden_dims: dict[str, list[int] | dict[str, list[int]]] = {"tabular_weather": [32, 64]}
+    auxiliary_embed_dims: dict[str, int] = {"tabular_weather": 128}
+    auxiliary_feature_encoder_poolings: dict[str, str] = {"tabular_weather": "max"}
 
 
 class OptimizerConfig(BaseModel):
@@ -126,8 +126,8 @@ class DataSourceConfig(BaseModel):
 
         param_classes = {
             "grid": GridParams,
-            "weather": TabularParams,
-            "fire_size": TabularParams,
+            "tabular_weather": TabularParams,
+            "tabular_fire_size": TabularParams,
             "spatialized_weather": SpatializedTabularParams,
             "spatialized_fire_size": SpatializedTabularParams,
         }

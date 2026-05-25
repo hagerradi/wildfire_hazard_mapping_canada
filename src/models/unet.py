@@ -243,7 +243,7 @@ class MultiSourceUNet(UNetBase):
         """
         Args:
             x: Spatial input (B, C, H, W) (torch.Tensor)
-            x_auxiliary: Dict. of auxiliary inputs {'weather': (B, N, D), ...} (dict[str, torch.Tensor] | None)
+            x_auxiliary: Dict. of auxiliary inputs {'tabular_weather': (B, N, D), ...} (dict[str, torch.Tensor] | None)
         """
 
         skip_connections = []

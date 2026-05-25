@@ -12,16 +12,16 @@ model:
   input_feature_list: ["spatial", "auxiliary"]
 
   auxiliary_hidden_dims:
-    weather: [32, 64, 128]
-    fire_size: [8, 16]
+    tabular_weather: [32, 64, 128]
+    tabular_fire_size: [8, 16]
 
   auxiliary_embed_dims:
-    weather: 128
-    fire_size: 16
+    tabular_weather: 128
+    tabular_fire_size: 16
 
   auxiliary_feature_encoder_poolings:
-    weather: "max" # max, mean, attention
-    fire_size: "max" # max, mean, attention
+    tabular_weather: "max" # max, mean, attention
+    tabular_fire_size: "max" # max, mean, attention
 
 optimizer:
   name: "AdamW" # "SGD", "Adam", "AdamW"
@@ -67,7 +67,7 @@ data:
         normalize_fuel_feats_ordinal: True
         transforms_list: []
         augmentation_prob: 0.0
-    - name: "weather"
+    - name: "tabular_weather"
       params:
         csv_name: "weather_table_processed.csv"
         feature_names_list: ["Temperature", "RelativeHumidity", "Precipitation", "FineFuelMoistureCode", "DuffMoistureCode", "DroughtCode",
@@ -79,7 +79,7 @@ data:
         feature_to_bias: null
         transforms_list: []
         augmentation_prob: 0.0
-    - name: "fire_size"
+    - name: "tabular_fire_size"
       params:
         csv_name: "df_fire_fru_processed.csv"
         feature_names_list: ["NORM_LOG_SIZE_HA"]

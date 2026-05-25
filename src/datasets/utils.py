@@ -6,7 +6,8 @@ import torch
 from data_preparation.spatial.utils import FUEL_GROUP_MAP
 
 SPATIALIZED_TABULAR_SOURCE_NAMES = {"spatialized_weather", "spatialized_fire_size"}
-AVAILABLE_DATA_SOURCES = ["grid", "weather", "fire_size", *sorted(SPATIALIZED_TABULAR_SOURCE_NAMES)]
+TABULAR_SOURCE_NAMES = {"tabular_weather", "tabular_fire_size"}
+AVAILABLE_DATA_SOURCES = ["grid", "tabular_weather", "tabular_fire_size", "spatialized_weather", "spatialized_fire_size"]
 MAX_FUEL_GRID = float(max(FUEL_GROUP_MAP.values()))
 
 
@@ -18,7 +19,7 @@ def get_data_source_class(name: str):
         from src.datasets.sources import GridSource
 
         return GridSource
-    elif name in ["weather", "fire_size"]:
+    elif name in TABULAR_SOURCE_NAMES:
         from src.datasets.sources import TabularSource
 
         return TabularSource
@@ -38,7 +39,7 @@ def get_data_source_param_class(name: str):
         from src.config import GridParams
 
         return GridParams
-    elif name in ["weather", "fire_size"]:
+    elif name in TABULAR_SOURCE_NAMES:
         from src.config import TabularParams
 
         return TabularParams

@@ -54,14 +54,14 @@ def test_multisource_unet_coordconv_forward_shape():
         num_classes=1,
         hidden_features=[8, 16],
         input_feature_list=["spatial", "auxiliary"],
-        auxiliary_input_dims={"weather": 5},
-        auxiliary_hidden_dims={"weather": [8]},
-        auxiliary_embed_dims={"weather": 4},
-        auxiliary_feature_encoder_poolings={"weather": "max"},
+        auxiliary_input_dims={"tabular_weather": 5},
+        auxiliary_hidden_dims={"tabular_weather": [8]},
+        auxiliary_embed_dims={"tabular_weather": 4},
+        auxiliary_feature_encoder_poolings={"tabular_weather": "max"},
         use_coordconv=True,
     )
     x = torch.randn(2, 3, 64, 64)
-    x_auxiliary = {"weather": torch.randn(2, 4, 5)}
+    x_auxiliary = {"tabular_weather": torch.randn(2, 4, 5)}
 
     out = model(x, x_auxiliary=x_auxiliary)
 

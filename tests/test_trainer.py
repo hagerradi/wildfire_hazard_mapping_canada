@@ -71,7 +71,7 @@ class WeatherDataset(GridDataset):
     def __getitem__(self, idx: int) -> dict:
         item = super().__getitem__(idx)
         torch.manual_seed(idx + 1000)
-        item["weather"] = torch.rand(AUX_SAMPLES, WEATHER_FEATS)
+        item["tabular_weather"] = torch.rand(AUX_SAMPLES, WEATHER_FEATS)
         return item
 
 
@@ -81,8 +81,8 @@ class MultiAuxDataset(GridDataset):
     def __getitem__(self, idx: int) -> dict:
         item = super().__getitem__(idx)
         torch.manual_seed(idx + 1000)
-        item["weather"] = torch.rand(AUX_SAMPLES, WEATHER_FEATS)
-        item["fire_size"] = torch.rand(AUX_SAMPLES, FIRE_SIZE_FEATS)
+        item["tabular_weather"] = torch.rand(AUX_SAMPLES, WEATHER_FEATS)
+        item["tabular_fire_size"] = torch.rand(AUX_SAMPLES, FIRE_SIZE_FEATS)
         return item
 
 
@@ -104,7 +104,7 @@ class WindAndWeatherDataset(GridDataset):
         torch.manual_seed(idx + 2000)
         item["wind_grid_mixer"] = torch.rand(WIND_CHANNELS, WIND_HEIGHT, WIND_WIDTH)
         torch.manual_seed(idx + 3000)
-        item["weather"] = torch.rand(AUX_SAMPLES, WEATHER_FEATS)
+        item["tabular_weather"] = torch.rand(AUX_SAMPLES, WEATHER_FEATS)
         return item
 
 
@@ -128,9 +128,9 @@ def _make_config(
             num_classes=1,
             hidden_features=[8, 16],
             input_feature_list=input_feature_list,
-            auxiliary_hidden_dims=auxiliary_hidden_dims or {"weather": [16, 32]},
-            auxiliary_embed_dims=auxiliary_embed_dims or {"weather": 16},
-            auxiliary_feature_encoder_poolings=auxiliary_feature_encoder_poolings or {"weather": "max"},
+            auxiliary_hidden_dims=auxiliary_hidden_dims or {"tabular_weather": [16, 32]},
+            auxiliary_embed_dims=auxiliary_embed_dims or {"tabular_weather": 16},
+            auxiliary_feature_encoder_poolings=auxiliary_feature_encoder_poolings or {"tabular_weather": "max"},
         ),
         optimizer=OptimizerConfig(loss="mse", name="Adam", lr=0.001),
         training=TrainingConfig(max_epochs=1, log_every_n_epoch=1),
@@ -177,9 +177,9 @@ def auxiliary_config(tmp_path):
     return _make_config(
         tmp_path,
         input_feature_list=["spatial", "auxiliary"],
-        auxiliary_hidden_dims={"weather": [16, 32]},
-        auxiliary_embed_dims={"weather": 16},
-        auxiliary_feature_encoder_poolings={"weather": "max"},
+        auxiliary_hidden_dims={"tabular_weather": [16, 32]},
+        auxiliary_embed_dims={"tabular_weather": 16},
+        auxiliary_feature_encoder_poolings={"tabular_weather": "max"},
     )
 
 
@@ -188,9 +188,9 @@ def multi_aux_config(tmp_path):
     return _make_config(
         tmp_path,
         input_feature_list=["spatial", "auxiliary"],
-        auxiliary_hidden_dims={"weather": [16, 32], "fire_size": [16, 32]},
-        auxiliary_embed_dims={"weather": 16, "fire_size": 16},
-        auxiliary_feature_encoder_poolings={"weather": "max", "fire_size": "max"},
+        auxiliary_hidden_dims={"tabular_weather": [16, 32], "tabular_fire_size": [16, 32]},
+        auxiliary_embed_dims={"tabular_weather": 16, "tabular_fire_size": 16},
+        auxiliary_feature_encoder_poolings={"tabular_weather": "max", "tabular_fire_size": "max"},
     )
 
 
@@ -212,10 +212,10 @@ def wind_and_weather_config(tmp_path):
         input_feature_list=["spatial", "auxiliary"],
         auxiliary_hidden_dims={
             "wind_grid_mixer": {"mixer": [16], "local": [32, 64, 16], "global": [16]},
-            "weather": [16, 32],
+            "tabular_weather": [16, 32],
         },
-        auxiliary_embed_dims={"wind_grid_mixer": 16, "weather": 16},
-        auxiliary_feature_encoder_poolings={"wind_grid_mixer": "max", "weather": "max"},
+        auxiliary_embed_dims={"wind_grid_mixer": 16, "tabular_weather": 16},
+        auxiliary_feature_encoder_poolings={"wind_grid_mixer": "max", "tabular_weather": "max"},
     )
 
 
@@ -418,12 +418,12 @@ def test_test_method(dummy_config, dummy_data):
     assert "dummy" in results
 
 
-# Tests — multi-source Trainer with weather encoder
+# Tests — multi-source Trainer with tabular weather encoder
 def test_auxiliary_trainer_setup(auxiliary_config):
     trainer = Trainer(
         auxiliary_config,
         spatial_input_channels=SPATIAL_CHANNELS,
-        auxiliary_input_dims={"weather": WEATHER_FEATS},
+        auxiliary_input_dims={"tabular_weather": WEATHER_FEATS},
     )
     assert trainer.auxiliary is True
     assert trainer.model is not None
@@ -434,7 +434,7 @@ def test_auxiliary_trainer_step(auxiliary_config, dummy_data_weather):
     trainer = Trainer(
         auxiliary_config,
         spatial_input_channels=SPATIAL_CHANNELS,
-        auxiliary_input_dims={"weather": WEATHER_FEATS},
+        auxiliary_input_dims={"tabular_weather": WEATHER_FEATS},
     )
     patch_trainer(trainer)
     batch = next(iter(dummy_data_weather))
@@ -447,7 +447,7 @@ def test_auxiliary_train_epoch_runs(auxiliary_config, dummy_data_weather):
     trainer = Trainer(
         auxiliary_config,
         spatial_input_channels=SPATIAL_CHANNELS,
-        auxiliary_input_dims={"weather": WEATHER_FEATS},
+        auxiliary_input_dims={"tabular_weather": WEATHER_FEATS},
     )
     patch_trainer(trainer)
     results = trainer.train_epoch(dummy_data_weather)
@@ -459,7 +459,7 @@ def test_auxiliary_validate_runs(auxiliary_config, dummy_data_weather):
     trainer = Trainer(
         auxiliary_config,
         spatial_input_channels=SPATIAL_CHANNELS,
-        auxiliary_input_dims={"weather": WEATHER_FEATS},
+        auxiliary_input_dims={"tabular_weather": WEATHER_FEATS},
     )
     patch_trainer(trainer)
     results = trainer.validate(dummy_data_weather)
@@ -471,7 +471,7 @@ def test_auxiliary_validate_return_predictions(auxiliary_config, dummy_data_weat
     trainer = Trainer(
         auxiliary_config,
         spatial_input_channels=SPATIAL_CHANNELS,
-        auxiliary_input_dims={"weather": WEATHER_FEATS},
+        auxiliary_input_dims={"tabular_weather": WEATHER_FEATS},
     )
     patch_trainer(trainer)
     results, preds = trainer.validate(dummy_data_weather, return_predictions=True)
@@ -484,18 +484,18 @@ def test_auxiliary_run_training(auxiliary_config, dummy_data_weather):
     trainer = Trainer(
         auxiliary_config,
         spatial_input_channels=SPATIAL_CHANNELS,
-        auxiliary_input_dims={"weather": WEATHER_FEATS},
+        auxiliary_input_dims={"tabular_weather": WEATHER_FEATS},
     )
     patch_trainer(trainer)
     trainer.run_training(dummy_data_weather, dummy_data_weather)
 
 
-# Tests — multi-source Trainer with weather + fire_size encoders
+# Tests — multi-source Trainer with tabular weather + fire_size encoders
 def test_multi_aux_trainer_setup(multi_aux_config):
     trainer = Trainer(
         multi_aux_config,
         spatial_input_channels=SPATIAL_CHANNELS,
-        auxiliary_input_dims={"weather": WEATHER_FEATS, "fire_size": FIRE_SIZE_FEATS},
+        auxiliary_input_dims={"tabular_weather": WEATHER_FEATS, "tabular_fire_size": FIRE_SIZE_FEATS},
     )
     assert trainer.auxiliary is True
     assert trainer.model is not None
@@ -505,7 +505,7 @@ def test_multi_aux_trainer_step(multi_aux_config, dummy_data_multi_aux):
     trainer = Trainer(
         multi_aux_config,
         spatial_input_channels=SPATIAL_CHANNELS,
-        auxiliary_input_dims={"weather": WEATHER_FEATS, "fire_size": FIRE_SIZE_FEATS},
+        auxiliary_input_dims={"tabular_weather": WEATHER_FEATS, "tabular_fire_size": FIRE_SIZE_FEATS},
     )
     patch_trainer(trainer)
     batch = next(iter(dummy_data_multi_aux))
@@ -518,7 +518,7 @@ def test_multi_aux_train_epoch_runs(multi_aux_config, dummy_data_multi_aux):
     trainer = Trainer(
         multi_aux_config,
         spatial_input_channels=SPATIAL_CHANNELS,
-        auxiliary_input_dims={"weather": WEATHER_FEATS, "fire_size": FIRE_SIZE_FEATS},
+        auxiliary_input_dims={"tabular_weather": WEATHER_FEATS, "tabular_fire_size": FIRE_SIZE_FEATS},
     )
     patch_trainer(trainer)
     results = trainer.train_epoch(dummy_data_multi_aux)
@@ -598,12 +598,12 @@ def test_wind_grid_run_training(wind_grid_config, dummy_data_wind_grid):
     trainer.run_training(dummy_data_wind_grid, dummy_data_wind_grid)
 
 
-# Tests — multi-source Trainer with WindFeatureEncoder + TabularFeatureEncoder (wind_grid + weather)
+# Tests — multi-source Trainer with WindFeatureEncoder + TabularFeatureEncoder (wind_grid + tabular weather)
 def test_wind_and_weather_trainer_setup(wind_and_weather_config):
     trainer = Trainer(
         wind_and_weather_config,
         spatial_input_channels=SPATIAL_CHANNELS,
-        auxiliary_input_dims={"wind_grid_mixer": WIND_CHANNELS, "weather": WEATHER_FEATS},
+        auxiliary_input_dims={"wind_grid_mixer": WIND_CHANNELS, "tabular_weather": WEATHER_FEATS},
     )
     assert trainer.auxiliary is True
     assert trainer.model is not None
@@ -614,7 +614,7 @@ def test_wind_and_weather_trainer_step(wind_and_weather_config, dummy_data_wind_
     trainer = Trainer(
         wind_and_weather_config,
         spatial_input_channels=SPATIAL_CHANNELS,
-        auxiliary_input_dims={"wind_grid_mixer": WIND_CHANNELS, "weather": WEATHER_FEATS},
+        auxiliary_input_dims={"wind_grid_mixer": WIND_CHANNELS, "tabular_weather": WEATHER_FEATS},
     )
     patch_trainer(trainer)
     batch = next(iter(dummy_data_wind_and_weather))
@@ -627,7 +627,7 @@ def test_wind_and_weather_train_epoch_runs(wind_and_weather_config, dummy_data_w
     trainer = Trainer(
         wind_and_weather_config,
         spatial_input_channels=SPATIAL_CHANNELS,
-        auxiliary_input_dims={"wind_grid_mixer": WIND_CHANNELS, "weather": WEATHER_FEATS},
+        auxiliary_input_dims={"wind_grid_mixer": WIND_CHANNELS, "tabular_weather": WEATHER_FEATS},
     )
     patch_trainer(trainer)
     results = trainer.train_epoch(dummy_data_wind_and_weather)
@@ -639,7 +639,7 @@ def test_wind_and_weather_validate_runs(wind_and_weather_config, dummy_data_wind
     trainer = Trainer(
         wind_and_weather_config,
         spatial_input_channels=SPATIAL_CHANNELS,
-        auxiliary_input_dims={"wind_grid_mixer": WIND_CHANNELS, "weather": WEATHER_FEATS},
+        auxiliary_input_dims={"wind_grid_mixer": WIND_CHANNELS, "tabular_weather": WEATHER_FEATS},
     )
     patch_trainer(trainer)
     results = trainer.validate(dummy_data_wind_and_weather)
@@ -651,7 +651,7 @@ def test_wind_and_weather_run_training(wind_and_weather_config, dummy_data_wind_
     trainer = Trainer(
         wind_and_weather_config,
         spatial_input_channels=SPATIAL_CHANNELS,
-        auxiliary_input_dims={"wind_grid_mixer": WIND_CHANNELS, "weather": WEATHER_FEATS},
+        auxiliary_input_dims={"wind_grid_mixer": WIND_CHANNELS, "tabular_weather": WEATHER_FEATS},
     )
     patch_trainer(trainer)
     trainer.run_training(dummy_data_wind_and_weather, dummy_data_wind_and_weather)

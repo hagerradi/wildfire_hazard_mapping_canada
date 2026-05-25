@@ -62,7 +62,7 @@ def test_bp_hexpairrank_config_parse_to_expected_sources_and_losses():
 
     assert config.model.input_feature_list == ["spatial", "auxiliary"]
     assert config.data.include_patch_metadata is True
-    assert set(sources) == {"grid", "weather", "fire_size"}
+    assert set(sources) == {"grid", "tabular_weather", "tabular_fire_size"}
     assert config.optimizer.loss == ["kl", "ccc", "hex_mean_pairwise_rank", "hex_top10_pairwise_rank"]
     assert config.optimizer.loss_weights == {
         "kl": 0.45,
