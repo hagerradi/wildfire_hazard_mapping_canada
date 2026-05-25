@@ -11,6 +11,30 @@ AVAILABLE_DATA_SOURCES = ["grid", "tabular_weather", "tabular_fire_size", "spati
 MAX_FUEL_GRID = float(max(FUEL_GROUP_MAP.values()))
 
 
+def finite_difference(values: torch.Tensor, dim: int, spacing: float) -> torch.Tensor:
+    """
+    Computes first-order finite differences along one spatial dimension.
+    """
+    grad = torch.zeros_like(values)
+    size = values.shape[dim]
+    if size < 2:
+        return grad
+
+    if dim == 0:
+        grad[0, :] = (values[1, :] - values[0, :]) / spacing
+        grad[-1, :] = (values[-1, :] - values[-2, :]) / spacing
+        if size > 2:
+            grad[1:-1, :] = (values[2:, :] - values[:-2, :]) / (2.0 * spacing)
+    elif dim == 1:
+        grad[:, 0] = (values[:, 1] - values[:, 0]) / spacing
+        grad[:, -1] = (values[:, -1] - values[:, -2]) / spacing
+        if size > 2:
+            grad[:, 1:-1] = (values[:, 2:] - values[:, :-2]) / (2.0 * spacing)
+    else:
+        raise ValueError(f"Expected dim 0 or 1 for finite differences, got {dim}.")
+    return grad
+
+
 def get_data_source_class(name: str):
     """
     Returns the source class dynamically to avoid circular imports.

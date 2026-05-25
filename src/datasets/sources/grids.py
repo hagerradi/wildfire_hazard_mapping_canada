@@ -10,7 +10,12 @@ from data_preparation.spatial.utils import FUEL_GROUP_MAP, get_output_log_stats,
 from src.config import GridParams
 from src.datasets.sources.base import DataSource
 from src.datasets.targets import get_target_spec
-from src.datasets.utils import fill_nan_channel_mean_numpy, one_hot_encode, output_target_norm
+from src.datasets.utils import (
+    fill_nan_channel_mean_numpy,
+    finite_difference,
+    one_hot_encode,
+    output_target_norm,
+)
 
 
 class GridSource(DataSource):
@@ -130,35 +135,14 @@ class GridSource(DataSource):
         # 3. normalization for elevation grid
         self.ELEVATION_MAX, self.ELEVATION_MIN = get_range_elevation(self.raw_data_dir)
 
-    @staticmethod
-    def _finite_difference(values: torch.Tensor, dim: int, spacing: float) -> torch.Tensor:
-        grad = torch.zeros_like(values)
-        size = values.shape[dim]
-        if size < 2:
-            return grad
-
-        if dim == 0:
-            grad[0, :] = (values[1, :] - values[0, :]) / spacing
-            grad[-1, :] = (values[-1, :] - values[-2, :]) / spacing
-            if size > 2:
-                grad[1:-1, :] = (values[2:, :] - values[:-2, :]) / (2.0 * spacing)
-        elif dim == 1:
-            grad[:, 0] = (values[:, 1] - values[:, 0]) / spacing
-            grad[:, -1] = (values[:, -1] - values[:, -2]) / spacing
-            if size > 2:
-                grad[:, 1:-1] = (values[:, 2:] - values[:, :-2]) / (2.0 * spacing)
-        else:
-            raise ValueError(f"Expected dim 0 or 1 for finite differences, got {dim}.")
-        return grad
-
     def _compute_terrain_derivative_channels(self, input_arr: torch.Tensor) -> list[torch.Tensor]:
         if self.elevation_input_channel_index is None:
             raise RuntimeError("terrain_derivatives requires a resolved elevation input channel.")
 
         elevation_norm = input_arr[self.elevation_input_channel_index]
         elevation_m = elevation_norm * (self.ELEVATION_MAX - self.ELEVATION_MIN) + self.ELEVATION_MIN
-        dz_drow = self._finite_difference(elevation_m, dim=0, spacing=self.terrain_cell_size_m)
-        dz_dcol = self._finite_difference(elevation_m, dim=1, spacing=self.terrain_cell_size_m)
+        dz_drow = finite_difference(elevation_m, dim=0, spacing=self.terrain_cell_size_m)
+        dz_dcol = finite_difference(elevation_m, dim=1, spacing=self.terrain_cell_size_m)
         gradient_magnitude = torch.sqrt(dz_drow.square() + dz_dcol.square())
         flat_mask = gradient_magnitude <= 1e-12
 

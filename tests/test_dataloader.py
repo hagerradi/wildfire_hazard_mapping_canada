@@ -14,7 +14,7 @@ from src.config import DataConfig, DataSourceConfig, GridParams, SpatializedTabu
 from src.datasets.dataset import MultiSourceDataset, build_dataset
 from src.datasets.sources import GridSource, SpatializedTabularSource, TabularSource
 from src.datasets.transforms import setup_augmentations
-from src.datasets.utils import get_dataset_dimensions
+from src.datasets.utils import finite_difference, get_dataset_dimensions
 
 
 @pytest.fixture
@@ -102,6 +102,31 @@ def temp_data_dir():
 def stable_grid_ranges(monkeypatch):
     monkeypatch.setattr("src.datasets.sources.grids.get_range_output", lambda root_dir, output_type: (1.0, 0.0))
     monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation", lambda root_dir: (1000.0, 0.0))
+
+
+def test_finite_difference_uses_centered_interior_and_one_sided_edges():
+    values = torch.tensor(
+        [
+            [0.0, 2.0, 4.0],
+            [10.0, 12.0, 14.0],
+            [30.0, 32.0, 34.0],
+        ]
+    )
+
+    row_gradient = finite_difference(values, dim=0, spacing=2.0)
+    col_gradient = finite_difference(values, dim=1, spacing=2.0)
+
+    assert torch.allclose(
+        row_gradient,
+        torch.tensor(
+            [
+                [5.0, 5.0, 5.0],
+                [7.5, 7.5, 7.5],
+                [10.0, 10.0, 10.0],
+            ]
+        ),
+    )
+    assert torch.allclose(col_gradient, torch.ones_like(values))
 
 
 def test_multi_source_integration(temp_data_dir):
