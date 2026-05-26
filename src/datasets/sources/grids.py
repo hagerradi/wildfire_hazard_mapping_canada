@@ -1,21 +1,34 @@
 import json
+import math
 import os
+import re
 from collections.abc import Callable
+from pathlib import Path
 
 import numpy as np
+import rasterio
 import torch
 
+from data_preparation.paths import Paths
 from data_preparation.spatial.utils import FUEL_GROUP_MAP, get_output_log_stats, get_range_elevation, get_range_output
 from src.config import GridParams
 from src.datasets.sources.base import DataSource
 from src.datasets.targets import get_target_spec
-from src.datasets.utils import fill_nan_channel_mean_numpy, one_hot_encode, output_target_norm
+from src.datasets.utils import (
+    fill_nan_channel_mean_numpy,
+    finite_difference,
+    one_hot_encode,
+    output_target_norm,
+    raster_cell_spacing,
+)
 
 
 class GridSource(DataSource):
     """
     DataSource class for Spatial Grid
     """
+
+    _ALLOWED_TERRAIN_DERIVATIVES = {"slope", "aspect_sin", "aspect_cos"}
 
     def __init__(
         self,
@@ -52,7 +65,19 @@ class GridSource(DataSource):
         self.target_log_std = params.target_log_std
         self.fuel_feats_encoding = params.fuel_feats_encoding
         self.normalize_fuel_feats_ordinal = params.normalize_fuel_feats_ordinal
+        self.terrain_derivatives = params.terrain_derivatives
+        self._terrain_cell_spacing_cache: dict[str, tuple[float, float]] = {}
         self.num_fuel_classes = int(max(FUEL_GROUP_MAP.values()) + 1)
+        self.elevation_input_channel_index: int | None = None
+
+        unknown_terrain_derivatives = set(self.terrain_derivatives) - self._ALLOWED_TERRAIN_DERIVATIVES
+        if unknown_terrain_derivatives:
+            raise ValueError(
+                f"Invalid terrain_derivatives {sorted(unknown_terrain_derivatives)}. "
+                f"Allowed options are: {sorted(self._ALLOWED_TERRAIN_DERIVATIVES)}"
+            )
+        if self.terrain_derivatives and "elevation_grid" not in self.feature_names_list:
+            raise ValueError("terrain_derivatives requires 'elevation_grid' in feature_names_list.")
 
         # 1. Normalizations (for modelling approach 1)
         self.TARGET_MAX, self.TARGET_MIN = 1.0, 0.0
@@ -102,8 +127,103 @@ class GridSource(DataSource):
                         else:
                             updated_input_channel_indices.append(channel_index + self.num_fuel_classes - 1)
                     self.input_channel_indices = updated_input_channel_indices
+            if "elevation_grid" in self.feature_names_list:
+                elev_feat_local_index = self.channel_index_to_local_index[self.channel_feature_map["elevation_grid"][0]]
+                elev_feat_encoded_index = elev_feat_local_index
+                if (
+                    "fuel_grid" in self.feature_names_list
+                    and self.fuel_feats_encoding == "one_hot"
+                    and self.fuel_feat_local_index < elev_feat_local_index
+                ):
+                    elev_feat_encoded_index += self.num_fuel_classes - 1
+                self.elevation_input_channel_index = self.input_channel_indices.index(elev_feat_encoded_index)
         # 3. normalization for elevation grid
         self.ELEVATION_MAX, self.ELEVATION_MIN = get_range_elevation(self.raw_data_dir)
+
+    @staticmethod
+    def _hex_id_from_patch_info(patch_info: dict) -> str:
+        hex_id = patch_info.get("hex_id")
+        if hex_id is None and "file_path" in patch_info:
+            match = re.search(r"hex[_-]?(\d+)", Path(patch_info["file_path"]).name)
+            if match:
+                hex_id = match.group(1)
+        if hex_id is None:
+            raise KeyError("terrain_derivatives requires patch metadata with 'hex_id' or a filename containing the hex id.")
+        if isinstance(hex_id, float) and hex_id.is_integer():
+            hex_id = int(hex_id)
+        return str(hex_id).removeprefix("hex")
+
+    def _elevation_grid_path(self, hex_id: str) -> Path:
+        candidate_hex_ids = [hex_id]
+        if hex_id.isdigit():
+            candidate_hex_ids.append(hex_id.zfill(2))
+
+        checked_paths = []
+        for candidate in dict.fromkeys(candidate_hex_ids):
+            path = Paths(hex_id=candidate, root_dir=self.raw_data_dir).elevation_grid(candidate)
+            checked_paths.append(path)
+            if path.exists():
+                return path
+
+        paths = ", ".join(str(path) for path in checked_paths)
+        raise FileNotFoundError(f"Could not find elevation raster for hex_id={hex_id!r}. Checked: {paths}")
+
+    def _terrain_cell_spacing_m(self, hex_id: str) -> tuple[float, float]:
+        if hex_id in self._terrain_cell_spacing_cache:
+            return self._terrain_cell_spacing_cache[hex_id]
+
+        elevation_path = self._elevation_grid_path(hex_id)
+        with rasterio.open(elevation_path) as src:
+            if src.crs is None:
+                raise ValueError(f"Elevation raster {elevation_path} has no CRS; cannot derive terrain spacing in metres.")
+            if src.crs.is_geographic:
+                raise ValueError(
+                    f"Elevation raster {elevation_path} uses geographic CRS {src.crs}; terrain derivatives require projected metre units."
+                )
+            row_spacing, col_spacing = raster_cell_spacing(src.transform)
+            linear_units_factor = getattr(src.crs, "linear_units_factor", None)
+
+        metres_per_unit = 1.0
+        if isinstance(linear_units_factor, tuple) and len(linear_units_factor) == 2:
+            metres_per_unit = float(linear_units_factor[1])
+        elif isinstance(linear_units_factor, int | float):
+            metres_per_unit = float(linear_units_factor)
+
+        spacing = (row_spacing * metres_per_unit, col_spacing * metres_per_unit)
+        self._terrain_cell_spacing_cache[hex_id] = spacing
+        return spacing
+
+    def _compute_terrain_derivative_channels(self, input_arr: torch.Tensor, patch_info: dict) -> list[torch.Tensor]:
+        if self.elevation_input_channel_index is None:
+            raise RuntimeError("terrain_derivatives requires a resolved elevation input channel.")
+
+        hex_id = self._hex_id_from_patch_info(patch_info)
+        row_spacing_m, col_spacing_m = self._terrain_cell_spacing_m(hex_id)
+        elevation_norm = input_arr[self.elevation_input_channel_index]
+        elevation_m = elevation_norm * (self.ELEVATION_MAX - self.ELEVATION_MIN) + self.ELEVATION_MIN
+        dz_drow = finite_difference(elevation_m, dim=0, spacing=row_spacing_m)
+        dz_dcol = finite_difference(elevation_m, dim=1, spacing=col_spacing_m)
+        gradient_magnitude = torch.sqrt(dz_drow.square() + dz_dcol.square())
+        flat_mask = gradient_magnitude <= 1e-12
+
+        # Encode aspect as the downslope unit vector in raster coordinates.
+        channel_map = {}
+        if "slope" in self.terrain_derivatives:
+            channel_map["slope"] = torch.atan(gradient_magnitude) / (math.pi / 2.0)
+        if "aspect_sin" in self.terrain_derivatives:
+            aspect_sin = -dz_dcol / gradient_magnitude.clamp_min(1e-12)
+            channel_map["aspect_sin"] = torch.where(flat_mask, torch.zeros_like(aspect_sin), aspect_sin)
+        if "aspect_cos" in self.terrain_derivatives:
+            aspect_cos = dz_drow / gradient_magnitude.clamp_min(1e-12)
+            channel_map["aspect_cos"] = torch.where(flat_mask, torch.zeros_like(aspect_cos), aspect_cos)
+
+        return [channel_map[name].to(dtype=input_arr.dtype) for name in self.terrain_derivatives]
+
+    def _append_terrain_derivative_channels(self, input_arr: torch.Tensor, patch_info: dict) -> torch.Tensor:
+        if not self.terrain_derivatives:
+            return input_arr
+        terrain_channels = self._compute_terrain_derivative_channels(input_arr, patch_info)
+        return torch.cat([input_arr, *[channel.unsqueeze(0) for channel in terrain_channels]], dim=0)
 
     def get_sample(self, patch_info: dict):
         data = patch_info["data"].astype(np.float32) if "data" in patch_info else np.load(patch_info["file_path"]).astype(np.float32)
@@ -153,6 +273,8 @@ class GridSource(DataSource):
         # 7. Apply transforms if provided
         if self.transform:
             input_arr, output_arr, mask = self.transform(input_arr, output_arr, mask)
+        if self.terrain_derivatives:
+            input_arr = self._append_terrain_derivative_channels(input_arr, patch_info)
 
         return (input_arr, output_arr, mask)  # (C, H, W), (1, H, W), (1, H, W)
 
@@ -162,5 +284,5 @@ class GridSource(DataSource):
         Returns 0 if no fatures are selected (e.g. when only looking at target)
         """
         if self.input_channel_indices:
-            return len(self.input_channel_indices)
-        return 0
+            return len(self.input_channel_indices) + len(self.terrain_derivatives)
+        return len(self.terrain_derivatives)

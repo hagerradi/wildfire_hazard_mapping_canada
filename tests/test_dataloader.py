@@ -6,14 +6,17 @@ import tempfile
 import numpy as np
 import pandas as pd
 import pytest
+import rasterio
 import torch
 import torchvision.transforms.functional as F
+from rasterio.transform import from_origin
 
 from data_preparation.spatial import utils as spatial_utils
-from src.config import DataConfig, DataSourceConfig, GridParams, TabularParams
+from src.config import DataConfig, DataSourceConfig, GridParams, SpatializedTabularParams, TabularParams
 from src.datasets.dataset import MultiSourceDataset, build_dataset
-from src.datasets.sources import GridSource, TabularSource
+from src.datasets.sources import GridSource, SpatializedTabularSource, TabularSource
 from src.datasets.transforms import setup_augmentations
+from src.datasets.utils import finite_difference, get_dataset_dimensions
 
 
 @pytest.fixture
@@ -44,6 +47,7 @@ def temp_data_dir():
             {
                 "filename": filenames,
                 "valid_ratio": valid_ratios,
+                "hex_id": [1, 2, 3],
             }
         )
         train_csv = "train.csv"
@@ -102,6 +106,49 @@ def stable_grid_ranges(monkeypatch):
     monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation", lambda root_dir: (1000.0, 0.0))
 
 
+def write_test_elevation_raster(root_dir: str, hex_id: str = "01", cell_size: float = 100.0) -> None:
+    spatial_dir = os.path.join(root_dir, f"hex{hex_id}", "spatial")
+    os.makedirs(spatial_dir, exist_ok=True)
+    path = os.path.join(spatial_dir, f"hex{hex_id}_dem.tif")
+    with rasterio.open(
+        path,
+        "w",
+        driver="GTiff",
+        height=2,
+        width=2,
+        count=1,
+        dtype="float32",
+        crs="EPSG:3857",
+        transform=from_origin(0.0, 0.0, cell_size, cell_size),
+    ) as dst:
+        dst.write(np.zeros((1, 2, 2), dtype=np.float32))
+
+
+def test_finite_difference_uses_centered_interior_and_one_sided_edges():
+    values = torch.tensor(
+        [
+            [0.0, 2.0, 4.0],
+            [10.0, 12.0, 14.0],
+            [30.0, 32.0, 34.0],
+        ]
+    )
+
+    row_gradient = finite_difference(values, dim=0, spacing=2.0)
+    col_gradient = finite_difference(values, dim=1, spacing=2.0)
+
+    assert torch.allclose(
+        row_gradient,
+        torch.tensor(
+            [
+                [5.0, 5.0, 5.0],
+                [7.5, 7.5, 7.5],
+                [10.0, 10.0, 10.0],
+            ]
+        ),
+    )
+    assert torch.allclose(col_gradient, torch.ones_like(values))
+
+
 def test_multi_source_integration(temp_data_dir):
     tmpdir, train_csv, val_csv, test_csv, weather_csv, weather_feats, fire_size_csv, fire_size_feats = temp_data_dir
 
@@ -143,13 +190,15 @@ def test_multi_source_integration(temp_data_dir):
     fire_size_source = TabularSource(root_dir=tmpdir, params=fire_size_params, modelling_approach="1")
 
     ds = MultiSourceDataset(
-        csv_name="train.csv", root_dir=tmpdir, sources={"grid": grid_source, "weather": weather_source, "fire_size": fire_size_source}
+        csv_name="train.csv",
+        root_dir=tmpdir,
+        sources={"grid": grid_source, "tabular_weather": weather_source, "tabular_fire_size": fire_size_source},
     )
     sample = ds[0]
 
     assert "grid" in sample
-    assert "weather" in sample
-    assert "fire_size" in sample
+    assert "tabular_weather" in sample
+    assert "tabular_fire_size" in sample
     input_arr, target, mask = sample["grid"]
     assert isinstance(input_arr, torch.Tensor)
     assert input_arr.shape[0] == 3
@@ -158,10 +207,136 @@ def test_multi_source_integration(temp_data_dir):
     assert not mask_np[1, 1]
     assert not mask_np[10, 20]
     assert mask_np[0, 0]
-    weather = sample["weather"]
+    weather = sample["tabular_weather"]
     assert weather.shape == (2, len(weather_feats))
-    fire_size = sample["fire_size"]
+    fire_size = sample["tabular_fire_size"]
     assert fire_size.shape == (2, len(fire_size_feats))
+
+
+def test_spatialized_tabular_source_rasterizes_zone_summaries(temp_data_dir):
+    tmpdir, _, _, _, weather_csv, weather_feats, _, _ = temp_data_dir
+
+    params = SpatializedTabularParams(
+        csv_name=weather_csv,
+        feature_names_list=weather_feats[:2],
+        fire_weather_zone_id_col="WeatherZone",
+        include_missing_mask=True,
+    )
+    source = SpatializedTabularSource(root_dir=tmpdir, params=params, modelling_approach="1")
+
+    sample = source.get_sample({"file_path": os.path.join(tmpdir, "sample_0.npy")})
+    expected_zone_100 = (
+        pd.read_csv(os.path.join(tmpdir, weather_csv))
+        .query("WeatherZone == 100")[weather_feats[:2]]
+        .mean(axis=0)
+        .to_numpy(dtype=np.float32)
+    )
+
+    assert sample.shape == (3, 32, 32)
+    np.testing.assert_allclose(sample[:2, 0, 0].numpy(), expected_zone_100)
+    assert sample[-1, 0, 0].item() == 0.0
+    assert sample[-1, 1, 1].item() == 1.0
+
+
+def test_spatialized_tabular_source_rejects_fractional_zone_ids(temp_data_dir):
+    tmpdir, _, _, _, weather_csv, weather_feats, _, _ = temp_data_dir
+    data = np.load(os.path.join(tmpdir, "sample_0.npy"))
+    data[0, 0, 3] = 100.5
+
+    params = SpatializedTabularParams(
+        csv_name=weather_csv,
+        feature_names_list=weather_feats[:2],
+        fire_weather_zone_id_col="WeatherZone",
+    )
+    source = SpatializedTabularSource(root_dir=tmpdir, params=params, modelling_approach="1")
+
+    with pytest.raises(ValueError, match="non-integer zone id"):
+        source.get_sample({"data": data})
+
+
+def test_spatialized_tabular_source_rejects_fractional_csv_zone_ids(temp_data_dir):
+    tmpdir, _, _, _, weather_csv, weather_feats, _, _ = temp_data_dir
+    weather_df = pd.read_csv(os.path.join(tmpdir, weather_csv))
+    weather_df["WeatherZone"] = weather_df["WeatherZone"].astype(float)
+    weather_df.loc[0, "WeatherZone"] = 100.5
+    bad_weather_csv = "weather_table_fractional_zone.csv"
+    weather_df.to_csv(os.path.join(tmpdir, bad_weather_csv), index=False)
+
+    params = SpatializedTabularParams(
+        csv_name=bad_weather_csv,
+        feature_names_list=weather_feats[:2],
+        fire_weather_zone_id_col="WeatherZone",
+    )
+
+    with pytest.raises(ValueError, match="non-integer zone id"):
+        SpatializedTabularSource(root_dir=tmpdir, params=params, modelling_approach="1")
+
+
+def test_build_dataset_appends_spatialized_tabular_channels_to_grid(temp_data_dir):
+    tmpdir, train_csv, _, _, weather_csv, weather_feats, _, _ = temp_data_dir
+
+    config = DataConfig(
+        root_dir=tmpdir,
+        raw_data_dir=tmpdir,
+        train_split=train_csv,
+        val_split="val.csv",
+        test_split="test.csv",
+        input_sources=[
+            DataSourceConfig(
+                name="grid",
+                params=GridParams(
+                    feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],
+                    out_norm="min_max",
+                    fuel_feats_encoding="ordinal",
+                ),
+            ),
+            DataSourceConfig(
+                name="spatialized_weather",
+                params=SpatializedTabularParams(
+                    csv_name=weather_csv,
+                    feature_names_list=weather_feats[:2],
+                    fire_weather_zone_id_col="WeatherZone",
+                ),
+            ),
+        ],
+    )
+
+    dataset = build_dataset(config=config, csv_name=train_csv, modelling_approach="1")
+    spatial_channels, auxiliary_dims = get_dataset_dimensions(dataset)
+    sample = dataset[0]
+
+    assert spatial_channels == 5
+    assert auxiliary_dims == {}
+    assert set(sample) == {"grid"}
+    inputs, _, _ = sample["grid"]
+    assert inputs.shape == (5, 32, 32)
+
+
+def test_build_dataset_can_return_patch_metadata(temp_data_dir):
+    tmpdir, train_csv, _, _, _, _, _, _ = temp_data_dir
+    config = DataConfig(
+        root_dir=tmpdir,
+        raw_data_dir=tmpdir,
+        train_split=train_csv,
+        val_split="val.csv",
+        test_split="test.csv",
+        include_patch_metadata=True,
+        input_sources=[
+            DataSourceConfig(
+                name="grid",
+                params=GridParams(
+                    feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],
+                    out_norm="min_max",
+                    fuel_feats_encoding="ordinal",
+                ),
+            )
+        ],
+    )
+
+    dataset = build_dataset(config=config, csv_name=train_csv, modelling_approach="1")
+    sample = dataset[0]
+
+    assert sample["patch_metadata"]["hex_id"].item() == 1
 
 
 def test_build_dataset_passes_raw_data_dir_to_grid_source(temp_data_dir, monkeypatch):
@@ -470,3 +645,107 @@ def test_grid_target_nan_excluded_from_mask(temp_data_dir):
 
     assert not mask.squeeze(0).numpy()[0, 0]
     assert target.squeeze(0).numpy()[0, 0] == 0.0
+
+
+def test_grid_source_appends_terrain_derivatives_from_elevation(temp_data_dir, monkeypatch):
+    tmpdir, *_ = temp_data_dir
+    monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation", lambda *_args, **_kwargs: (3100.0, 0.0))
+    write_test_elevation_raster(tmpdir, cell_size=50.0)
+
+    sample_path = os.path.join(tmpdir, "sample_0.npy")
+    arr = np.zeros((32, 32, 7), dtype=np.float32)
+    arr[:, :, 1] = np.broadcast_to(np.arange(32, dtype=np.float32) * 100.0, (32, 32))
+    arr[:, :, 4] = 0.25
+    np.save(sample_path, arr)
+
+    grid_params = GridParams(
+        feature_names_list=["elevation_grid"],
+        target_name="bp",
+        out_norm="none",
+        terrain_derivatives=["slope", "aspect_sin", "aspect_cos"],
+    )
+    grid_source = GridSource(root_dir=tmpdir, raw_data_dir=tmpdir, params=grid_params, modelling_approach="1")
+
+    inputs, _, _ = grid_source.get_sample({"file_path": sample_path, "hex_id": "01"})
+
+    assert grid_source.input_dim() == 4
+    assert inputs.shape == (4, 32, 32)
+    expected_slope = torch.atan(torch.tensor(2.0)) / (torch.pi / 2.0)
+    torch.testing.assert_close(inputs[1], torch.full((32, 32), expected_slope), rtol=1e-5, atol=1e-5)
+    torch.testing.assert_close(inputs[2], torch.full((32, 32), -1.0), rtol=1e-5, atol=1e-5)
+    torch.testing.assert_close(inputs[3], torch.zeros((32, 32)), rtol=1e-5, atol=1e-5)
+
+
+def test_grid_source_terrain_derivatives_are_computed_after_transforms(temp_data_dir, monkeypatch):
+    tmpdir, *_ = temp_data_dir
+    monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation", lambda *_args, **_kwargs: (3100.0, 0.0))
+    write_test_elevation_raster(tmpdir)
+
+    sample_path = os.path.join(tmpdir, "sample_0.npy")
+    arr = np.zeros((32, 32, 7), dtype=np.float32)
+    arr[:, :, 1] = np.broadcast_to(np.arange(32, dtype=np.float32) * 100.0, (32, 32))
+    arr[:, :, 4] = 0.25
+    np.save(sample_path, arr)
+
+    def hflip_transform(x, target, mask):
+        return F.hflip(x), F.hflip(target), F.hflip(mask)
+
+    grid_params = GridParams(
+        feature_names_list=["elevation_grid"],
+        target_name="bp",
+        out_norm="none",
+        terrain_derivatives=["aspect_sin"],
+    )
+    grid_source = GridSource(root_dir=tmpdir, raw_data_dir=tmpdir, params=grid_params, modelling_approach="1", transform=hflip_transform)
+
+    inputs, _, _ = grid_source.get_sample({"file_path": sample_path, "hex_id": "01"})
+
+    torch.testing.assert_close(inputs[-1], torch.full((32, 32), 1.0), rtol=1e-5, atol=1e-5)
+
+
+def test_grid_source_sets_flat_terrain_aspect_to_zero(temp_data_dir, monkeypatch):
+    tmpdir, *_ = temp_data_dir
+    monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation", lambda *_args, **_kwargs: (1000.0, 0.0))
+    write_test_elevation_raster(tmpdir)
+
+    sample_path = os.path.join(tmpdir, "sample_0.npy")
+    arr = np.zeros((32, 32, 7), dtype=np.float32)
+    arr[:, :, 1] = 500.0
+    arr[:, :, 4] = 0.25
+    np.save(sample_path, arr)
+
+    grid_params = GridParams(
+        feature_names_list=["elevation_grid"],
+        target_name="bp",
+        out_norm="none",
+        terrain_derivatives=["slope", "aspect_sin", "aspect_cos"],
+    )
+    grid_source = GridSource(root_dir=tmpdir, raw_data_dir=tmpdir, params=grid_params, modelling_approach="1")
+
+    inputs, _, _ = grid_source.get_sample({"file_path": sample_path, "hex_id": "01"})
+
+    torch.testing.assert_close(inputs[1:], torch.zeros((3, 32, 32)), rtol=1e-5, atol=1e-5)
+
+
+def test_grid_source_terrain_derivatives_require_elevation(temp_data_dir):
+    tmpdir, *_ = temp_data_dir
+    grid_params = GridParams(
+        feature_names_list=["ignition_grid"],
+        target_name="bp",
+        terrain_derivatives=["slope"],
+    )
+
+    with pytest.raises(ValueError, match="requires 'elevation_grid'"):
+        GridSource(root_dir=tmpdir, params=grid_params, modelling_approach="1")
+
+
+def test_grid_source_rejects_unknown_terrain_derivatives(temp_data_dir):
+    tmpdir, *_ = temp_data_dir
+    grid_params = GridParams(
+        feature_names_list=["elevation_grid"],
+        target_name="bp",
+        terrain_derivatives=["aspect_degrees"],
+    )
+
+    with pytest.raises(ValueError, match="Invalid terrain_derivatives"):
+        GridSource(root_dir=tmpdir, params=grid_params, modelling_approach="1")

@@ -263,6 +263,7 @@ def evaluate_and_visualize_hexels(
     device: torch.device,
     experiment_logger: CometLogger | None = None,
     metric_functions: dict[str, Callable] | None = None,
+    robust_plot_percentile: float | None = None,
 ) -> dict[str, float]:
     """
     A util function to re-construct predicted hexels out of test predictions, and visualize side-by-side with the Groundtruth.
@@ -340,6 +341,7 @@ def evaluate_and_visualize_hexels(
             save_dir=config.save_dir,
             experiment_logger=experiment_logger,
             target_label=target.label,
+            robust_plot_percentile=robust_plot_percentile,
         )
 
         # plot and save hexbin figures (for calibration)

@@ -5,7 +5,13 @@ import torch.nn as nn
 
 from src.models.bottlenecks import MultiSourceBottleneck
 from src.models.decoders import BaselineDecoder
-from src.models.encoders import BaselineEncoder, TabularFeatureEncoder, WindFeatureEncoderMixer, WindFeatureEncoderSpatial
+from src.models.encoders import (
+    BaselineEncoder,
+    TabularFeatureEncoder,
+    WindFeatureEncoderMixer,
+    WindFeatureEncoderSpatial,
+    append_coord_channels,
+)
 from src.models.utils import double_conv_block
 
 
@@ -18,10 +24,11 @@ class UNetBase(nn.Module, ABC):
         self.input_channels: int
         self.num_classes: int
         self.hidden_features: list[int] | None
-        self.input_feature_list: list | None
+        self.input_branches: list | None
         self.use_skip_connections: bool
         self.use_transpose_conv: bool
         self.use_activation_after_upsampling: bool
+        self.use_coordconv: bool
 
         self.encoder: nn.Module
         self.bottleneck: nn.Module
@@ -62,16 +69,17 @@ class BaselineUNet(UNetBase):
         input_channels: int = 1,
         num_classes: int = 1,
         hidden_features: list[int] | None = None,
-        input_feature_list: list | None = None,
+        input_branches: list | None = None,
         use_skip_connections: bool = True,
         use_transpose_conv: bool = False,
         use_activation_after_upsampling: bool = False,
+        use_coordconv: bool = False,
     ):
         super().__init__()
         if hidden_features is None:
             hidden_features = [64, 128, 256, 512]
-        if input_feature_list is None:
-            input_feature_list = ["spatial"]
+        if input_branches is None:
+            input_branches = ["spatial"]
 
         self.input_channels = input_channels
         self.num_classes = num_classes
@@ -79,19 +87,21 @@ class BaselineUNet(UNetBase):
         self.use_skip_connections = use_skip_connections
         self.use_transpose_conv = use_transpose_conv
         self.use_activation_after_upsampling = use_activation_after_upsampling
-        self.input_feature_list = input_feature_list
+        self.use_coordconv = use_coordconv
+        self.input_branches = input_branches
         self._build_components()
         # output layer
         self.out_conv = nn.Conv2d(self.hidden_features[0], self.num_classes, kernel_size=1)
 
     def build_encoder(self) -> nn.Module:
-        encoder = BaselineEncoder(in_channels=self.input_channels, hidden_features=self.hidden_features)
+        encoder = BaselineEncoder(in_channels=self.input_channels, hidden_features=self.hidden_features, use_coordconv=self.use_coordconv)
         return encoder
 
     def build_bottleneck(self) -> nn.Module:
         if self.hidden_features is None:
             raise ValueError("Hidden features cannot be None")
-        return double_conv_block(self.hidden_features[-1], self.hidden_features[-1] * 2)
+        in_channels = self.hidden_features[-1] + 2 if self.use_coordconv else self.hidden_features[-1]
+        return double_conv_block(in_channels, self.hidden_features[-1] * 2)
 
     def build_decoder(self) -> nn.Module:
         decoder = BaselineDecoder(
@@ -99,11 +109,14 @@ class BaselineUNet(UNetBase):
             use_skip_connections=self.use_skip_connections,
             use_transpose_conv=self.use_transpose_conv,
             use_activation_after_upsampling=self.use_activation_after_upsampling,
+            use_coordconv=self.use_coordconv,
         )
         return decoder
 
     def forward(self, x: torch.Tensor, x_auxiliary: dict[str, torch.Tensor] | None = None) -> torch.Tensor:
         x, skip_connections = self.encoder(x)
+        if self.use_coordconv:
+            x = append_coord_channels(x)
         x = self.bottleneck(x)
         x = self.decoder(x, skip_connections)
         x = self.out_conv(x)
@@ -116,7 +129,7 @@ class MultiSourceUNet(UNetBase):
         input_channels: int = 1,
         num_classes: int = 1,
         hidden_features: list[int] | None = None,
-        input_feature_list: list | None = None,
+        input_branches: list | None = None,
         use_skip_connections: bool = True,
         use_transpose_conv: bool = False,
         use_activation_after_upsampling: bool = False,
@@ -124,16 +137,18 @@ class MultiSourceUNet(UNetBase):
         auxiliary_hidden_dims: dict[str, list[int] | dict[str, list[int]]] | None = None,
         auxiliary_embed_dims: dict[str, int] | None = None,
         auxiliary_feature_encoder_poolings: dict[str, str] | None = None,
+        use_coordconv: bool = False,
     ):
         super().__init__()
 
         self.input_channels = input_channels
         self.num_classes = num_classes
         self.hidden_features = hidden_features if hidden_features else [64, 128, 256, 512]
-        self.input_feature_list = input_feature_list
+        self.input_branches = input_branches
         self.use_skip_connections = use_skip_connections
         self.use_transpose_conv = use_transpose_conv
         self.use_activation_after_upsampling = use_activation_after_upsampling
+        self.use_coordconv = use_coordconv
         self.auxiliary_input_dims: dict[str, int] = auxiliary_input_dims or {}
         self.auxiliary_hidden_dims: dict[str, list[int] | dict[str, list[int]]] = auxiliary_hidden_dims or {}
         self.auxiliary_embed_dims: dict[str, int] = auxiliary_embed_dims or {}
@@ -144,11 +159,15 @@ class MultiSourceUNet(UNetBase):
     def build_encoder(self) -> nn.Module:
         encoders = nn.ModuleDict()
 
-        features = self.input_feature_list if self.input_feature_list is not None else []
+        features = self.input_branches if self.input_branches is not None else []
 
         # Build base spatial grids encoder.
         if "spatial" in features:
-            encoders["spatial"] = BaselineEncoder(in_channels=self.input_channels, hidden_features=self.hidden_features)
+            encoders["spatial"] = BaselineEncoder(
+                in_channels=self.input_channels,
+                hidden_features=self.hidden_features,
+                use_coordconv=self.use_coordconv,
+            )
 
         # Build encoders for each extra auxiliary feature type.
         if self.auxiliary_input_dims:
@@ -201,7 +220,10 @@ class MultiSourceUNet(UNetBase):
                 auxillary_dims[name] = self.auxiliary_embed_dims.get(name, 64)
 
         return MultiSourceBottleneck(
-            in_channels=self.hidden_features[-1], out_channels=self.hidden_features[-1] * 2, aux_dims=auxillary_dims
+            in_channels=self.hidden_features[-1],
+            out_channels=self.hidden_features[-1] * 2,
+            aux_dims=auxillary_dims,
+            use_coordconv=self.use_coordconv,
         )
 
     def build_decoder(self) -> nn.Module:
@@ -213,6 +235,7 @@ class MultiSourceUNet(UNetBase):
             use_skip_connections=self.use_skip_connections,
             use_transpose_conv=self.use_transpose_conv,
             use_activation_after_upsampling=self.use_activation_after_upsampling,
+            use_coordconv=self.use_coordconv,
         )
         return decoder
 
@@ -220,7 +243,7 @@ class MultiSourceUNet(UNetBase):
         """
         Args:
             x: Spatial input (B, C, H, W) (torch.Tensor)
-            x_auxiliary: Dict. of auxiliary inputs {'weather': (B, N, D), ...} (dict[str, torch.Tensor] | None)
+            x_auxiliary: Dict. of auxiliary inputs {'tabular_weather': (B, N, D), ...} (dict[str, torch.Tensor] | None)
         """
 
         skip_connections = []

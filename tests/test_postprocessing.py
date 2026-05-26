@@ -3,7 +3,7 @@ import pandas as pd
 import pytest
 
 from src.datasets.postprocessing.utils import get_hexel_binary_maps, get_stitched_windows
-from src.datasets.postprocessing.visualize_predictions import get_distribution_axis_limit
+from src.datasets.postprocessing.visualize_predictions import get_difference_abs_scale, get_distribution_axis_limit
 from src.datasets.utils import denormalize_output_target, output_target_norm
 
 
@@ -47,6 +47,23 @@ def test_distribution_axis_limit_only_caps_probability_scale():
 
     assert get_distribution_axis_limit(gt_vals, pred_vals, probability_scale=True) == 1.0
     assert get_distribution_axis_limit(gt_vals, pred_vals, probability_scale=False) > 3.0
+
+
+def test_difference_abs_scale_uses_max_by_default():
+    diff = np.array([0.0, -1.0, 100.0, np.nan], dtype=np.float32)
+
+    assert get_difference_abs_scale(diff) == 100.0
+
+
+def test_difference_abs_scale_uses_robust_percentile():
+    diff = np.array([0.0, 1.0, -2.0, 100.0], dtype=np.float32)
+
+    assert get_difference_abs_scale(diff, robust_percentile=50.0) == 1.5
+
+
+def test_difference_abs_scale_rejects_invalid_percentiles():
+    with pytest.raises(ValueError, match="robust_percentile"):
+        get_difference_abs_scale(np.array([1.0], dtype=np.float32), robust_percentile=0.0)
 
 
 def test_log_standard_target_transform_roundtrip():

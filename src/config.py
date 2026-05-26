@@ -1,5 +1,7 @@
 # base configurations for experiments
-from pydantic import BaseModel, Field
+from typing import Any
+
+from pydantic import BaseModel, Field, model_validator
 
 
 class LoggerConfig(BaseModel):
@@ -18,17 +20,18 @@ class ModelConfig(BaseModel):
     # Controls if we use MultiSourceUNet or BaselineUNet
     # Use ["spatial"] for base unet
     # Extra tabular features are detected automatically from the dataset config.
-    input_feature_list: list[str] = ["spatial"]
+    input_branches: list[str] = ["spatial"]
 
     # encoder/decoder
     use_skip_connections: bool = True
     use_transpose_conv: bool = False
     use_activation_after_upsampling: bool = False
+    use_coordconv: bool = False
 
     # specific to auxiliary model
-    auxiliary_hidden_dims: dict[str, list[int] | dict[str, list[int]]] = {"weather": [32, 64]}
-    auxiliary_embed_dims: dict[str, int] = {"weather": 128}
-    auxiliary_feature_encoder_poolings: dict[str, str] = {"weather": "max"}
+    auxiliary_hidden_dims: dict[str, list[int] | dict[str, list[int]]] = {"tabular_weather": [32, 64]}
+    auxiliary_embed_dims: dict[str, int] = {"tabular_weather": 128}
+    auxiliary_feature_encoder_poolings: dict[str, str] = {"tabular_weather": "max"}
 
 
 class OptimizerConfig(BaseModel):
@@ -59,6 +62,7 @@ class EvaluationConfig(BaseModel):
     best_ckpt_metrics: list[str] = ["spearman"]  # metric to choose best checkpoint
     best_ckpt_metrics_mode: list[str] = ["max"]  # max, or min
     checkpoint_filename: str = "best.pth"
+    robust_plot_percentile: float | None = Field(default=None, gt=0.0, le=100.0)
 
 
 class GridParams(BaseModel):
@@ -74,6 +78,7 @@ class GridParams(BaseModel):
     normalize_fuel_feats_ordinal: bool = True
     transforms_list: list[str] = Field(default_factory=list)
     augmentation_prob: float = 0.0
+    terrain_derivatives: list[str] = Field(default_factory=list)
 
 
 class TabularParams(BaseModel):
@@ -92,9 +97,46 @@ class TabularParams(BaseModel):
     feature_to_bias: str | None = None  # The feature to bias sampling towards if sampling_bias is not None
 
 
+class SpatializedTabularParams(TabularParams):
+    """Parameters for rasterizing zone-level tabular features onto patch pixels."""
+
+    zone_channel_key: str = "firezones_grid"
+    aggregation: str = "mean"
+    include_missing_mask: bool = False
+    missing_value_strategy: str = "global_mean"
+    shuffle_lut: bool = False
+    shuffle_seed: int = 42
+
+
 class DataSourceConfig(BaseModel):
     name: str
-    params: GridParams | TabularParams
+    params: GridParams | TabularParams | SpatializedTabularParams
+
+    @model_validator(mode="before")
+    @classmethod
+    def parse_params_for_source(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+
+        name = data.get("name")
+        params = data.get("params")
+        if not isinstance(name, str) or not isinstance(params, dict):
+            return data
+
+        param_classes = {
+            "grid": GridParams,
+            "tabular_weather": TabularParams,
+            "tabular_fire_size": TabularParams,
+            "spatialized_weather": SpatializedTabularParams,
+            "spatialized_fire_size": SpatializedTabularParams,
+        }
+        param_class = param_classes.get(name)
+        if param_class is None:
+            return data
+
+        parsed = dict(data)
+        parsed["params"] = param_class(**params)
+        return parsed
 
 
 class DataConfig(BaseModel):
@@ -108,6 +150,7 @@ class DataConfig(BaseModel):
     test_split: str
     filename_col: str = "filename"
     valid_mask_threshold: float = 0.01
+    include_patch_metadata: bool = False
 
     input_sources: list[DataSourceConfig]
 

@@ -1,10 +1,29 @@
 from abc import ABC, abstractmethod
+from functools import lru_cache
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 from src.models.utils import conv_block, double_conv_block
+
+
+@lru_cache(maxsize=64)
+def _coord_grids(height: int, width: int, device: str, dtype: torch.dtype) -> tuple[torch.Tensor, torch.Tensor]:
+    y_coord = torch.linspace(-1.0, 1.0, height, device=torch.device(device), dtype=dtype).view(1, 1, height, 1)
+    y_coord = y_coord.expand(1, 1, height, width)
+    x_coord = torch.linspace(-1.0, 1.0, width, device=torch.device(device), dtype=dtype).view(1, 1, 1, width)
+    x_coord = x_coord.expand(1, 1, height, width)
+    return y_coord, x_coord
+
+
+def append_coord_channels(x: torch.Tensor) -> torch.Tensor:
+    """Append patch-local y/x coordinates normalized to [-1, 1]."""
+    batch_size, _, height, width = x.shape
+    y_coord, x_coord = _coord_grids(height, width, str(x.device), x.dtype)
+    y_coord = y_coord.expand(batch_size, 1, height, width)
+    x_coord = x_coord.expand(batch_size, 1, height, width)
+    return torch.cat([x, y_coord, x_coord], dim=1)
 
 
 class EncoderBase(nn.Module, ABC):
@@ -30,15 +49,18 @@ class BaselineEncoder(EncoderBase):
     Sets self.out_channels to bottleneck channels.
     """
 
-    def __init__(self, in_channels: int, hidden_features: list[int] | None):
+    def __init__(self, in_channels: int, hidden_features: list[int] | None, use_coordconv: bool = False):
         super().__init__()
         if hidden_features is None:
             raise ValueError("Hidden features cannot be None")
         self.hidden_features = hidden_features
+        self.use_coordconv = use_coordconv
 
         self.layers = nn.ModuleList()
         in_ch = in_channels
         for h_feature in self.hidden_features:
+            if self.use_coordconv:
+                in_ch += 2
             self.layers.append(double_conv_block(in_ch, h_feature))
             in_ch = h_feature
 
@@ -47,6 +69,8 @@ class BaselineEncoder(EncoderBase):
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, list[torch.Tensor]]:
         skip_connections = []
         for layer in self.layers:
+            if self.use_coordconv:
+                x = append_coord_channels(x)
             x = layer(x)
             skip_connections.append(x)
             x = self.maxpool(x)

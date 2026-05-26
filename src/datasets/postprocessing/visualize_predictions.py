@@ -8,6 +8,21 @@ from matplotlib.patches import Patch
 from src.logger import CometLogger
 
 
+def get_difference_abs_scale(diff_grid: np.ndarray, robust_percentile: float | None = None) -> float:
+    abs_diff = np.abs(diff_grid[np.isfinite(diff_grid)])
+    if abs_diff.size == 0:
+        return 1.0
+    if robust_percentile is not None:
+        if not 0.0 < robust_percentile <= 100.0:
+            raise ValueError(f"robust_percentile must be in (0, 100], got {robust_percentile}.")
+        diff_abs_scale = float(np.percentile(abs_diff, robust_percentile))
+        if np.isfinite(diff_abs_scale) and diff_abs_scale > 0.0:
+            return diff_abs_scale
+
+    diff_abs_scale = float(np.max(abs_diff))
+    return diff_abs_scale if np.isfinite(diff_abs_scale) and diff_abs_scale > 0.0 else 1.0
+
+
 def visualize_target_grids(
     gt_grid: np.ndarray,
     pred_grid: np.ndarray,
@@ -15,6 +30,7 @@ def visualize_target_grids(
     save_dir: str,
     experiment_logger: CometLogger | None = None,
     target_label: str = "Target",
+    robust_plot_percentile: float | None = None,
 ):
     """
     Visualizes Ground Truth, Prediction, and Difference (GT - Prediction), side-by-side.
@@ -33,7 +49,7 @@ def visualize_target_grids(
     shared_vmax = np.nanmax([np.nanmax(gt_grid), np.nanmax(pred_grid)])
 
     # Symmetric scale for difference around 0
-    diff_abs_max = np.nanmax(np.abs(diff_grid))
+    diff_abs_max = get_difference_abs_scale(diff_grid=diff_grid, robust_percentile=robust_plot_percentile)
     diff_norm = TwoSlopeNorm(vmin=-diff_abs_max, vcenter=0.0, vmax=diff_abs_max)
 
     # Create figure
@@ -71,7 +87,10 @@ def visualize_target_grids(
         origin="upper",
         norm=diff_norm,
     )
-    axes[2].set_title("Difference (Prediction - GT)")
+    diff_title = "Difference (Prediction - GT)"
+    if robust_plot_percentile is not None:
+        diff_title += f"\nscale: p{robust_plot_percentile:g} abs diff"
+    axes[2].set_title(diff_title)
     axes[2].set_xlabel("Easting (m)")
     axes[2].set_ylabel("Northing (m)")
 

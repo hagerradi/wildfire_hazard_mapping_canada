@@ -66,7 +66,7 @@ class Trainer:
         self._target_spec = get_target_spec(self._grid_params.target_name) if self._grid_params is not None else get_target_spec("bp")
 
         # Flag to indicate we are including auxiliary features
-        self.auxiliary = "auxiliary" in self.config.model.input_feature_list
+        self.auxiliary = "auxiliary" in self.config.model.input_branches
 
         # Multi-source path: spatial grids + auxiliary data.
         if self.auxiliary:
@@ -80,10 +80,11 @@ class Trainer:
                 input_channels=self.spatial_input_channels,
                 num_classes=self.config.model.num_classes,
                 hidden_features=self.config.model.hidden_features,
-                input_feature_list=self.config.model.input_feature_list,
+                input_branches=self.config.model.input_branches,
                 use_skip_connections=self.config.model.use_skip_connections,
                 use_transpose_conv=self.config.model.use_transpose_conv,
                 use_activation_after_upsampling=self.config.model.use_activation_after_upsampling,
+                use_coordconv=self.config.model.use_coordconv,
                 auxiliary_input_dims=self.auxiliary_input_dims,
                 auxiliary_hidden_dims=self.config.model.auxiliary_hidden_dims,
                 auxiliary_embed_dims=self.config.model.auxiliary_embed_dims,
@@ -98,10 +99,11 @@ class Trainer:
                 input_channels=self.spatial_input_channels,
                 num_classes=self.config.model.num_classes,
                 hidden_features=self.config.model.hidden_features,
-                input_feature_list=self.config.model.input_feature_list,
+                input_branches=self.config.model.input_branches,
                 use_skip_connections=self.config.model.use_skip_connections,
                 use_transpose_conv=self.config.model.use_transpose_conv,
                 use_activation_after_upsampling=self.config.model.use_activation_after_upsampling,
+                use_coordconv=self.config.model.use_coordconv,
             )
 
         self.model.to(self.device)
@@ -213,7 +215,7 @@ class Trainer:
 
     def _step(self, batch: Any) -> tuple[torch.Tensor, torch.Tensor, dict[str, torch.Tensor] | None, torch.Tensor, torch.Tensor]:
         """
-        Default step. Expects batch -> {'grid': (inputs, targets, masks), 'weather': ...}.
+        Default step. Expects batch -> {'grid': (inputs, targets, masks), 'tabular_weather': ...}.
         Returns (predictions, loss, loss_parts, targets_on_device, masks_on_device).
         """
         # Get the spatial grid inputs, targets and masks.
@@ -221,16 +223,24 @@ class Trainer:
             raise ValueError("Batch is missing required 'grid' data.")
         inputs, targets, masks = [t.to(self.device) for t in batch["grid"]]
 
+        patch_metadata = batch.get("patch_metadata")
+
         # Unpack all potential auxiliary data
         auxiliary_data = {}
         for key, value in batch.items():
-            if key == "grid":
+            if key in {"grid", "patch_metadata"}:
                 continue
             auxiliary_data[key] = value.to(self.device)
 
         predictions = self.model(inputs, auxiliary_data)
 
-        loss_out = self.loss_fn(predictions, targets, masks)
+        if getattr(self.loss_fn, "requires_patch_metadata", False):
+            if patch_metadata is None:
+                raise ValueError("Configured loss requires patch metadata, but batch does not include 'patch_metadata'.")
+            patch_metadata = {key: value.to(self.device) for key, value in patch_metadata.items()}
+            loss_out = self.loss_fn(predictions, targets, masks, patch_metadata=patch_metadata)
+        else:
+            loss_out = self.loss_fn(predictions, targets, masks)
 
         # Support if it is a single loss or weighted loss
         if isinstance(loss_out, tuple):

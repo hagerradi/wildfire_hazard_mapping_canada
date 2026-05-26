@@ -41,6 +41,17 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Boolean flag to save the visualization figure.",
     )
+    parser.add_argument(
+        "--robust_plot_percentile",
+        type=float,
+        default=None,
+        help="Override evaluation.robust_plot_percentile for hexel difference plots, e.g. 99 clips the diff scale at p99.",
+    )
+    parser.add_argument(
+        "--disable_robust_plot_percentile",
+        action="store_true",
+        help="Use the full max-absolute-difference scale even if the config sets evaluation.robust_plot_percentile.",
+    )
     return parser.parse_args()
 
 
@@ -133,6 +144,11 @@ def main() -> None:
     np.save(os.path.join(config.save_dir, "test_predictions.npy"), test_predictions)
 
     if isinstance(test_predictions, np.ndarray):
+        robust_plot_percentile = config.evaluation.robust_plot_percentile
+        if args.robust_plot_percentile is not None:
+            robust_plot_percentile = args.robust_plot_percentile
+        if args.disable_robust_plot_percentile:
+            robust_plot_percentile = None
         hexel_metrics = evaluate_and_visualize_hexels(
             test_predictions=test_predictions,
             config=config,
@@ -140,6 +156,7 @@ def main() -> None:
             device=trainer.device,
             experiment_logger=None,
             metric_functions=trainer.metric_functions,
+            robust_plot_percentile=robust_plot_percentile,
         )
 
         # print metrics in terminal and log into comet

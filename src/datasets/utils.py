@@ -1,3 +1,4 @@
+import math
 from typing import overload
 
 import numpy as np
@@ -5,8 +6,45 @@ import torch
 
 from data_preparation.spatial.utils import FUEL_GROUP_MAP
 
-AVAILABLE_DATA_SOURCES = ["grid", "weather", "fire_size"]
+SPATIALIZED_TABULAR_SOURCE_NAMES = {"spatialized_weather", "spatialized_fire_size"}
+TABULAR_SOURCE_NAMES = {"tabular_weather", "tabular_fire_size"}
+AVAILABLE_DATA_SOURCES = ["grid", "tabular_weather", "tabular_fire_size", "spatialized_weather", "spatialized_fire_size"]
 MAX_FUEL_GRID = float(max(FUEL_GROUP_MAP.values()))
+
+
+def finite_difference(values: torch.Tensor, dim: int, spacing: float) -> torch.Tensor:
+    """
+    Computes first-order finite differences along one spatial dimension.
+    """
+    grad = torch.zeros_like(values)
+    size = values.shape[dim]
+    if size < 2:
+        return grad
+
+    if dim == 0:
+        grad[0, :] = (values[1, :] - values[0, :]) / spacing
+        grad[-1, :] = (values[-1, :] - values[-2, :]) / spacing
+        if size > 2:
+            grad[1:-1, :] = (values[2:, :] - values[:-2, :]) / (2.0 * spacing)
+    elif dim == 1:
+        grad[:, 0] = (values[:, 1] - values[:, 0]) / spacing
+        grad[:, -1] = (values[:, -1] - values[:, -2]) / spacing
+        if size > 2:
+            grad[:, 1:-1] = (values[:, 2:] - values[:, :-2]) / (2.0 * spacing)
+    else:
+        raise ValueError(f"Expected dim 0 or 1 for finite differences, got {dim}.")
+    return grad
+
+
+def raster_cell_spacing(transform) -> tuple[float, float]:
+    """
+    Returns row and column pixel spacing from a raster affine transform, in CRS units.
+    """
+    col_spacing = math.hypot(float(transform.a), float(transform.d))
+    row_spacing = math.hypot(float(transform.b), float(transform.e))
+    if row_spacing <= 0.0 or col_spacing <= 0.0:
+        raise ValueError(f"Invalid raster transform pixel spacing: row={row_spacing}, col={col_spacing}.")
+    return row_spacing, col_spacing
 
 
 def get_data_source_class(name: str):
@@ -17,10 +55,14 @@ def get_data_source_class(name: str):
         from src.datasets.sources import GridSource
 
         return GridSource
-    elif name in ["weather", "fire_size"]:
+    elif name in TABULAR_SOURCE_NAMES:
         from src.datasets.sources import TabularSource
 
         return TabularSource
+    elif name in SPATIALIZED_TABULAR_SOURCE_NAMES:
+        from src.datasets.sources import SpatializedTabularSource
+
+        return SpatializedTabularSource
     else:
         raise ValueError(f"Unknown data source type: {name}. Available: {AVAILABLE_DATA_SOURCES}")
 
@@ -33,10 +75,14 @@ def get_data_source_param_class(name: str):
         from src.config import GridParams
 
         return GridParams
-    elif name in ["weather", "fire_size"]:
+    elif name in TABULAR_SOURCE_NAMES:
         from src.config import TabularParams
 
         return TabularParams
+    elif name in SPATIALIZED_TABULAR_SOURCE_NAMES:
+        from src.config import SpatializedTabularParams
+
+        return SpatializedTabularParams
     else:
         raise ValueError(f"Unknown data source type: {name}. Available: {AVAILABLE_DATA_SOURCES}")
 
@@ -53,6 +99,8 @@ def get_dataset_dimensions(dataset) -> tuple[int | None, dict[str, int]]:
     for name, source in sources.items():
         if name == "grid":
             spatial_channels = source.input_dim()
+        elif name in SPATIALIZED_TABULAR_SOURCE_NAMES:
+            spatial_channels = (spatial_channels or 0) + source.input_dim()
         else:
             auxiliary_input_dims[name] = source.input_dim()
 

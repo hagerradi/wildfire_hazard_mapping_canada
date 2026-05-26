@@ -1,14 +1,17 @@
 import torch
 import torch.nn as nn
 
+from src.models.encoders import append_coord_channels
 from src.models.utils import double_conv_block
 
 
 class MultiSourceBottleneck(nn.Module):
-    def __init__(self, in_channels: int, out_channels: int, aux_dims: dict[str, int]):
+    def __init__(self, in_channels: int, out_channels: int, aux_dims: dict[str, int], use_coordconv: bool = False):
         super().__init__()
+        self.use_coordconv = use_coordconv
         # Primary spatial processing
-        self.spatial_conv = double_conv_block(in_channels, out_channels)
+        spatial_in_channels = in_channels + 2 if self.use_coordconv else in_channels
+        self.spatial_conv = double_conv_block(spatial_in_channels, out_channels)
 
         # Calculate concatenation depth: spatial_out + sum of all auxiliary vector dims
         total_depth = out_channels + sum(aux_dims.values())
@@ -19,6 +22,8 @@ class MultiSourceBottleneck(nn.Module):
         )
 
     def forward(self, x: torch.Tensor, x_tabular: torch.Tensor | None = None, x_wind: torch.Tensor | None = None) -> torch.Tensor:
+        if self.use_coordconv:
+            x = append_coord_channels(x)
         x = self.spatial_conv(x)
         if x_tabular is None and x_wind is None:
             return x
