@@ -66,7 +66,7 @@ class Trainer:
         self._target_spec = get_target_spec(self._grid_params.target_name) if self._grid_params is not None else get_target_spec("bp")
 
         # Flag to indicate we are including auxiliary features
-        self.auxiliary = "auxiliary" in self.config.model.input_feature_list
+        self.auxiliary = "auxiliary" in self.config.model.input_branches
 
         # Multi-source path: spatial grids + auxiliary data.
         if self.auxiliary:
@@ -80,7 +80,7 @@ class Trainer:
                 input_channels=self.spatial_input_channels,
                 num_classes=self.config.model.num_classes,
                 hidden_features=self.config.model.hidden_features,
-                input_feature_list=self.config.model.input_feature_list,
+                input_branches=self.config.model.input_branches,
                 use_skip_connections=self.config.model.use_skip_connections,
                 use_transpose_conv=self.config.model.use_transpose_conv,
                 use_activation_after_upsampling=self.config.model.use_activation_after_upsampling,
@@ -99,7 +99,7 @@ class Trainer:
                 input_channels=self.spatial_input_channels,
                 num_classes=self.config.model.num_classes,
                 hidden_features=self.config.model.hidden_features,
-                input_feature_list=self.config.model.input_feature_list,
+                input_branches=self.config.model.input_branches,
                 use_skip_connections=self.config.model.use_skip_connections,
                 use_transpose_conv=self.config.model.use_transpose_conv,
                 use_activation_after_upsampling=self.config.model.use_activation_after_upsampling,

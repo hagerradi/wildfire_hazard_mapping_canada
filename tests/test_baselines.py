@@ -53,7 +53,7 @@ def test_multisource_unet_coordconv_forward_shape():
         input_channels=3,
         num_classes=1,
         hidden_features=[8, 16],
-        input_feature_list=["spatial", "auxiliary"],
+        input_branches=["spatial", "auxiliary"],
         auxiliary_input_dims={"tabular_weather": 5},
         auxiliary_hidden_dims={"tabular_weather": [8]},
         auxiliary_embed_dims={"tabular_weather": 4},

@@ -112,22 +112,22 @@ def _make_config(
     tmp_path,
     *,
     logger_enabled: bool = False,
-    input_feature_list: list[str] | None = None,
+    input_branches: list[str] | None = None,
     grid_params: GridParams | None = None,
     auxiliary_hidden_dims: dict | None = None,
     auxiliary_embed_dims: dict | None = None,
     auxiliary_feature_encoder_poolings: dict | None = None,
 ) -> Config:
     """Config. factory"""
-    if input_feature_list is None:
-        input_feature_list = ["spatial"]
+    if input_branches is None:
+        input_branches = ["spatial"]
 
     return Config(
         save_dir=str(tmp_path),
         model=ModelConfig(
             num_classes=1,
             hidden_features=[8, 16],
-            input_feature_list=input_feature_list,
+            input_branches=input_branches,
             auxiliary_hidden_dims=auxiliary_hidden_dims or {"tabular_weather": [16, 32]},
             auxiliary_embed_dims=auxiliary_embed_dims or {"tabular_weather": 16},
             auxiliary_feature_encoder_poolings=auxiliary_feature_encoder_poolings or {"tabular_weather": "max"},
@@ -176,7 +176,7 @@ def dummy_config_with_logger(tmp_path):
 def auxiliary_config(tmp_path):
     return _make_config(
         tmp_path,
-        input_feature_list=["spatial", "auxiliary"],
+        input_branches=["spatial", "auxiliary"],
         auxiliary_hidden_dims={"tabular_weather": [16, 32]},
         auxiliary_embed_dims={"tabular_weather": 16},
         auxiliary_feature_encoder_poolings={"tabular_weather": "max"},
@@ -187,7 +187,7 @@ def auxiliary_config(tmp_path):
 def multi_aux_config(tmp_path):
     return _make_config(
         tmp_path,
-        input_feature_list=["spatial", "auxiliary"],
+        input_branches=["spatial", "auxiliary"],
         auxiliary_hidden_dims={"tabular_weather": [16, 32], "tabular_fire_size": [16, 32]},
         auxiliary_embed_dims={"tabular_weather": 16, "tabular_fire_size": 16},
         auxiliary_feature_encoder_poolings={"tabular_weather": "max", "tabular_fire_size": "max"},
@@ -198,7 +198,7 @@ def multi_aux_config(tmp_path):
 def wind_grid_config(tmp_path):
     return _make_config(
         tmp_path,
-        input_feature_list=["spatial", "auxiliary"],
+        input_branches=["spatial", "auxiliary"],
         auxiliary_hidden_dims={"wind_grid_mixer": {"mixer": [16], "local": [32, 64, 16], "global": [16]}},
         auxiliary_embed_dims={"wind_grid_mixer": 16},
         auxiliary_feature_encoder_poolings={"wind_grid_mixer": "max"},
@@ -209,7 +209,7 @@ def wind_grid_config(tmp_path):
 def wind_and_weather_config(tmp_path):
     return _make_config(
         tmp_path,
-        input_feature_list=["spatial", "auxiliary"],
+        input_branches=["spatial", "auxiliary"],
         auxiliary_hidden_dims={
             "wind_grid_mixer": {"mixer": [16], "local": [32, 64, 16], "global": [16]},
             "tabular_weather": [16, 32],

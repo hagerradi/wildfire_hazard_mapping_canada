@@ -20,7 +20,7 @@ class ModelConfig(BaseModel):
     # Controls if we use MultiSourceUNet or BaselineUNet
     # Use ["spatial"] for base unet
     # Extra tabular features are detected automatically from the dataset config.
-    input_feature_list: list[str] = ["spatial"]
+    input_branches: list[str] = ["spatial"]
 
     # encoder/decoder
     use_skip_connections: bool = True

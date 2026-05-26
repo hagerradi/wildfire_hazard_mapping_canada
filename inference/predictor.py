@@ -116,15 +116,16 @@ class BurnRiskPredictor:
         auxiliary_input_dims: dict[str, int],
     ) -> torch.nn.Module:
         """Instantiate the model architecture based on config."""
-        input_feature_list = model_config["input_feature_list"]
-        use_auxiliary = "auxiliary" in input_feature_list
+        # Accept the old checkpoint key so previously trained models remain loadable.
+        input_branches = model_config.get("input_branches", model_config.get("input_feature_list", ["spatial"]))
+        use_auxiliary = "auxiliary" in input_branches
 
         if use_auxiliary:
             return MultiSourceUNet(
                 input_channels=spatial_channels,
                 num_classes=model_config["num_classes"],
                 hidden_features=model_config["hidden_features"],
-                input_feature_list=input_feature_list,
+                input_branches=input_branches,
                 use_skip_connections=model_config["use_skip_connections"],
                 use_transpose_conv=model_config["use_transpose_conv"],
                 use_activation_after_upsampling=model_config["use_activation_after_upsampling"],
@@ -138,7 +139,7 @@ class BurnRiskPredictor:
                 input_channels=spatial_channels,
                 num_classes=model_config["num_classes"],
                 hidden_features=model_config["hidden_features"],
-                input_feature_list=input_feature_list,
+                input_branches=input_branches,
                 use_skip_connections=model_config["use_skip_connections"],
                 use_transpose_conv=model_config["use_transpose_conv"],
                 use_activation_after_upsampling=model_config["use_activation_after_upsampling"],

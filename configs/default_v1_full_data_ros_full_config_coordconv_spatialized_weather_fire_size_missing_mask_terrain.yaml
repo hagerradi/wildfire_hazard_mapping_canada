@@ -8,7 +8,7 @@ deterministic: true
 
 model:
   num_classes: 1
-  input_feature_list: ["spatial"]
+  input_branches: ["spatial"]
   use_coordconv: true
 
 optimizer:
