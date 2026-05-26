@@ -57,7 +57,6 @@ data:
         transforms_list: []
         augmentation_prob: 0.0
         terrain_derivatives: ["slope", "aspect_sin", "aspect_cos"]
-        terrain_cell_size_m: 100.0
 
     - name: "spatialized_weather"
       params:

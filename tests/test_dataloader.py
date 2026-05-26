@@ -6,8 +6,10 @@ import tempfile
 import numpy as np
 import pandas as pd
 import pytest
+import rasterio
 import torch
 import torchvision.transforms.functional as F
+from rasterio.transform import from_origin
 
 from data_preparation.spatial import utils as spatial_utils
 from src.config import DataConfig, DataSourceConfig, GridParams, SpatializedTabularParams, TabularParams
@@ -102,6 +104,24 @@ def temp_data_dir():
 def stable_grid_ranges(monkeypatch):
     monkeypatch.setattr("src.datasets.sources.grids.get_range_output", lambda root_dir, output_type: (1.0, 0.0))
     monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation", lambda root_dir: (1000.0, 0.0))
+
+
+def write_test_elevation_raster(root_dir: str, hex_id: str = "01", cell_size: float = 100.0) -> None:
+    spatial_dir = os.path.join(root_dir, f"hex{hex_id}", "spatial")
+    os.makedirs(spatial_dir, exist_ok=True)
+    path = os.path.join(spatial_dir, f"hex{hex_id}_dem.tif")
+    with rasterio.open(
+        path,
+        "w",
+        driver="GTiff",
+        height=2,
+        width=2,
+        count=1,
+        dtype="float32",
+        crs="EPSG:3857",
+        transform=from_origin(0.0, 0.0, cell_size, cell_size),
+    ) as dst:
+        dst.write(np.zeros((1, 2, 2), dtype=np.float32))
 
 
 def test_finite_difference_uses_centered_interior_and_one_sided_edges():
@@ -630,6 +650,7 @@ def test_grid_target_nan_excluded_from_mask(temp_data_dir):
 def test_grid_source_appends_terrain_derivatives_from_elevation(temp_data_dir, monkeypatch):
     tmpdir, *_ = temp_data_dir
     monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation", lambda *_args, **_kwargs: (3100.0, 0.0))
+    write_test_elevation_raster(tmpdir, cell_size=50.0)
 
     sample_path = os.path.join(tmpdir, "sample_0.npy")
     arr = np.zeros((32, 32, 7), dtype=np.float32)
@@ -642,15 +663,15 @@ def test_grid_source_appends_terrain_derivatives_from_elevation(temp_data_dir, m
         target_name="bp",
         out_norm="none",
         terrain_derivatives=["slope", "aspect_sin", "aspect_cos"],
-        terrain_cell_size_m=100.0,
     )
-    grid_source = GridSource(root_dir=tmpdir, params=grid_params, modelling_approach="1")
+    grid_source = GridSource(root_dir=tmpdir, raw_data_dir=tmpdir, params=grid_params, modelling_approach="1")
 
-    inputs, _, _ = grid_source.get_sample({"file_path": sample_path})
+    inputs, _, _ = grid_source.get_sample({"file_path": sample_path, "hex_id": "01"})
 
     assert grid_source.input_dim() == 4
     assert inputs.shape == (4, 32, 32)
-    torch.testing.assert_close(inputs[1], torch.full((32, 32), 0.5), rtol=1e-5, atol=1e-5)
+    expected_slope = torch.atan(torch.tensor(2.0)) / (torch.pi / 2.0)
+    torch.testing.assert_close(inputs[1], torch.full((32, 32), expected_slope), rtol=1e-5, atol=1e-5)
     torch.testing.assert_close(inputs[2], torch.full((32, 32), -1.0), rtol=1e-5, atol=1e-5)
     torch.testing.assert_close(inputs[3], torch.zeros((32, 32)), rtol=1e-5, atol=1e-5)
 
@@ -658,6 +679,7 @@ def test_grid_source_appends_terrain_derivatives_from_elevation(temp_data_dir, m
 def test_grid_source_terrain_derivatives_are_computed_after_transforms(temp_data_dir, monkeypatch):
     tmpdir, *_ = temp_data_dir
     monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation", lambda *_args, **_kwargs: (3100.0, 0.0))
+    write_test_elevation_raster(tmpdir)
 
     sample_path = os.path.join(tmpdir, "sample_0.npy")
     arr = np.zeros((32, 32, 7), dtype=np.float32)
@@ -673,11 +695,10 @@ def test_grid_source_terrain_derivatives_are_computed_after_transforms(temp_data
         target_name="bp",
         out_norm="none",
         terrain_derivatives=["aspect_sin"],
-        terrain_cell_size_m=100.0,
     )
-    grid_source = GridSource(root_dir=tmpdir, params=grid_params, modelling_approach="1", transform=hflip_transform)
+    grid_source = GridSource(root_dir=tmpdir, raw_data_dir=tmpdir, params=grid_params, modelling_approach="1", transform=hflip_transform)
 
-    inputs, _, _ = grid_source.get_sample({"file_path": sample_path})
+    inputs, _, _ = grid_source.get_sample({"file_path": sample_path, "hex_id": "01"})
 
     torch.testing.assert_close(inputs[-1], torch.full((32, 32), 1.0), rtol=1e-5, atol=1e-5)
 
@@ -685,6 +706,7 @@ def test_grid_source_terrain_derivatives_are_computed_after_transforms(temp_data
 def test_grid_source_sets_flat_terrain_aspect_to_zero(temp_data_dir, monkeypatch):
     tmpdir, *_ = temp_data_dir
     monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation", lambda *_args, **_kwargs: (1000.0, 0.0))
+    write_test_elevation_raster(tmpdir)
 
     sample_path = os.path.join(tmpdir, "sample_0.npy")
     arr = np.zeros((32, 32, 7), dtype=np.float32)
@@ -697,11 +719,10 @@ def test_grid_source_sets_flat_terrain_aspect_to_zero(temp_data_dir, monkeypatch
         target_name="bp",
         out_norm="none",
         terrain_derivatives=["slope", "aspect_sin", "aspect_cos"],
-        terrain_cell_size_m=100.0,
     )
-    grid_source = GridSource(root_dir=tmpdir, params=grid_params, modelling_approach="1")
+    grid_source = GridSource(root_dir=tmpdir, raw_data_dir=tmpdir, params=grid_params, modelling_approach="1")
 
-    inputs, _, _ = grid_source.get_sample({"file_path": sample_path})
+    inputs, _, _ = grid_source.get_sample({"file_path": sample_path, "hex_id": "01"})
 
     torch.testing.assert_close(inputs[1:], torch.zeros((3, 32, 32)), rtol=1e-5, atol=1e-5)
 

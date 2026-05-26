@@ -1,3 +1,4 @@
+import math
 from typing import overload
 
 import numpy as np
@@ -33,6 +34,17 @@ def finite_difference(values: torch.Tensor, dim: int, spacing: float) -> torch.T
     else:
         raise ValueError(f"Expected dim 0 or 1 for finite differences, got {dim}.")
     return grad
+
+
+def raster_cell_spacing(transform) -> tuple[float, float]:
+    """
+    Returns row and column pixel spacing from a raster affine transform, in CRS units.
+    """
+    col_spacing = math.hypot(float(transform.a), float(transform.d))
+    row_spacing = math.hypot(float(transform.b), float(transform.e))
+    if row_spacing <= 0.0 or col_spacing <= 0.0:
+        raise ValueError(f"Invalid raster transform pixel spacing: row={row_spacing}, col={col_spacing}.")
+    return row_spacing, col_spacing
 
 
 def get_data_source_class(name: str):
