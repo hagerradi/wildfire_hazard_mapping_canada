@@ -6,7 +6,12 @@ from data_preparation.paths import Paths
 from data_preparation.spatial.utils import FUEL_GROUP_MAP, load_spatial_raster
 
 
-def load_fuel_grid(root_dir: str, hex_id: str, reference_profile: dict[str, Any] | None = None) -> np.ma.MaskedArray:
+def load_fuel_grid(
+    root_dir: str,
+    hex_id: str,
+    reference_profile: dict[str, Any] | None = None,
+    mask_scope: str = "actual",
+) -> np.ma.MaskedArray:
     """
     Load an FBP fuel raster and group fuel types if selected
     group_fuels: boolean flag to choose if we can group fuels into 5 distinct groups
@@ -15,7 +20,7 @@ def load_fuel_grid(root_dir: str, hex_id: str, reference_profile: dict[str, Any]
     all_paths = Paths(hex_id=hex_id, root_dir=root_dir)
     fuel_grid, _ = load_spatial_raster(
         all_paths.fuel_grid(hex_id=hex_id),
-        actual_mask_path=all_paths.mask_grid_actual(hex_id=hex_id),
+        mask_path=all_paths.mask_grid(hex_id=hex_id, mask_scope=mask_scope),
         reference_profile=reference_profile,
     )
 

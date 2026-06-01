@@ -15,13 +15,29 @@ set -euo pipefail
 
 # Capture the first argument, default to 'configs/default_v1.yaml' if empty
 CONFIG_FILE=${1:-configs/default_v1.yaml}
+TRAIN_ARGS=${TRAIN_ARGS:-}
+EVAL_ARGS=${EVAL_ARGS:-}
+RUN_HEXEL_EVAL=${RUN_HEXEL_EVAL:-1}
 
 cd "${SLURM_SUBMIT_DIR:-$(pwd)}"
 mkdir -p logs
 source .venv/bin/activate
 
-if [[ -z "${COMET_API_KEY:-}" ]]; then
-    echo "ERROR: COMET_API_KEY must be exported before submitting this job." >&2
+LOGGER_ENABLED=$(python - "$CONFIG_FILE" <<'PY'
+import sys
+from pathlib import Path
+
+import yaml
+
+with Path(sys.argv[1]).open() as handle:
+    config = yaml.safe_load(handle)
+
+print(str(config.get("logger", {}).get("enabled", True)).lower())
+PY
+)
+
+if [[ "$LOGGER_ENABLED" == "true" && -z "${COMET_API_KEY:-}" ]]; then
+    echo "ERROR: COMET_API_KEY must be exported when logger.enabled=true." >&2
     exit 1
 fi
 
@@ -91,7 +107,8 @@ else
 fi
 
 echo "Running training with config: $RUN_CONFIG_FILE"
-python -m src.train --config="$RUN_CONFIG_FILE"
+read -r -a TRAIN_ARG_ARRAY <<< "$TRAIN_ARGS"
+python -m src.train --config="$RUN_CONFIG_FILE" "${TRAIN_ARG_ARRAY[@]}"
 
 if [[ -n "$ORIGINAL_DATA_ROOT_DIR" ]]; then
     echo "Restoring checkpoint config data.root_dir to persistent path: ${ORIGINAL_DATA_ROOT_DIR}"
@@ -120,5 +137,10 @@ for checkpoint_name in ("best.pth", "last.pth"):
 PY
 fi
 
-echo "Running evaluation with config: $RUN_CONFIG_FILE"
-python -m src.evaluate_hexels --config="$RUN_CONFIG_FILE"
+if [[ "$RUN_HEXEL_EVAL" == "1" ]]; then
+    echo "Running evaluation with config: $RUN_CONFIG_FILE"
+    read -r -a EVAL_ARG_ARRAY <<< "$EVAL_ARGS"
+    python -m src.evaluate_hexels --config="$RUN_CONFIG_FILE" "${EVAL_ARG_ARRAY[@]}"
+else
+    echo "Skipping hexel evaluation because RUN_HEXEL_EVAL=${RUN_HEXEL_EVAL}"
+fi

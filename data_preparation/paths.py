@@ -1,4 +1,25 @@
 from pathlib import Path
+from typing import Literal
+
+MaskScope = Literal["actual", "buffer", "buffer_only"]
+MASK_SCOPE_CHOICES: tuple[MaskScope, ...] = ("actual", "buffer", "buffer_only")
+
+
+def normalize_mask_scope(mask_scope: str) -> MaskScope:
+    if mask_scope == "actual":
+        return "actual"
+    if mask_scope == "buffer":
+        return "buffer"
+    if mask_scope == "buffer_only":
+        return "buffer_only"
+    raise ValueError(f"mask_scope must be one of {MASK_SCOPE_CHOICES}, got {mask_scope!r}.")
+
+
+def prepared_mask_scope(mask_scope: str) -> MaskScope:
+    scope = normalize_mask_scope(mask_scope)
+    if scope == "buffer_only":
+        return "buffer"
+    return scope
 
 
 class Paths:
@@ -16,6 +37,12 @@ class Paths:
 
     def mask_grid_buffer(self, hex_id: int | str) -> Path:
         return self.spatial_dir / "mask_grids" / f"hex{hex_id}_buffer.shp"
+
+    def mask_grid(self, hex_id: int | str, mask_scope: str = "actual") -> Path:
+        scope = normalize_mask_scope(mask_scope)
+        if scope == "actual":
+            return self.mask_grid_actual(hex_id)
+        return self.mask_grid_buffer(hex_id)
 
     def firezones_grid(self, hex_id: int | str) -> Path:
         return self.spatial_dir / f"hex{hex_id}_firezones.tif"

@@ -2,14 +2,19 @@ import functools
 import json
 import os
 from collections.abc import Callable
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
 
+import geopandas as gpd
 import numpy as np
 import pandas as pd
 import rasterio
 import torch
+from rasterio.features import geometry_mask
 from rasterio.profiles import Profile
 
-from data_preparation.paths import Paths
+from data_preparation.paths import MaskScope, Paths, normalize_mask_scope
 from data_preparation.spatial.utils import (
     denormalize_burn_count,
     denormalize_burn_prob,
@@ -24,11 +29,177 @@ from src.datasets.postprocessing.visualize_predictions import (
     visualize_hexel_iou,
     visualize_target_grids,
 )
-from src.datasets.targets import TargetSpec, get_target_spec
+from src.datasets.targets import TargetSpec, get_target_specs
+from src.datasets.utils import apply_bp_nodata_zero_range
 from src.logger import CometLogger
 
 
-def save_predicted_hexels(predicted_hexel: np.ndarray, hexel_profile: Profile, hex_id: str, save_dir: str):
+@dataclass(frozen=True)
+class TargetPostprocessingSettings:
+    target: TargetSpec
+    target_channel_index: int
+    max_target_val: float
+    min_target_val: float
+    out_norm: str
+    target_log_mean: float | None
+    target_log_std: float | None
+
+
+def get_mask_scope_save_dir(save_dir: str, mask_scope: str) -> str:
+    scope = normalize_mask_scope(mask_scope)
+    if scope == "actual":
+        return save_dir
+    return os.path.join(save_dir, f"{scope}_mask_eval")
+
+
+def effective_robust_plot_percentile(target: TargetSpec, robust_plot_percentile: float | None) -> float | None:
+    if robust_plot_percentile is not None:
+        return robust_plot_percentile
+    if target.name in {"fi", "ros"}:
+        return 99.0
+    return None
+
+
+def _accepted_prepared_mask_scopes(mask_scope: MaskScope) -> set[MaskScope]:
+    if mask_scope == "buffer_only":
+        return {"buffer", "buffer_only"}
+    return {mask_scope}
+
+
+def validate_patch_metadata_mask_scope(metadata: pd.DataFrame, mask_scope: str) -> MaskScope:
+    scope = normalize_mask_scope(mask_scope)
+    if scope == "actual":
+        return scope
+    if "mask_scope" not in metadata.columns:
+        raise ValueError(
+            f"mask_scope={scope!r} requires patch metadata with a matching 'mask_scope' column. "
+            "Existing actual-only patch data cannot be safely reinterpreted as buffer data; "
+            "prepare or infer on buffer-scope patches first."
+        )
+
+    observed = {normalize_mask_scope(str(value)) for value in metadata["mask_scope"].dropna().unique()}
+    accepted = _accepted_prepared_mask_scopes(scope)
+    if not observed or not observed.issubset(accepted):
+        raise ValueError(f"mask_scope={scope!r} requires patch metadata mask_scope in {sorted(accepted)}, got {sorted(observed)}.")
+    return scope
+
+
+def _actual_area_mask(mask_path: Path, profile: dict[str, Any], shape: tuple[int, int]) -> np.ndarray:
+    crs = profile.get("crs")
+    transform = profile.get("transform")
+    if crs is None or transform is None:
+        raise ValueError("buffer_only masking requires a geospatial profile with 'crs' and 'transform'.")
+
+    actual_gdf = gpd.read_file(mask_path)
+    if actual_gdf.empty:
+        raise ValueError(f"Actual mask contains no geometries: {mask_path}")
+
+    return geometry_mask(actual_gdf.to_crs(crs).geometry, out_shape=shape, transform=transform, invert=True)
+
+
+def apply_mask_scope_to_grids(
+    gt_grid: np.ndarray,
+    pred_grid: np.ndarray,
+    profile: dict[str, Any],
+    mask_path: Path,
+    mask_scope: str,
+    hex_id: str,
+) -> tuple[np.ndarray, np.ndarray]:
+    scope = normalize_mask_scope(mask_scope)
+    if scope != "buffer_only":
+        return gt_grid, pred_grid
+
+    gt_arr = as_float_array_with_nan(gt_grid)
+    pred_arr = as_float_array_with_nan(pred_grid)
+    if gt_arr.shape != pred_arr.shape:
+        raise ValueError(
+            f"mask_scope='buffer_only' requires target and prediction grids with the same shape, "
+            f"got target={gt_arr.shape}, prediction={pred_arr.shape} for hex {str(hex_id).zfill(2)}."
+        )
+
+    actual_mask = _actual_area_mask(mask_path=mask_path, profile=profile, shape=gt_arr.shape)
+    gt_arr = np.where(actual_mask, np.nan, gt_arr)
+    pred_arr = np.where(actual_mask, np.nan, pred_arr)
+    if not np.any(np.isfinite(gt_arr) & np.isfinite(pred_arr)):
+        raise ValueError(
+            f"mask_scope='buffer_only' left no finite overlapping target/prediction pixels for hex {str(hex_id).zfill(2)}. "
+            "This usually means the predictions came from actual-scope patches; prepare or infer on buffer-scope patches first."
+        )
+    return gt_arr, pred_arr
+
+
+def fill_bp_target_nodata_as_zero(
+    gt_grid: np.ndarray,
+    pred_grid: np.ndarray,
+    target: TargetSpec,
+) -> tuple[np.ndarray, np.ndarray]:
+    if target.name != "bp":
+        return gt_grid, pred_grid
+
+    gt_arr = as_float_array_with_nan(gt_grid)
+    pred_arr = as_float_array_with_nan(pred_grid)
+    if gt_arr.shape != pred_arr.shape:
+        raise ValueError(
+            f"BP nodata-to-zero fill requires target and prediction grids with the same shape, "
+            f"got target={gt_arr.shape}, prediction={pred_arr.shape}."
+        )
+
+    fill_mask = np.isfinite(pred_arr) & ~np.isfinite(gt_arr)
+    return np.where(fill_mask, 0.0, gt_arr), pred_arr
+
+
+def mask_grids_by_support(
+    gt_grid: np.ndarray,
+    pred_grid: np.ndarray,
+    support_mask: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    support_mask = np.asarray(support_mask, dtype=bool)
+    gt_arr = as_float_array_with_nan(gt_grid)
+    pred_arr = as_float_array_with_nan(pred_grid)
+    if gt_arr.shape != pred_arr.shape or gt_arr.shape != support_mask.shape:
+        raise ValueError(
+            f"Support mask shape must match target and prediction grids, got target={gt_arr.shape}, "
+            f"prediction={pred_arr.shape}, support={support_mask.shape}."
+        )
+    return np.where(support_mask, gt_arr, np.nan), np.where(support_mask, pred_arr, np.nan)
+
+
+def load_target_grid_for_mask_scope(
+    paths: Paths,
+    target: TargetSpec,
+    pred_grid: np.ndarray,
+    profile: dict[str, Any],
+    mask_scope: str,
+    hex_id: str,
+    bp_nodata_as_zero: bool = True,
+) -> tuple[np.ndarray, np.ndarray]:
+    scope = normalize_mask_scope(mask_scope)
+    target_path = getattr(paths, target.path_method)()
+    target_grid, _ = load_spatial_raster(
+        path=target_path,
+        mask_path=paths.mask_grid(hex_id=hex_id, mask_scope=scope),
+        reference_profile=profile,
+    )
+    target_grid, pred_grid = apply_mask_scope_to_grids(
+        gt_grid=target_grid,
+        pred_grid=pred_grid,
+        profile=profile,
+        mask_path=paths.mask_grid_actual(hex_id=hex_id),
+        mask_scope=scope,
+        hex_id=hex_id,
+    )
+    if bp_nodata_as_zero:
+        return fill_bp_target_nodata_as_zero(gt_grid=target_grid, pred_grid=pred_grid, target=target)
+    return target_grid, pred_grid
+
+
+def save_predicted_hexels(
+    predicted_hexel: np.ndarray,
+    hexel_profile: Profile,
+    hex_id: str,
+    save_dir: str,
+    target_name: str | None = None,
+):
     """
     Save the predicted (reconstructed) hexel
     Args:
@@ -37,7 +208,8 @@ def save_predicted_hexels(predicted_hexel: np.ndarray, hexel_profile: Profile, h
         hex_id (str): The id of the hex to be saved
         save_dir (str): directory to save the hexel
     """
-    out_path = os.path.join(save_dir, "predicted_hexels", f"hexel_{hex_id}_predicted.tif")
+    suffix = f"_{target_name}" if target_name else ""
+    out_path = os.path.join(save_dir, "predicted_hexels", f"hexel_{hex_id}{suffix}_predicted.tif")
     os.makedirs(os.path.join(save_dir, "predicted_hexels"), exist_ok=True)
     nodata = hexel_profile.get("nodata", -9999)
     write_array = np.where(np.isfinite(predicted_hexel), predicted_hexel, nodata).astype(hexel_profile["dtype"])
@@ -52,9 +224,11 @@ def get_stitched_windows(
     start_idx: int,
     gt_shape: tuple,
     target_channel_index: int = 0,
+    prediction_mask_channel_indices: list[int] | None = None,
     stitch_mode: str = "mean",
     win_h: int = 128,
     win_w: int = 128,
+    center_crop_fraction: float = 0.8,
 ) -> np.ndarray:
     """
     Accumulate and stitch all the windows together to build the hexel
@@ -65,12 +239,26 @@ def get_stitched_windows(
         array = np.load(os.path.join(base_dir, path))
         if target_channel_index >= array.shape[2]:
             raise ValueError(f"target_channel_index={target_channel_index} is out of bounds for patch with shape {array.shape}.")
-        target_array = array[:, :, target_channel_index]
-        mask = ~np.isnan(target_array)
+        if prediction_mask_channel_indices is None:
+            mask = np.isfinite(array[:, :, target_channel_index])
+        else:
+            if not prediction_mask_channel_indices:
+                raise ValueError("prediction_mask_channel_indices cannot be empty.")
+            invalid_indices = [index for index in prediction_mask_channel_indices if index < 0 or index >= array.shape[2]]
+            if invalid_indices:
+                raise ValueError(f"prediction mask channel indices {invalid_indices} are out of bounds for patch with shape {array.shape}.")
+            mask = np.logical_and.reduce([np.isfinite(array[:, :, index]) for index in prediction_mask_channel_indices])
         all_data_points.append(predictions[start_idx + i].reshape((win_h, win_w)))
         all_locations.append((data[5], data[6]))
         all_masks.append(mask.reshape((win_h, win_w)))
-    reconstructed_hexel = stitch_windows(all_data_points, all_locations, all_masks, gt_shape, mode=stitch_mode)
+    reconstructed_hexel = stitch_windows(
+        all_data_points,
+        all_locations,
+        all_masks,
+        gt_shape,
+        mode=stitch_mode,
+        center_crop_fraction=center_crop_fraction,
+    )
     return reconstructed_hexel  # gt_shape
 
 
@@ -88,8 +276,11 @@ def get_predicted_hexel(
     target_log_std: float | None = None,
     stitch_mode: str = "mean",
     target_channel_index: int = 0,
+    prediction_mask_channel_indices: list[int] | None = None,
     win_h: int = 128,
     win_w: int = 128,
+    center_crop_fraction: float = 0.8,
+    mask_scope: str = "actual",
 ) -> tuple[np.ndarray, Profile]:
     """
     Returns the reconstructed hexel
@@ -97,9 +288,11 @@ def get_predicted_hexel(
     start_idx = 0
 
     all_paths = Paths(hex_id=hex_id, root_dir=raw_data_dir)
+    scope = normalize_mask_scope(mask_scope)
 
     gt_elevation_grid, gt_elevation_grid_profile = load_spatial_raster(
-        path=all_paths.elevation_grid(hex_id=hex_id), actual_mask_path=all_paths.mask_grid_actual(hex_id=hex_id)
+        path=all_paths.elevation_grid(hex_id=hex_id),
+        mask_path=all_paths.mask_grid(hex_id=hex_id, mask_scope=scope),
     )
 
     if out_norm in {"min_max", "log"}:
@@ -114,8 +307,10 @@ def get_predicted_hexel(
             gt_shape=tuple(gt_elevation_grid.shape),
             target_channel_index=target_channel_index,
             stitch_mode=stitch_mode,
+            prediction_mask_channel_indices=prediction_mask_channel_indices,
             win_h=win_h,
             win_w=win_w,
+            center_crop_fraction=center_crop_fraction,
         )
         reconstructed_hexel_denorm = denormalize_model_target(
             data=reconstructed_hexel,
@@ -139,8 +334,10 @@ def get_predicted_hexel(
                 gt_shape=tuple(gt_elevation_grid.data.shape),
                 target_channel_index=target_channel_index,
                 stitch_mode=stitch_mode,
+                prediction_mask_channel_indices=prediction_mask_channel_indices,
                 win_h=win_h,
                 win_w=win_w,
+                center_crop_fraction=center_crop_fraction,
             )
             reconstructed_season_cause_hexel_denorm = denormalize_burn_count(
                 data=reconstructed_season_cause_hexel, min_val=min_target_val, max_val=max_target_val
@@ -157,11 +354,19 @@ def get_predicted_hexel(
     return reconstructed_hexel_denorm, gt_elevation_grid_profile
 
 
-def get_config_target_spec(config: Config) -> TargetSpec:
+def get_config_target_specs(config: Config) -> list[TargetSpec]:
     for source in config.data.input_sources:
         if source.name == "grid" and isinstance(source.params, GridParams):
-            return get_target_spec(source.params.target_name)
-    return get_target_spec("bp")
+            return get_target_specs(source.params.target_name)
+    return get_target_specs("bp")
+
+
+def get_config_target_spec(config: Config) -> TargetSpec:
+    targets = get_config_target_specs(config)
+    if len(targets) != 1:
+        target_names = [target.name for target in targets]
+        raise ValueError(f"Expected a single grid target, got {target_names}. Use get_config_target_specs for multi-target configs.")
+    return targets[0]
 
 
 def get_config_grid_params(config: Config) -> GridParams | None:
@@ -202,9 +407,86 @@ def get_target_channel_index(data_dir: str, modelling_approach: str, target: Tar
     channel_indices = channel_feature_map.get(target.channel_key)
     if not channel_indices:
         raise ValueError(
-            f"Missing target channel {target.channel_key!r} in {feature_map_path}. " f"Available keys: {list(channel_feature_map.keys())}"
+            f"Missing target channel {target.channel_key!r} in {feature_map_path}. Available keys: {list(channel_feature_map.keys())}"
         )
     return int(channel_indices[0])
+
+
+def get_prediction_mask_channel_indices(
+    data_dir: str,
+    modelling_approach: str,
+    grid_params: GridParams | dict[str, Any] | None,
+    prediction_support_policy: str = "input",
+) -> list[int] | None:
+    if prediction_support_policy == "target":
+        return None
+    if prediction_support_policy != "input":
+        raise ValueError("prediction_support_policy must be one of ('input', 'target').")
+    if grid_params is None:
+        return None
+
+    feature_names = grid_params.feature_names_list if isinstance(grid_params, GridParams) else grid_params.get("feature_names_list", [])
+    if not feature_names:
+        return None
+
+    feature_map_path = os.path.join(data_dir, f"feature_channel_map_{modelling_approach}.json")
+    with open(feature_map_path) as f:
+        channel_feature_map = json.load(f)
+
+    indices: list[int] = []
+    for feature_name in feature_names:
+        channel_indices = channel_feature_map.get(feature_name)
+        if not channel_indices:
+            raise ValueError(
+                f"Missing input channel {feature_name!r} in {feature_map_path}. Available keys: {list(channel_feature_map.keys())}"
+            )
+        indices.extend(int(index) for index in channel_indices)
+    return sorted(set(indices))
+
+
+def get_target_out_norm(grid_params: GridParams | None, target: TargetSpec, fallback_out_norm: str) -> str:
+    if grid_params is None:
+        return fallback_out_norm
+    if target.name in grid_params.target_out_norms:
+        return grid_params.target_out_norms[target.name]
+    if isinstance(grid_params.target_name, list):
+        if target.name == "bp":
+            return "min_max"
+        if target.name in {"fi", "ros"}:
+            return "log_standard"
+    return grid_params.out_norm
+
+
+def get_target_log_stats(grid_params: GridParams | None, target: TargetSpec) -> tuple[float | None, float | None]:
+    if grid_params is None:
+        return None, None
+    return (
+        grid_params.target_log_means.get(target.name, grid_params.target_log_mean),
+        grid_params.target_log_stds.get(target.name, grid_params.target_log_std),
+    )
+
+
+def select_prediction_target_channel(
+    predictions: np.ndarray,
+    target_index: int,
+    target_count: int,
+    target_name: str,
+) -> np.ndarray:
+    if target_count == 1:
+        if predictions.ndim == 3:
+            return predictions
+        if predictions.ndim == 4 and predictions.shape[1] == 1:
+            return predictions[:, 0]
+        raise ValueError(f"Expected single-target predictions with shape (N,H,W) or (N,1,H,W), got {predictions.shape}.")
+
+    if predictions.ndim != 4:
+        raise ValueError(f"Expected multi-target predictions with shape (N,C,H,W), got {predictions.shape}.")
+    if predictions.shape[1] != target_count:
+        raise ValueError(
+            f"Expected {target_count} prediction channels for multi-target output, got {predictions.shape[1]} "
+            f"while selecting target={target_name!r}."
+        )
+    return predictions[:, target_index]
 
 
 def calculate_hexel_metrics_pytorch(
@@ -280,6 +562,11 @@ def evaluate_and_visualize_hexels(
     device: torch.device,
     experiment_logger: CometLogger | None = None,
     metric_functions: dict[str, Callable] | None = None,
+    stitch_mode: str = "mean",
+    center_crop_fraction: float = 0.8,
+    save_artifacts: bool = True,
+    robust_plot_percentile: float | None = None,
+    mask_scope: str = "actual",
 ) -> dict[str, float]:
     """
     A util function to re-construct predicted hexels out of test predictions, and visualize side-by-side with the Groundtruth.
@@ -289,14 +576,45 @@ def evaluate_and_visualize_hexels(
     raw_data_dir = config.data.raw_data_dir
     modelling_approach = config.modelling_approach
     valid_mask_threshold = config.data.valid_mask_threshold
-    target = get_config_target_spec(config)
+    targets = get_config_target_specs(config)
+    is_multitarget = len(targets) > 1
     grid_params = get_config_grid_params(config)
-    target_channel_index = get_target_channel_index(data_dir=data_dir, modelling_approach=modelling_approach, target=target)
-
-    max_target_val, min_target_val = get_range_output(root_dir=raw_data_dir, output_type=target.output_type)
+    prediction_mask_channel_indices = get_prediction_mask_channel_indices(
+        data_dir=data_dir,
+        modelling_approach=modelling_approach,
+        grid_params=grid_params,
+        prediction_support_policy=config.evaluation.prediction_support_policy,
+    )
+    prediction_support_label = "input support" if config.evaluation.prediction_support_policy == "input" else "target support"
+    scope = normalize_mask_scope(mask_scope)
+    show_prediction_support_outline = config.evaluation.prediction_support_policy == "input" and scope == "actual"
+    artifacts_save_dir = get_mask_scope_save_dir(config.save_dir, scope)
 
     if isinstance(test_predictions, str):
         raise TypeError(f"Expected ndarray, but got string: {test_predictions}")
+
+    target_settings: list[TargetPostprocessingSettings] = []
+    for target in targets:
+        target_channel_index = get_target_channel_index(data_dir=data_dir, modelling_approach=modelling_approach, target=target)
+        max_target_val, min_target_val = get_range_output(root_dir=raw_data_dir, output_type=target.output_type)
+        max_target_val, min_target_val = apply_bp_nodata_zero_range(
+            target_name=target.name,
+            max_value=max_target_val,
+            min_value=min_target_val,
+            bp_nodata_as_zero=config.evaluation.bp_nodata_as_zero,
+        )
+        target_log_mean, target_log_std = get_target_log_stats(grid_params=grid_params, target=target)
+        target_settings.append(
+            TargetPostprocessingSettings(
+                target=target,
+                target_channel_index=target_channel_index,
+                max_target_val=max_target_val,
+                min_target_val=min_target_val,
+                out_norm=get_target_out_norm(grid_params=grid_params, target=target, fallback_out_norm=out_norm),
+                target_log_mean=target_log_mean,
+                target_log_std=target_log_std,
+            )
+        )
 
     try:
         test_df = pd.read_csv(os.path.join(data_dir, config.data.test_split))
@@ -305,10 +623,11 @@ def evaluate_and_visualize_hexels(
 
     # separate hexels by their IDs
     test_df = test_df[test_df["valid_ratio"] > valid_mask_threshold].reset_index(drop=True)  # type: ignore
+    validate_patch_metadata_mask_scope(test_df, scope)
     all_hex_ids = list(test_df["hex_id"].unique())
 
     # init. hexel metrics
-    all_hexel_metrics = []
+    all_hexel_metrics: list[tuple[str, str | None, str | None, dict[str, float]]] = []
 
     # loop over test hexels
     for hex_id in all_hex_ids:
@@ -319,110 +638,211 @@ def evaluate_and_visualize_hexels(
             hex_id = "0" + str(hex_id)
 
         hex_test_predictions = test_predictions[hexel_indices]
-        reconstructed_hexel_denorm, gt_elevation_grid_profile = get_predicted_hexel(
-            base_dir=data_dir,
-            raw_data_dir=raw_data_dir,
-            test_df=one_hexel_df,
-            predictions=hex_test_predictions,
-            min_target_val=min_target_val,
-            max_target_val=max_target_val,
-            hex_id=hex_id,
-            modelling_approach=modelling_approach,
-            out_norm=out_norm,
-            target_log_mean=grid_params.target_log_mean if grid_params is not None else None,
-            target_log_std=grid_params.target_log_std if grid_params is not None else None,
-            stitch_mode="mean",
-            target_channel_index=target_channel_index,
-            win_h=config.data_prep.win_h,
-            win_w=config.data_prep.win_w,
-        )
-        save_predicted_hexels(reconstructed_hexel_denorm, gt_elevation_grid_profile, hex_id, config.save_dir)
-        # Save the hex as plt plot
-        all_paths = Paths(hex_id=hex_id, root_dir=raw_data_dir)
-        target_path = getattr(all_paths, target.path_method)()
-        grid_gt, _ = load_spatial_raster(
-            path=target_path,
-            actual_mask_path=all_paths.mask_grid_actual(hex_id=hex_id),
-            reference_profile=gt_elevation_grid_profile,
-        )
-
-        visualize_target_grids(
-            gt_grid=grid_gt,
-            pred_grid=reconstructed_hexel_denorm,
-            hex_id=hex_id,
-            save_dir=config.save_dir,
-            experiment_logger=experiment_logger,
-            target_label=target.label,
-        )
-
-        # plot and save hexbin figures (for calibration)
-        plot_hexbin_distribution(
-            gt_grid=grid_gt,
-            pred_grid=reconstructed_hexel_denorm,
-            hex_id=hex_id,
-            save_dir=config.save_dir,
-            experiment_logger=experiment_logger,
-            target_label=target.label,
-            probability_scale=target.probability_scale,
-        )
-
-        # plot and save hist. figures
-        plot_histogram_distribution(
-            gt_grid=grid_gt,
-            pred_grid=reconstructed_hexel_denorm,
-            hex_id=hex_id,
-            save_dir=config.save_dir,
-            experiment_logger=experiment_logger,
-            target_label=target.label,
-            probability_scale=target.probability_scale,
-        )
-
-        # compute per-hexel metrics
-        if metric_functions is not None:
-            hex_metrics = calculate_hexel_metrics_pytorch(
-                gt_grid=grid_gt, pred_grid=reconstructed_hexel_denorm, device=device, metric_functions=metric_functions
+        for target_idx, settings in enumerate(target_settings):
+            target = settings.target
+            target_predictions = select_prediction_target_channel(
+                predictions=hex_test_predictions,
+                target_index=target_idx,
+                target_count=len(targets),
+                target_name=target.name,
             )
-            all_hexel_metrics.append(hex_metrics)
-
-            # get top k perc. values dynamically
-            percentiles_to_plot = [
-                fn.keywords["percentile"]
-                for _, fn in metric_functions.items()
-                if isinstance(fn, functools.partial) and "percentile" in fn.keywords
-            ]
-
-            # generate the TopK IoU plots
-            for p in percentiles_to_plot:
-                pred_bin, gt_bin = get_hexel_binary_maps(reconstructed_hexel_denorm, grid_gt, percentile=p)
-                visualize_hexel_iou(
-                    grid_gt,
-                    reconstructed_hexel_denorm,
-                    gt_bin,
-                    pred_bin,
-                    hex_id,
-                    config.save_dir,
-                    p,
-                    target_label=target.label,
+            target_name_for_artifacts = target.name if is_multitarget else None
+            reconstructed_hexel_denorm, gt_elevation_grid_profile = get_predicted_hexel(
+                base_dir=data_dir,
+                raw_data_dir=raw_data_dir,
+                test_df=one_hexel_df,
+                predictions=target_predictions,
+                min_target_val=settings.min_target_val,
+                max_target_val=settings.max_target_val,
+                hex_id=hex_id,
+                modelling_approach=modelling_approach,
+                out_norm=settings.out_norm,
+                target_log_mean=settings.target_log_mean,
+                target_log_std=settings.target_log_std,
+                stitch_mode=stitch_mode,
+                target_channel_index=settings.target_channel_index,
+                prediction_mask_channel_indices=prediction_mask_channel_indices,
+                win_h=config.data_prep.win_h,
+                win_w=config.data_prep.win_w,
+                center_crop_fraction=center_crop_fraction,
+                mask_scope=scope,
+            )
+            all_paths = Paths(hex_id=hex_id, root_dir=raw_data_dir)
+            grid_gt, reconstructed_hexel_denorm = load_target_grid_for_mask_scope(
+                paths=all_paths,
+                target=target,
+                pred_grid=reconstructed_hexel_denorm,
+                profile=gt_elevation_grid_profile,
+                mask_scope=scope,
+                hex_id=str(hex_id),
+                bp_nodata_as_zero=config.evaluation.bp_nodata_as_zero,
+            )
+            actual_support_mask = None
+            buffer_support_mask = None
+            if (
+                scope != "actual"
+                and gt_elevation_grid_profile.get("crs") is not None
+                and gt_elevation_grid_profile.get("transform") is not None
+            ):
+                buffer_support_mask = _actual_area_mask(
+                    mask_path=all_paths.mask_grid(hex_id=hex_id, mask_scope=scope),
+                    profile=gt_elevation_grid_profile,
+                    shape=reconstructed_hexel_denorm.shape,
+                )
+                actual_support_mask = _actual_area_mask(
+                    mask_path=all_paths.mask_grid_actual(hex_id=hex_id),
+                    profile=gt_elevation_grid_profile,
+                    shape=reconstructed_hexel_denorm.shape,
                 )
 
-        print(f"=======Saved subplots for hex{hex_id}==============")
+            if save_artifacts:
+                save_predicted_hexels(
+                    reconstructed_hexel_denorm,
+                    gt_elevation_grid_profile,
+                    hex_id,
+                    artifacts_save_dir,
+                    target_name=target_name_for_artifacts,
+                )
+                visualize_target_grids(
+                    gt_grid=grid_gt,
+                    pred_grid=reconstructed_hexel_denorm,
+                    hex_id=hex_id,
+                    save_dir=artifacts_save_dir,
+                    experiment_logger=experiment_logger,
+                    target_label=target.label,
+                    target_name=target_name_for_artifacts,
+                    actual_support_mask=actual_support_mask,
+                    buffer_support_mask=buffer_support_mask,
+                    prediction_support_label=prediction_support_label,
+                    show_prediction_support_outline=show_prediction_support_outline,
+                )
+                target_robust_plot_percentile = effective_robust_plot_percentile(
+                    target=target,
+                    robust_plot_percentile=robust_plot_percentile,
+                )
+                if target_robust_plot_percentile is not None:
+                    visualize_target_grids(
+                        gt_grid=grid_gt,
+                        pred_grid=reconstructed_hexel_denorm,
+                        hex_id=hex_id,
+                        save_dir=artifacts_save_dir,
+                        experiment_logger=experiment_logger,
+                        target_label=target.label,
+                        target_name=target_name_for_artifacts,
+                        value_percentile=target_robust_plot_percentile,
+                        diff_percentile=target_robust_plot_percentile,
+                        filename_suffix=f"_p{target_robust_plot_percentile:g}",
+                        actual_support_mask=actual_support_mask,
+                        buffer_support_mask=buffer_support_mask,
+                        prediction_support_label=prediction_support_label,
+                        show_prediction_support_outline=show_prediction_support_outline,
+                    )
+                plot_hexbin_distribution(
+                    gt_grid=grid_gt,
+                    pred_grid=reconstructed_hexel_denorm,
+                    hex_id=hex_id,
+                    save_dir=artifacts_save_dir,
+                    experiment_logger=experiment_logger,
+                    target_label=target.label,
+                    probability_scale=target.probability_scale,
+                    target_name=target_name_for_artifacts,
+                )
+                plot_histogram_distribution(
+                    gt_grid=grid_gt,
+                    pred_grid=reconstructed_hexel_denorm,
+                    hex_id=hex_id,
+                    save_dir=artifacts_save_dir,
+                    experiment_logger=experiment_logger,
+                    target_label=target.label,
+                    probability_scale=target.probability_scale,
+                    target_name=target_name_for_artifacts,
+                )
+
+            # compute per-hexel metrics
+            if metric_functions is not None:
+                hex_metrics = calculate_hexel_metrics_pytorch(
+                    gt_grid=grid_gt, pred_grid=reconstructed_hexel_denorm, device=device, metric_functions=metric_functions
+                )
+                metric_scope = None if scope == "actual" else scope
+                all_hexel_metrics.append((str(hex_id).zfill(2), target.name if is_multitarget else None, metric_scope, hex_metrics))
+
+                if scope == "buffer" and actual_support_mask is not None:
+                    actual_gt, actual_pred = mask_grids_by_support(
+                        gt_grid=grid_gt,
+                        pred_grid=reconstructed_hexel_denorm,
+                        support_mask=actual_support_mask,
+                    )
+                    buffer_only_gt, buffer_only_pred = mask_grids_by_support(
+                        gt_grid=grid_gt,
+                        pred_grid=reconstructed_hexel_denorm,
+                        support_mask=np.isfinite(reconstructed_hexel_denorm) & ~actual_support_mask,
+                    )
+                    actual_metrics = calculate_hexel_metrics_pytorch(
+                        gt_grid=actual_gt,
+                        pred_grid=actual_pred,
+                        device=device,
+                        metric_functions=metric_functions,
+                    )
+                    buffer_only_metrics = calculate_hexel_metrics_pytorch(
+                        gt_grid=buffer_only_gt,
+                        pred_grid=buffer_only_pred,
+                        device=device,
+                        metric_functions=metric_functions,
+                    )
+                    all_hexel_metrics.append((str(hex_id).zfill(2), target.name if is_multitarget else None, "actual", actual_metrics))
+                    all_hexel_metrics.append(
+                        (str(hex_id).zfill(2), target.name if is_multitarget else None, "buffer_only", buffer_only_metrics)
+                    )
+
+                # get top k perc. values dynamically
+                percentiles_to_plot = [
+                    fn.keywords["percentile"]
+                    for _, fn in metric_functions.items()
+                    if isinstance(fn, functools.partial) and "percentile" in fn.keywords
+                ]
+
+                if save_artifacts:
+                    for p in percentiles_to_plot:
+                        pred_bin, gt_bin = get_hexel_binary_maps(reconstructed_hexel_denorm, grid_gt, percentile=p)
+                        visualize_hexel_iou(
+                            grid_gt,
+                            reconstructed_hexel_denorm,
+                            gt_bin,
+                            pred_bin,
+                            hex_id,
+                            artifacts_save_dir,
+                            p,
+                            target_label=target.label,
+                            target_name=target_name_for_artifacts,
+                            actual_support_mask=actual_support_mask,
+                            buffer_support_mask=buffer_support_mask,
+                        )
+
+        if save_artifacts:
+            print(f"=======Saved subplots for hex{hex_id}==============")
 
     # aggregate final scores
     hexel_metrics = {}
 
     if metric_functions is not None and len(all_hexel_metrics) > 0:
         # get per-hexel metrics
-        for hex_id, hex_metric in zip(all_hex_ids, all_hexel_metrics):
-            hex_id_str = str(hex_id).zfill(2)
+        metric_values_by_key: dict[str, list[float]] = {}
+        for hex_id_str, target_name, metric_scope, hex_metric in all_hexel_metrics:
             for key, val in hex_metric.items():
-                # we create keys such as "hex12/mse" for clarity
-                hexel_metrics[f"hex{hex_id_str}/{key}"] = float(val) if not np.isnan(val) else float("nan")
+                metric_key = f"{target_name}_{key}" if target_name is not None else key
+                if metric_scope is not None:
+                    metric_key = f"{metric_scope}_{metric_key}"
+                metric_value = float(val) if not np.isnan(val) else float("nan")
+                # we create keys such as "hex12/mse" or "hex12/bp_mse" for clarity
+                hexel_metrics[f"hex{hex_id_str}/{metric_key}"] = metric_value
+                metric_values_by_key.setdefault(metric_key, []).append(metric_value)
 
         # get the aggregated averages over all hexels
-        for key in metric_functions.keys():
-            mean_val = np.nanmean([hm[key] for hm in all_hexel_metrics if key in hm and not np.isnan(hm[key])])
-            # we create keys such as "all/mse"
-            hexel_metrics[f"all/{key}"] = float(mean_val)
+        for key, values in metric_values_by_key.items():
+            finite_values = [value for value in values if not np.isnan(value)]
+            mean_val = float(np.mean(finite_values)) if finite_values else float("nan")
+            # we create keys such as "all/mse" or "all/bp_mse"
+            hexel_metrics[f"all/{key}"] = mean_val
 
     return hexel_metrics
 

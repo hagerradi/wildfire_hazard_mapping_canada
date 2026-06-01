@@ -9,14 +9,16 @@ from torch.optim.lr_scheduler import LRScheduler, ReduceLROnPlateau
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
+from data_preparation.spatial.utils import get_range_output
 from src.config import Config, GridParams
-from src.datasets.targets import get_target_spec
+from src.datasets.targets import get_target_specs
+from src.datasets.utils import apply_bp_nodata_zero_range
 from src.logger import CometLogger
-from src.losses import WeightedLoss
-from src.models.unet import BaselineUNet, MultiSourceUNet
+from src.losses import MultiTargetLoss, WeightedLoss
+from src.models.factory import build_model, resolve_model_architecture
 from src.models.utils import get_nbr_model_parameters
 from src.schedulers import build_lr_scheduler
-from utils import AVAILABLE_METRICS, build_single_loss, set_device
+from utils import AVAILABLE_METRICS, build_single_loss, default_target_loss_name, set_device
 
 
 class Trainer:
@@ -60,44 +62,28 @@ class Trainer:
         Define model, loss function and optimizer.
         """
 
+        self._grid_params = self._get_grid_params()
+        self._target_specs = get_target_specs(self._grid_params.target_name) if self._grid_params is not None else get_target_specs("bp")
+        self._target_names = [target.name for target in self._target_specs]
+        self._is_multitarget = len(self._target_specs) > 1
+        if self.config.model.num_classes != len(self._target_specs):
+            raise ValueError(
+                f"model.num_classes={self.config.model.num_classes} must match number of configured targets "
+                f"({len(self._target_specs)}: {self._target_names})."
+            )
+
         # Flag to indicate we are including auxiliary features
         self.auxiliary = "auxiliary" in self.config.model.input_feature_list
 
-        # Multi-source path: spatial grids + auxiliary data.
-        if self.auxiliary:
-            if not self.auxiliary_input_dims:
-                raise ValueError("Config requests auxiliary features, but no auxiliary dim. were detected.")
+        resolved_architecture = resolve_model_architecture(self.config.model)
+        print(f"[Trainer] Model architecture: {self.config.model.architecture} -> {resolved_architecture}")
+        print(f"[Trainer] Spatial Channels: {self.spatial_input_channels}, Auxiliary Dim: {self.auxiliary_input_dims}")
 
-            print("[Trainer] Mode: Multi-Source (Spatial + auxiliary)")
-            print(f"[Trainer] Spatial Channels: {self.spatial_input_channels}, Auxiliary Dim: {self.auxiliary_input_dims}")
-
-            self.model = MultiSourceUNet(
-                input_channels=self.spatial_input_channels,
-                num_classes=self.config.model.num_classes,
-                hidden_features=self.config.model.hidden_features,
-                input_feature_list=self.config.model.input_feature_list,
-                use_skip_connections=self.config.model.use_skip_connections,
-                use_transpose_conv=self.config.model.use_transpose_conv,
-                use_activation_after_upsampling=self.config.model.use_activation_after_upsampling,
-                auxiliary_input_dims=self.auxiliary_input_dims,
-                auxiliary_hidden_dims=self.config.model.auxiliary_hidden_dims,
-                auxiliary_embed_dims=self.config.model.auxiliary_embed_dims,
-                auxiliary_feature_encoder_poolings=self.config.model.auxiliary_feature_encoder_poolings,
-            )
-        # Single-source path: spatial grids only.
-        else:
-            print("[Trainer] Mode: Baseline (Spatial Only)")
-            print(f"[Trainer] Spatial Channels: {self.spatial_input_channels}")
-
-            self.model = BaselineUNet(
-                input_channels=self.spatial_input_channels,
-                num_classes=self.config.model.num_classes,
-                hidden_features=self.config.model.hidden_features,
-                input_feature_list=self.config.model.input_feature_list,
-                use_skip_connections=self.config.model.use_skip_connections,
-                use_transpose_conv=self.config.model.use_transpose_conv,
-                use_activation_after_upsampling=self.config.model.use_activation_after_upsampling,
-            )
+        self.model = build_model(
+            model_config=self.config.model,
+            spatial_input_channels=self.spatial_input_channels,
+            auxiliary_input_dims=self.auxiliary_input_dims,
+        )
 
         self.model.to(self.device)
 
@@ -107,15 +93,7 @@ class Trainer:
         if self.logger:
             self.logger.log_params({"model_total_params": total_params, "model_trainable_params": trainable_params})
 
-        # Setup loss
-        loss_config = self.config.optimizer.loss
-        if isinstance(loss_config, str):  # loss is a string
-            self.loss_fn = build_single_loss(loss_config)
-        else:  # loss is a list
-            loss_names = loss_config
-            weights = self.config.optimizer.loss_weights
-            losses = {n: build_single_loss(n) for n in loss_names}
-            self.loss_fn = WeightedLoss(losses=losses, weights=weights, normalize_weights=True)
+        self.loss_fn = self._build_loss()
 
         # Setup optimizer
         opt_name = self.config.optimizer.name
@@ -132,18 +110,164 @@ class Trainer:
         # Validate and load metrics from config.
         self._validate_and_load_metrics()
 
-        self._use_sigmoid_predictions = self._should_use_sigmoid_predictions()
+        self._configure_metric_target_transform()
 
-    def _should_use_sigmoid_predictions(self) -> bool:
+    def _build_loss(self) -> torch.nn.Module:
+        loss_config = self.config.optimizer.loss
+        huber_beta = self.config.optimizer.huber_beta
+        loss_kwargs = {
+            "huber_beta": huber_beta,
+            "tail_loss_percentile": self.config.optimizer.tail_loss_percentile,
+            "tail_loss_weight": self.config.optimizer.tail_loss_weight,
+            "quantile": self.config.optimizer.quantile,
+        }
+
+        if self._is_multitarget:
+            if not isinstance(loss_config, str) or loss_config.lower() not in {"multi_target", "multitarget"}:
+                raise ValueError("Multi-target training requires optimizer.loss: 'multi_target'.")
+            target_losses = {
+                target_name: self.config.optimizer.target_losses.get(target_name, default_target_loss_name(target_name))
+                for target_name in self._target_names
+            }
+            losses = {name: build_single_loss(loss_name, **loss_kwargs) for name, loss_name in target_losses.items()}
+            return MultiTargetLoss(
+                target_names=self._target_names,
+                losses=losses,
+                weights=self.config.optimizer.target_loss_weights or None,
+                normalize_weights=True,
+            )
+
+        if isinstance(loss_config, str):  # loss is a string
+            return build_single_loss(loss_config, **loss_kwargs)
+
+        loss_names = loss_config
+        weights = self.config.optimizer.loss_weights
+        losses = {n: build_single_loss(n, **loss_kwargs) for n in loss_names}
+        return WeightedLoss(losses=losses, weights=weights, normalize_weights=True)
+
+    def _get_grid_params(self) -> GridParams | None:
         for source in self.config.data.input_sources:
             if source.name == "grid" and isinstance(source.params, GridParams):
-                return get_target_spec(source.params.target_name).probability_scale
-        return True
+                return source.params
+        return None
+
+    def _target_out_norm(self, target_name: str) -> str:
+        if self._grid_params is None:
+            return "none"
+        if target_name in self._grid_params.target_out_norms:
+            return self._grid_params.target_out_norms[target_name]
+        if self._is_multitarget:
+            if target_name == "bp":
+                return "min_max"
+            if target_name in {"fi", "ros"}:
+                return "log_standard"
+        return self._grid_params.out_norm
+
+    def _target_log_stats(self, target_name: str) -> tuple[float | None, float | None]:
+        if self._grid_params is None:
+            return None, None
+        return (
+            self._grid_params.target_log_means.get(target_name, self._grid_params.target_log_mean),
+            self._grid_params.target_log_stds.get(target_name, self._grid_params.target_log_std),
+        )
+
+    def _configure_metric_target_transform(self) -> None:
+        self._metric_out_norms: list[str] = []
+        self._metric_target_mins: list[float] = []
+        self._metric_target_maxs: list[float] = []
+        self._metric_target_log_means: list[float | None] = []
+        self._metric_target_log_stds: list[float | None] = []
+
+        if self._grid_params is None:
+            self._metric_out_norms = ["none"] * len(self._target_specs)
+            self._metric_target_mins = [0.0] * len(self._target_specs)
+            self._metric_target_maxs = [1.0] * len(self._target_specs)
+            self._metric_target_log_means = [None] * len(self._target_specs)
+            self._metric_target_log_stds = [None] * len(self._target_specs)
+            return
+
+        for target in self._target_specs:
+            out_norm = self._target_out_norm(target.name)
+            target_min = 0.0
+            target_max = 1.0
+            target_log_mean, target_log_std = self._target_log_stats(target.name)
+
+            if out_norm == "min_max":
+                if self.config.data.raw_data_dir:
+                    target_max, target_min = get_range_output(root_dir=self.config.data.raw_data_dir, output_type=target.output_type)
+                    target_max, target_min = apply_bp_nodata_zero_range(
+                        target_name=target.name,
+                        max_value=target_max,
+                        min_value=target_min,
+                        bp_nodata_as_zero=self._grid_params.bp_nodata_as_zero,
+                    )
+            elif out_norm == "log_standard":
+                if target_log_mean is None or target_log_std is None:
+                    raise ValueError(f"target_log_mean/std are required for target={target.name!r} with out_norm='log_standard'.")
+                if target_log_std <= 0.0:
+                    raise ValueError(f"target_log_std must be positive for target={target.name!r}, got {target_log_std}.")
+            elif out_norm not in {"log", "none", "total_iters", "season_cause_iters"}:
+                raise ValueError(f"Unsupported output normalization for target={target.name!r}: {out_norm!r}")
+
+            self._metric_out_norms.append(out_norm)
+            self._metric_target_mins.append(target_min)
+            self._metric_target_maxs.append(target_max)
+            self._metric_target_log_means.append(target_log_mean)
+            self._metric_target_log_stds.append(target_log_std)
+
+    def _inverse_model_target_for_metrics(self, data: torch.Tensor) -> torch.Tensor:
+        data = data.float()
+        transformed_channels = []
+        for idx, out_norm in enumerate(self._metric_out_norms):
+            channel = data[:, idx : idx + 1]
+            if out_norm == "min_max":
+                target_min = self._metric_target_mins[idx]
+                target_max = self._metric_target_maxs[idx]
+                transformed_channels.append(channel * (target_max - target_min) + target_min)
+            elif out_norm == "log":
+                transformed_channels.append(torch.expm1(channel * float(np.log1p(1000.0))) / 1000.0)
+            elif out_norm == "log_standard":
+                target_log_mean = self._metric_target_log_means[idx]
+                target_log_std = self._metric_target_log_stds[idx]
+                if target_log_mean is None or target_log_std is None:
+                    raise RuntimeError("log_standard metric transform was not configured.")
+                transformed_channels.append(torch.expm1(channel * target_log_std + target_log_mean).clamp_min(0.0))
+            else:
+                transformed_channels.append(channel)
+        return torch.cat(transformed_channels, dim=1)
+
+    def _prepare_metric_tensors(self, predictions: torch.Tensor, targets: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        return self._inverse_model_target_for_metrics(predictions), self._inverse_model_target_for_metrics(targets)
+
+    def _activate_predictions(self, predictions: torch.Tensor) -> torch.Tensor:
+        activated_channels = []
+        for idx, target in enumerate(self._target_specs):
+            channel = predictions[:, idx : idx + 1]
+            activated_channels.append(torch.sigmoid(channel) if target.probability_scale else channel)
+        return torch.cat(activated_channels, dim=1)
+
+    def _metric_result_keys(self) -> list[str]:
+        if not self._is_multitarget:
+            return list(self.metric_functions)
+        return [f"{target.name}_{metric_name}" for target in self._target_specs for metric_name in self.metric_functions]
+
+    def _compute_metric_values(self, predictions: torch.Tensor, targets: torch.Tensor, masks: torch.Tensor) -> dict[str, torch.Tensor]:
+        if not self._is_multitarget:
+            return {name: metric_fn(predictions, targets, masks) for name, metric_fn in self.metric_functions.items()}
+
+        values = {}
+        for idx, target in enumerate(self._target_specs):
+            pred_channel = predictions[:, idx : idx + 1]
+            target_channel = targets[:, idx : idx + 1]
+            mask_channel = masks[:, idx : idx + 1]
+            for metric_name, metric_fn in self.metric_functions.items():
+                values[f"{target.name}_{metric_name}"] = metric_fn(pred_channel, target_channel, mask_channel)
+        return values
 
     def _validate_and_load_metrics(self) -> None:
         """Helper to validate and load metrics to be computed."""
         if not set(self.config.metrics).issubset(AVAILABLE_METRICS):
-            raise ValueError(f"Invalid metrics found." f"Available options: {list(AVAILABLE_METRICS)}")
+            raise ValueError(f"Invalid metrics found.Available options: {list(AVAILABLE_METRICS)}")
         self.metric_functions = {k: AVAILABLE_METRICS[k] for k in self.config.metrics}
 
     def _step(self, batch: Any) -> tuple[torch.Tensor, torch.Tensor, dict[str, torch.Tensor] | None, torch.Tensor, torch.Tensor]:
@@ -156,16 +280,24 @@ class Trainer:
             raise ValueError("Batch is missing required 'grid' data.")
         inputs, targets, masks = [t.to(self.device) for t in batch["grid"]]
 
+        patch_metadata = batch.get("patch_metadata")
+
         # Unpack all potential auxiliary data
         auxiliary_data = {}
         for key, value in batch.items():
-            if key == "grid":
+            if key in {"grid", "patch_metadata"}:
                 continue
             auxiliary_data[key] = value.to(self.device)
 
         predictions = self.model(inputs, auxiliary_data)
 
-        loss_out = self.loss_fn(predictions, targets, masks)
+        if getattr(self.loss_fn, "requires_patch_metadata", False):
+            if patch_metadata is None:
+                raise ValueError("Configured loss requires patch metadata, but batch does not include 'patch_metadata'.")
+            patch_metadata = {key: value.to(self.device) for key, value in patch_metadata.items()}
+            loss_out = self.loss_fn(predictions, targets, masks, patch_metadata=patch_metadata)
+        else:
+            loss_out = self.loss_fn(predictions, targets, masks)
 
         # Support if it is a single loss or weighted loss
         if isinstance(loss_out, tuple):
@@ -174,7 +306,7 @@ class Trainer:
             total_loss = cast(torch.Tensor, loss_out)
             loss_parts = None
 
-        metric_predictions = torch.sigmoid(predictions) if self._use_sigmoid_predictions else predictions
+        metric_predictions = self._activate_predictions(predictions)
         return metric_predictions, total_loss, loss_parts, targets, masks
 
     @staticmethod
@@ -205,10 +337,10 @@ class Trainer:
         self.model.train()
         running_loss = 0.0
         running_batch_count = 0
-        running_metrics = {name: 0.0 for name in self.metric_functions}
+        running_metrics = {name: 0.0 for name in self._metric_result_keys()}
         running_loss_parts = None
-        if isinstance(self.config.optimizer.loss, list):
-            running_loss_parts = {name: 0.0 for name in self.config.optimizer.loss}
+        if isinstance(self.loss_fn, (WeightedLoss, MultiTargetLoss)):
+            running_loss_parts = {name: 0.0 for name in self.loss_fn.losses}
 
         training_loop = tqdm(loader, desc="Training", leave=True)
 
@@ -237,8 +369,8 @@ class Trainer:
 
             # compute the metrics
             with torch.no_grad():
-                for name, metric_fn in self.metric_functions.items():
-                    value = metric_fn(predictions.detach(), targets, masks)
+                metric_predictions, metric_targets = self._prepare_metric_tensors(predictions.detach(), targets)
+                for name, value in self._compute_metric_values(metric_predictions, metric_targets, masks).items():
                     running_metrics[name] += value.item() * batch_size
                     if self.logger and self.global_step % self.log_every_n_step == 0:
                         self.logger.log_metrics({f"train_step_{name}": value.item()}, step=self.global_step)
@@ -274,10 +406,10 @@ class Trainer:
         self.model.eval()
         running_loss = 0.0
         running_batch_count = 0
-        running_metrics = {name: 0.0 for name in self.metric_functions}
+        running_metrics = {name: 0.0 for name in self._metric_result_keys()}
         running_loss_parts = None
-        if isinstance(self.config.optimizer.loss, list):
-            running_loss_parts = {name: 0.0 for name in self.config.optimizer.loss}
+        if isinstance(self.loss_fn, (WeightedLoss, MultiTargetLoss)):
+            running_loss_parts = {name: 0.0 for name in self.loss_fn.losses}
 
         preds_list = []
         validation_loop = tqdm(loader, desc="Evaluating", leave=True)
@@ -294,8 +426,8 @@ class Trainer:
 
             # compute the metrics
             with torch.no_grad():
-                for name, metric_fn in self.metric_functions.items():
-                    value = metric_fn(predictions.detach(), targets, masks)
+                metric_predictions, metric_targets = self._prepare_metric_tensors(predictions.detach(), targets)
+                for name, value in self._compute_metric_values(metric_predictions, metric_targets, masks).items():
                     running_metrics[name] += value.item() * batch_size
 
                 if loss_parts is not None and running_loss_parts is not None:

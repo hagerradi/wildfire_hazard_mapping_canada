@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader, Dataset
 from src.config import DataConfig
 from src.datasets.sources import DataSource
 from src.datasets.transforms import get_transforms
-from src.datasets.utils import AVAILABLE_DATA_SOURCES, get_data_source_class
+from src.datasets.utils import AVAILABLE_DATA_SOURCES, SPATIAL_APPEND_SOURCE_NAMES, get_data_source_class
 from src.utils import seed_worker
 
 
@@ -27,6 +27,8 @@ class MultiSourceDataset(Dataset):
         filename_col: str = "filename",
         valid_mask_threshold: float = 0.01,
         sources: dict[str, DataSource] | None = None,
+        grid_transform=None,
+        include_patch_metadata: bool = False,
     ):
         """
         Args:
@@ -43,6 +45,8 @@ class MultiSourceDataset(Dataset):
         self.metadata_path = os.path.join(self.root_dir, self.csv_name)
         self.valid_mask_threshold = valid_mask_threshold
         self.filename_col = filename_col
+        self.grid_transform = grid_transform
+        self.include_patch_metadata = include_patch_metadata
         if not os.path.exists(self.metadata_path):
             raise FileNotFoundError(f"Metadata not found at: {self.metadata_path}")
         metadata_df = pd.read_csv(self.metadata_path)
@@ -66,8 +70,27 @@ class MultiSourceDataset(Dataset):
         patch_info = self.get_patch_info(idx)
         patch_info["data"] = np.load(patch_info["file_path"], mmap_mode="r")  # Load once, distribute where needed
         sample = {}
+        spatialized_inputs = []
         for name, source in self.sources.items():
-            sample[name] = source.get_sample(patch_info)
+            source_sample = source.get_sample(patch_info)
+            if name in SPATIAL_APPEND_SOURCE_NAMES:
+                spatialized_inputs.append(source_sample)
+            else:
+                sample[name] = source_sample
+        if spatialized_inputs:
+            if "grid" not in sample:
+                raise ValueError("Spatial append sources require a 'grid' source to append channels.")
+            inputs, targets, masks = sample["grid"]
+            sample["grid"] = (torch.cat([inputs, *spatialized_inputs], dim=0), targets, masks)
+        if self.grid_transform is not None:
+            if "grid" not in sample:
+                raise ValueError("Configured grid transform requires a 'grid' source.")
+            inputs, targets, masks = sample["grid"]
+            sample["grid"] = self.grid_transform(inputs, targets, masks)
+        if self.include_patch_metadata:
+            if "hex_id" not in patch_info:
+                raise KeyError("Patch metadata requested but split row does not contain 'hex_id'.")
+            sample["patch_metadata"] = {"hex_id": torch.tensor(int(patch_info["hex_id"]), dtype=torch.long)}
         return sample
 
     def __len__(self):
@@ -86,13 +109,16 @@ def build_dataset(config: DataConfig, csv_name: str, modelling_approach: str = "
     # Build sources
     sources: dict[str, DataSource] = {}
 
+    grid_transform = None
     for source_conf in config.input_sources:
         if source_conf.name not in AVAILABLE_DATA_SOURCES:
-            raise ValueError(f"Invalid source name '{source_conf.name} in config. " f"Supported sources are: {AVAILABLE_DATA_SOURCES}")
+            raise ValueError(f"Invalid source name '{source_conf.name} in config. Supported sources are: {AVAILABLE_DATA_SOURCES}")
 
         # Setup transforms
         is_train = "train" in csv_name.lower()
-        transform = get_transforms(source_conf) if is_train else None
+        transform = None
+        if source_conf.name == "grid" and is_train:
+            grid_transform = get_transforms(source_conf)
 
         # Instantiate each data source class
         source_class = get_data_source_class(source_conf.name)
@@ -104,6 +130,8 @@ def build_dataset(config: DataConfig, csv_name: str, modelling_approach: str = "
         }
         if source_conf.name == "grid":
             source_kwargs["raw_data_dir"] = config.raw_data_dir
+        if source_conf.name == "bp_prediction":
+            source_kwargs["raw_data_dir"] = config.raw_data_dir
         sources[source_conf.name] = source_class(**source_kwargs)
 
     dataset = MultiSourceDataset(
@@ -112,6 +140,8 @@ def build_dataset(config: DataConfig, csv_name: str, modelling_approach: str = "
         filename_col=config.filename_col,
         valid_mask_threshold=config.valid_mask_threshold,
         sources=sources,
+        grid_transform=grid_transform,
+        include_patch_metadata=config.include_patch_metadata,
     )
     return dataset
 

@@ -75,7 +75,7 @@ def load_raster(path: str) -> np.ma.MaskedArray:
 def load_spatial_raster(
     path: Path,
     reproject_flag: bool = True,
-    actual_mask_path: Path | None = None,
+    mask_path: Path | None = None,
     reference_profile: dict[str, Any] | None = None,
 ) -> tuple[np.ma.MaskedArray, dict[str, Any]]:
     """Load one raster band, optionally reproject/clip/crop it, and return updated profile."""
@@ -103,12 +103,12 @@ def load_spatial_raster(
         )
         crs = profile["crs"]
 
-    if actual_mask_path:
+    if mask_path:
         raster, transform, profile = clip_array_to_mask(
             raster=raster,
             transform=transform,
             profile=profile,
-            mask_path=actual_mask_path,
+            mask_path=mask_path,
             crs=crs,
             nodata=nodata,
         )
@@ -133,7 +133,7 @@ def clip_array_to_mask(
     mask_gdf = gpd.read_file(mask_path).to_crs(crs)
 
     if nodata is None:
-        nodata = profile.get("nodata", None)
+        nodata = profile.get("nodata")
 
     data_to_write = raster.filled(nodata) if np.ma.isMaskedArray(raster) and nodata is not None else np.asarray(raster)
 
@@ -176,10 +176,7 @@ def clip_array_to_mask(
     clipped = out_image[0]
 
     if filled:
-        if nodata is not None:
-            clipped = np.ma.masked_equal(clipped, nodata)
-        else:
-            clipped = np.ma.masked_array(clipped)
+        clipped = np.ma.masked_equal(clipped, nodata) if nodata is not None else np.ma.masked_array(clipped)
     else:
         if not np.ma.isMaskedArray(clipped):
             clipped = np.ma.masked_array(clipped)
@@ -238,10 +235,7 @@ def reproject_raster(
     """Reproject an already loaded raster while preserving mask/nodata and updating profile."""
     height, width = raster.shape
 
-    if src_nodata is not None:
-        src_filled = raster.filled(src_nodata)
-    else:
-        src_filled = raster.filled()
+    src_filled = raster.filled(src_nodata) if src_nodata is not None else raster.filled()
 
     has_reference_grid = dst_transform is not None and dst_width is not None and dst_height is not None
 
@@ -277,10 +271,7 @@ def reproject_raster(
         resampling=resampling,
     )
 
-    if src_nodata is not None:
-        dst_masked = np.ma.masked_equal(dst, src_nodata)
-    else:
-        dst_masked = np.ma.masked_array(dst)
+    dst_masked = np.ma.masked_equal(dst, src_nodata) if src_nodata is not None else np.ma.masked_array(dst)
 
     out_profile = profile.copy()
     out_profile.update(

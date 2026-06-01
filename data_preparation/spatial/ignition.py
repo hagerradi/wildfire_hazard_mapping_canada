@@ -13,6 +13,7 @@ def load_ignition_grid(
     cause: int = None,
     season: int = None,
     reference_profile: dict[str, Any] | None = None,
+    mask_scope: str = "actual",
 ) -> np.ma.MaskedArray:
     """Load ignition grids for a specific season/cause or all seasons/causes"""
     all_paths = Paths(hex_id=hex_id, root_dir=root_dir)
@@ -22,7 +23,7 @@ def load_ignition_grid(
         file_name = f"hex{hex_id}_ignGrid_{fire_cause_mapping[cause]}_s{season}.tif"
         ignition_raster, _ = load_spatial_raster(
             path=ignition_grids_folder_path / file_name,
-            actual_mask_path=all_paths.mask_grid_actual(hex_id=hex_id),
+            mask_path=all_paths.mask_grid(hex_id=hex_id, mask_scope=mask_scope),
             reference_profile=reference_profile,
         )
 
@@ -34,7 +35,7 @@ def load_ignition_grid(
     for file_name in ignition_raster_files:
         ignition_raster, _ = load_spatial_raster(
             path=ignition_grids_folder_path / file_name,
-            actual_mask_path=all_paths.mask_grid_actual(hex_id=hex_id),
+            mask_path=all_paths.mask_grid(hex_id=hex_id, mask_scope=mask_scope),
             reference_profile=reference_profile,
         )
         out_ignition_grids.append(ignition_raster)

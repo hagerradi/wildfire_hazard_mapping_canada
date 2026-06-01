@@ -2,7 +2,9 @@ import numpy as np
 
 from data_preparation.spatial.utils import FUEL_GROUP_MAP
 
-AVAILABLE_DATA_SOURCES = ["grid", "weather", "fire_size"]
+SPATIALIZED_TABULAR_SOURCE_NAMES = {"spatialized_weather", "spatialized_fire_size"}
+SPATIAL_APPEND_SOURCE_NAMES = {*SPATIALIZED_TABULAR_SOURCE_NAMES, "bp_prediction"}
+AVAILABLE_DATA_SOURCES = ["grid", "weather", "fire_size", *sorted(SPATIALIZED_TABULAR_SOURCE_NAMES), "global_context_grid", "bp_prediction"]
 MAX_FUEL_GRID = float(max(FUEL_GROUP_MAP.values()))
 
 
@@ -18,6 +20,18 @@ def get_data_source_class(name: str):
         from src.datasets.sources import TabularSource
 
         return TabularSource
+    elif name in SPATIALIZED_TABULAR_SOURCE_NAMES:
+        from src.datasets.sources import SpatializedTabularSource
+
+        return SpatializedTabularSource
+    elif name == "global_context_grid":
+        from src.datasets.sources import GlobalContextSource
+
+        return GlobalContextSource
+    elif name == "bp_prediction":
+        from src.datasets.sources import BPPredictionSource
+
+        return BPPredictionSource
     else:
         raise ValueError(f"Unknown data source type: {name}. Available: {AVAILABLE_DATA_SOURCES}")
 
@@ -34,6 +48,18 @@ def get_data_source_param_class(name: str):
         from src.config import TabularParams
 
         return TabularParams
+    elif name in SPATIALIZED_TABULAR_SOURCE_NAMES:
+        from src.config import SpatializedTabularParams
+
+        return SpatializedTabularParams
+    elif name == "global_context_grid":
+        from src.config import GlobalContextParams
+
+        return GlobalContextParams
+    elif name == "bp_prediction":
+        from src.config import BPPredictionParams
+
+        return BPPredictionParams
     else:
         raise ValueError(f"Unknown data source type: {name}. Available: {AVAILABLE_DATA_SOURCES}")
 
@@ -50,6 +76,8 @@ def get_dataset_dimensions(dataset) -> tuple[int | None, dict[str, int]]:
     for name, source in sources.items():
         if name == "grid":
             spatial_channels = source.input_dim()
+        elif name in SPATIAL_APPEND_SOURCE_NAMES:
+            spatial_channels = (spatial_channels or 0) + source.input_dim()
         else:
             auxiliary_input_dims[name] = source.input_dim()
 
@@ -145,3 +173,22 @@ def output_burn_prob_norm(
     else:
         raise ValueError(f"Unsupported output normalization: {out_norm!r}")
     return output_arr
+
+
+def apply_bp_nodata_zero_range(
+    target_name: str,
+    max_value: float,
+    min_value: float,
+    bp_nodata_as_zero: bool,
+) -> tuple[float, float]:
+    if target_name == "bp" and bp_nodata_as_zero:
+        return max_value, 0.0
+    return max_value, min_value
+
+
+def default_target_norm(target_name: str) -> str:
+    if target_name == "bp":
+        return "min_max"
+    if target_name in {"fi", "ros"}:
+        return "log_standard"
+    raise ValueError(f"Unsupported target_name={target_name!r}")

@@ -2,17 +2,29 @@ import json
 import os
 import shutil
 import tempfile
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pytest
+import rasterio
 import torch
 import torchvision.transforms.functional as F
+from rasterio.transform import from_origin
 
-from src.config import DataConfig, DataSourceConfig, GridParams, TabularParams
+from src.config import (
+    BPPredictionParams,
+    DataConfig,
+    DataSourceConfig,
+    GlobalContextParams,
+    GridParams,
+    SpatializedTabularParams,
+    TabularParams,
+)
 from src.datasets.dataset import MultiSourceDataset, build_dataset
-from src.datasets.sources import GridSource, TabularSource
-from src.datasets.transforms import setup_augmentations
+from src.datasets.sources import BPPredictionSource, GlobalContextSource, GridSource, SpatializedTabularSource, TabularSource
+from src.datasets.transforms import get_transforms, setup_augmentations
+from src.datasets.utils import get_dataset_dimensions
 
 
 @pytest.fixture
@@ -43,6 +55,9 @@ def temp_data_dir():
             {
                 "filename": filenames,
                 "valid_ratio": valid_ratios,
+                "hex_id": [1, 1, 2],
+                "row": [0, 0, 16],
+                "col": [0, 16, 0],
             }
         )
         train_csv = "train.csv"
@@ -89,14 +104,25 @@ def temp_data_dir():
         fire_size_csv = "fire_size_table.csv"
         fire_size_df.to_csv(os.path.join(tmpdir, fire_size_csv), index=False)
 
-        yield tmpdir, train_csv, val_csv, test_csv, weather_csv, weather_feats, fire_size_csv, fire_size_feats
+        global_context_dir = "global_context_grids"
+        os.makedirs(os.path.join(tmpdir, global_context_dir), exist_ok=True)
+        for hex_id, value in [(1, 0.25), (2, -0.25)]:
+            context = np.full((3, 8, 8), value, dtype=np.float32)
+            np.savez_compressed(
+                os.path.join(tmpdir, global_context_dir, f"hex_{hex_id:02d}_global_context.npz"),
+                context=context,
+                full_height=np.asarray(32, dtype=np.int32),
+                full_width=np.asarray(32, dtype=np.int32),
+            )
+
+        yield tmpdir, train_csv, val_csv, test_csv, weather_csv, weather_feats, fire_size_csv, fire_size_feats, global_context_dir
 
     finally:
         shutil.rmtree(tmpdir)
 
 
 def test_multi_source_integration(temp_data_dir):
-    tmpdir, train_csv, val_csv, test_csv, weather_csv, weather_feats, fire_size_csv, fire_size_feats = temp_data_dir
+    tmpdir, train_csv, val_csv, test_csv, weather_csv, weather_feats, fire_size_csv, fire_size_feats, _ = temp_data_dir
 
     grid_params = GridParams(
         feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],
@@ -140,9 +166,9 @@ def test_multi_source_integration(temp_data_dir):
     )
     sample = ds[0]
 
-    assert "grid" in sample.keys()
-    assert "weather" in sample.keys()
-    assert "fire_size" in sample.keys()
+    assert "grid" in sample
+    assert "weather" in sample
+    assert "fire_size" in sample
     input_arr, target, mask = sample["grid"]
     assert isinstance(input_arr, torch.Tensor)
     assert input_arr.shape[0] == 3
@@ -157,8 +183,332 @@ def test_multi_source_integration(temp_data_dir):
     assert fire_size.shape == (2, len(fire_size_feats))
 
 
+def test_grid_source_bp_nodata_as_zero_extends_bp_mask(temp_data_dir, monkeypatch):
+    tmpdir, *_ = temp_data_dir
+    monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation", lambda *_args, **_kwargs: (1.0, 0.0))
+
+    sample_path = os.path.join(tmpdir, "sample_0.npy")
+    arr = np.load(sample_path)
+    arr[0, 1, 4] = np.nan
+    np.save(sample_path, arr)
+
+    params = GridParams(
+        feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],
+        target_name="bp",
+        out_norm="none",
+        fuel_feats_encoding="ordinal",
+        bp_nodata_as_zero=True,
+    )
+    source = GridSource(root_dir=tmpdir, params=params, modelling_approach="1")
+
+    _, target, mask = source.get_sample({"file_path": sample_path})
+
+    assert mask[0, 0, 1]
+    assert target[0, 0, 1].item() == pytest.approx(0.0)
+
+
+def test_grid_source_bp_nodata_as_zero_sets_minmax_range_to_zero(temp_data_dir, monkeypatch):
+    tmpdir, *_ = temp_data_dir
+    monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation", lambda *_args, **_kwargs: (1.0, 0.0))
+    monkeypatch.setattr("src.datasets.sources.grids.get_range_output", lambda *_args, **_kwargs: (0.5, 1.0 / 30000.0))
+
+    params = GridParams(
+        feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],
+        target_name="bp",
+        out_norm="min_max",
+        fuel_feats_encoding="ordinal",
+        bp_nodata_as_zero=True,
+    )
+    source = GridSource(root_dir=tmpdir, params=params, modelling_approach="1")
+
+    assert source.target_ranges["bp"] == pytest.approx((0.5, 0.0))
+
+
+def test_grid_source_input_and_all_targets_policy_clips_legacy_context(temp_data_dir, monkeypatch):
+    tmpdir, *_ = temp_data_dir
+    monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation", lambda *_args, **_kwargs: (1.0, 0.0))
+
+    sample_path = os.path.join(tmpdir, "sample_0.npy")
+    arr = np.load(sample_path)
+    arr[0, 2, 4] = 0.25
+    arr[0, 2, 5] = np.nan
+    arr[0, 2, 6] = 0.75
+    np.save(sample_path, arr)
+
+    params = GridParams(
+        feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],
+        target_name="bp",
+        out_norm="none",
+        fuel_feats_encoding="ordinal",
+        input_mask_policy="input_and_all_targets",
+    )
+    source = GridSource(root_dir=tmpdir, params=params, modelling_approach="1")
+
+    _, _, mask = source.get_sample({"file_path": sample_path})
+
+    assert not mask[0, 0, 2]
+
+
+def test_spatialized_tabular_source_rasterizes_zone_summaries(temp_data_dir):
+    tmpdir, _, _, _, weather_csv, weather_feats, _, _, _ = temp_data_dir
+
+    params = SpatializedTabularParams(
+        csv_name=weather_csv,
+        feature_names_list=weather_feats[:2],
+        fire_weather_zone_id_col="WeatherZone",
+        include_missing_mask=True,
+    )
+    source = SpatializedTabularSource(root_dir=tmpdir, params=params, modelling_approach="1")
+
+    sample = source.get_sample({"file_path": os.path.join(tmpdir, "sample_0.npy")})
+    expected_zone_100 = (
+        pd.read_csv(os.path.join(tmpdir, weather_csv))
+        .query("WeatherZone == 100")[weather_feats[:2]]
+        .mean(axis=0)
+        .to_numpy(dtype=np.float32)
+    )
+
+    assert sample.shape == (3, 32, 32)
+    np.testing.assert_allclose(sample[:2, 0, 0].numpy(), expected_zone_100)
+    assert sample[-1, 0, 0].item() == 0.0
+    assert sample[-1, 1, 1].item() == 1.0
+
+
+def test_build_dataset_appends_spatialized_tabular_channels_to_grid(temp_data_dir, monkeypatch):
+    tmpdir, train_csv, _, _, weather_csv, weather_feats, _, _, _ = temp_data_dir
+    monkeypatch.setattr("src.datasets.sources.grids.get_range_output", lambda *_args, **_kwargs: (1.0, 0.0))
+    monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation", lambda *_args, **_kwargs: (1.0, 0.0))
+
+    config = DataConfig(
+        root_dir=tmpdir,
+        raw_data_dir=tmpdir,
+        train_split=train_csv,
+        val_split="val.csv",
+        test_split="test.csv",
+        input_sources=[
+            DataSourceConfig(
+                name="grid",
+                params=GridParams(
+                    feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],
+                    out_norm="min_max",
+                    fuel_feats_encoding="ordinal",
+                ),
+            ),
+            DataSourceConfig(
+                name="spatialized_weather",
+                params=SpatializedTabularParams(
+                    csv_name=weather_csv,
+                    feature_names_list=weather_feats[:2],
+                    fire_weather_zone_id_col="WeatherZone",
+                ),
+            ),
+        ],
+    )
+
+    dataset = build_dataset(config=config, csv_name=train_csv, modelling_approach="1")
+    spatial_channels, auxiliary_dims = get_dataset_dimensions(dataset)
+    sample = dataset[0]
+
+    assert spatial_channels == 5
+    assert auxiliary_dims == {}
+    assert set(sample) == {"grid"}
+    inputs, _, _ = sample["grid"]
+    assert inputs.shape == (5, 32, 32)
+
+
+def test_build_dataset_can_include_patch_metadata(temp_data_dir, monkeypatch):
+    tmpdir, train_csv, _, _, _, _, _, _, _ = temp_data_dir
+    monkeypatch.setattr("src.datasets.sources.grids.get_range_output", lambda *_args, **_kwargs: (1.0, 0.0))
+    monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation", lambda *_args, **_kwargs: (1.0, 0.0))
+
+    config = DataConfig(
+        root_dir=tmpdir,
+        raw_data_dir=tmpdir,
+        train_split=train_csv,
+        val_split="val.csv",
+        test_split="test.csv",
+        include_patch_metadata=True,
+        input_sources=[
+            DataSourceConfig(
+                name="grid",
+                params=GridParams(
+                    feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],
+                    out_norm="min_max",
+                    fuel_feats_encoding="ordinal",
+                ),
+            )
+        ],
+    )
+
+    dataset = build_dataset(config=config, csv_name=train_csv, modelling_approach="1")
+    sample = dataset[0]
+
+    assert "patch_metadata" in sample
+    assert sample["patch_metadata"]["hex_id"].item() == 1
+
+
+def test_global_context_source(temp_data_dir):
+    tmpdir, train_csv, _, _, _, _, _, _, global_context_dir = temp_data_dir
+
+    global_context_params = GlobalContextParams(
+        context_dir=global_context_dir,
+        num_context_channels=3,
+    )
+    global_context_source = GlobalContextSource(root_dir=tmpdir, params=global_context_params, modelling_approach="1")
+
+    ds = MultiSourceDataset(csv_name=train_csv, root_dir=tmpdir, sources={"global_context": global_context_source})
+    sample = ds[0]["global_context"]
+
+    assert sample.shape == (4, 8, 8)
+    np.testing.assert_allclose(sample[:3], np.full((3, 8, 8), 0.25, dtype=np.float32))
+    assert sample[3, :].sum() > 0
+    assert global_context_source.input_dim() == 4
+
+
+def test_build_dataset_with_global_context_source(temp_data_dir):
+    tmpdir, train_csv, _, _, _, _, _, _, global_context_dir = temp_data_dir
+
+    config = DataConfig(
+        root_dir=tmpdir,
+        raw_data_dir=tmpdir,
+        train_split=train_csv,
+        val_split="val.csv",
+        test_split="test.csv",
+        input_sources=[
+            DataSourceConfig(
+                name="global_context_grid",
+                params={
+                    "context_dir": global_context_dir,
+                    "num_context_channels": 3,
+                },
+            ),
+        ],
+    )
+
+    ds = build_dataset(config=config, csv_name=train_csv, modelling_approach="1")
+    sample = ds[2]
+
+    assert isinstance(config.input_sources[0].params, GlobalContextParams)
+    assert sample["global_context_grid"].shape == (4, 8, 8)
+    np.testing.assert_allclose(sample["global_context_grid"][:3], np.full((3, 8, 8), -0.25, dtype=np.float32))
+
+
+def _write_bp_prediction(path, values):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with rasterio.open(
+        path,
+        "w",
+        driver="GTiff",
+        height=values.shape[0],
+        width=values.shape[1],
+        count=1,
+        dtype="float32",
+        crs="EPSG:3857",
+        transform=from_origin(0.0, 32.0, 1.0, 1.0),
+        nodata=-9999.0,
+    ) as dst:
+        dst.write(values.astype(np.float32), 1)
+
+
+def test_bp_prediction_source_crops_and_fills_nodata(temp_data_dir):
+    tmpdir, *_ = temp_data_dir
+    pred_dir = os.path.join(tmpdir, "bp_predictions")
+    values = np.arange(32 * 32, dtype=np.float32).reshape(32, 32) / 2000.0
+    values[0, 16] = -9999.0
+    _write_bp_prediction(os.path.join(pred_dir, "hexel_01_predicted.tif"), values)
+
+    params = BPPredictionParams(prediction_dir=pred_dir, fill_value=0.0, validate_alignment=False)
+    source = BPPredictionSource(root_dir=tmpdir, params=params, modelling_approach="1")
+    sample = source.get_sample(
+        {
+            "data": np.zeros((8, 8, 7), dtype=np.float32),
+            "hex_id": 1,
+            "row": 0,
+            "col": 16,
+        }
+    )
+
+    assert source.input_dim() == 1
+    assert sample.shape == (1, 8, 8)
+    assert sample[0, 0, 0].item() == pytest.approx(0.0)
+    assert sample[0, 0, 1].item() == pytest.approx(values[0, 17])
+    assert sample.min().item() >= 0.0
+    assert sample.max().item() <= 1.0
+
+
+def test_bp_prediction_source_fills_edge_padding(temp_data_dir):
+    tmpdir, *_ = temp_data_dir
+    pred_dir = os.path.join(tmpdir, "bp_predictions")
+    values = np.arange(32 * 32, dtype=np.float32).reshape(32, 32) / 2000.0
+    _write_bp_prediction(os.path.join(pred_dir, "hexel_01_predicted.tif"), values)
+
+    params = BPPredictionParams(prediction_dir=pred_dir, fill_value=0.0, validate_alignment=False)
+    source = BPPredictionSource(root_dir=tmpdir, params=params, modelling_approach="1")
+    sample = source.get_sample(
+        {
+            "data": np.zeros((8, 8, 7), dtype=np.float32),
+            "hex_id": 1,
+            "row": 28,
+            "col": 28,
+        }
+    )
+
+    assert sample.shape == (1, 8, 8)
+    torch.testing.assert_close(sample[0, :4, :4], torch.from_numpy(values[28:32, 28:32]))
+    torch.testing.assert_close(sample[0, 4:, :], torch.zeros((4, 8)))
+    torch.testing.assert_close(sample[0, :, 4:], torch.zeros((8, 4)))
+
+
+def test_build_dataset_appends_bp_prediction_channel_to_grid(temp_data_dir, monkeypatch):
+    tmpdir, train_csv, _, _, _, _, _, _, _ = temp_data_dir
+    monkeypatch.setattr("src.datasets.sources.grids.get_range_output", lambda *_args, **_kwargs: (1.0, 0.0))
+    monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation", lambda *_args, **_kwargs: (1.0, 0.0))
+
+    pred_dir = os.path.join(tmpdir, "bp_predictions")
+    values = np.full((32, 32), 0.42, dtype=np.float32)
+    _write_bp_prediction(os.path.join(pred_dir, "hexel_01_predicted.tif"), values)
+    _write_bp_prediction(os.path.join(pred_dir, "hexel_02_predicted.tif"), np.full((48, 32), 0.24, dtype=np.float32))
+
+    config = DataConfig(
+        root_dir=tmpdir,
+        raw_data_dir=tmpdir,
+        train_split=train_csv,
+        val_split="val.csv",
+        test_split="test.csv",
+        input_sources=[
+            DataSourceConfig(
+                name="grid",
+                params=GridParams(
+                    feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],
+                    out_norm="min_max",
+                    fuel_feats_encoding="ordinal",
+                ),
+            ),
+            DataSourceConfig(
+                name="bp_prediction",
+                params={
+                    "prediction_dir": pred_dir,
+                    "validate_alignment": False,
+                },
+            ),
+        ],
+    )
+
+    dataset = build_dataset(config=config, csv_name=train_csv, modelling_approach="1")
+    spatial_channels, auxiliary_dims = get_dataset_dimensions(dataset)
+    sample = dataset[0]
+
+    assert isinstance(config.input_sources[1].params, BPPredictionParams)
+    assert spatial_channels == 4
+    assert auxiliary_dims == {}
+    inputs, _, _ = sample["grid"]
+    assert inputs.shape == (4, 32, 32)
+    torch.testing.assert_close(inputs[-1], torch.full((32, 32), 0.42))
+
+
 def test_build_dataset_passes_raw_data_dir_to_grid_source(temp_data_dir, monkeypatch):
-    tmpdir, train_csv, _, _, _, _, _, _ = temp_data_dir
+    tmpdir, train_csv, _, _, _, _, _, _, _ = temp_data_dir
     raw_data_dir = "/network/raw/source"
     seen = {}
 
@@ -199,7 +549,7 @@ def test_build_dataset_passes_raw_data_dir_to_grid_source(temp_data_dir, monkeyp
 
 
 def test_grid_source_rejects_invalid_explicit_raw_data_dir(temp_data_dir, monkeypatch):
-    tmpdir, _, _, _, _, _, _, _ = temp_data_dir
+    tmpdir, _, _, _, _, _, _, _, _ = temp_data_dir
 
     monkeypatch.setattr(
         "src.datasets.sources.grids.get_range_output",
@@ -218,7 +568,7 @@ def test_grid_source_rejects_invalid_explicit_raw_data_dir(temp_data_dir, monkey
 
 
 def test_grid_one_hot_encoding(temp_data_dir):
-    tmpdir, train_csv, _, _, _, _, _, _ = temp_data_dir
+    tmpdir, train_csv, _, _, _, _, _, _, _ = temp_data_dir
 
     grid_params = GridParams(feature_names_list=["fuel_grid"], fuel_feats_encoding="one_hot", normalize_fuel_feats_ordinal=True)
 
@@ -236,7 +586,7 @@ def test_grid_one_hot_encoding(temp_data_dir):
 
 
 def test_grid_feature_names_list(temp_data_dir):
-    tmpdir, train_csv, _, _, _, _, _, _ = temp_data_dir
+    tmpdir, train_csv, _, _, _, _, _, _, _ = temp_data_dir
 
     grid_params = GridParams(
         feature_names_list=["fuel_grid"],
@@ -253,8 +603,146 @@ def test_grid_feature_names_list(temp_data_dir):
     assert x.shape[0] == 1
 
 
+def test_grid_source_can_append_full_hex_coordinate_channels(temp_data_dir):
+    tmpdir, *_ = temp_data_dir
+    grid_params = GridParams(
+        feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],
+        target_name="bp",
+        out_norm="none",
+        fuel_feats_encoding="ordinal",
+        normalize_fuel_feats_ordinal=True,
+        include_hex_coords=True,
+    )
+    grid_source = GridSource(root_dir=tmpdir, params=grid_params, modelling_approach="1")
+
+    inputs, _, _ = grid_source.get_sample(
+        {
+            "file_path": os.path.join(tmpdir, "sample_0.npy"),
+            "hex_id": 1,
+            "row": 4,
+            "col": 8,
+            "full_height": 64,
+            "full_width": 128,
+        }
+    )
+
+    assert grid_source.input_dim() == 5
+    assert inputs.shape == (5, 32, 32)
+    expected_y0 = 2.0 * 4 / 63.0 - 1.0
+    expected_x0 = 2.0 * 8 / 127.0 - 1.0
+    expected_y_last = 2.0 * (4 + 31) / 63.0 - 1.0
+    expected_x_last = 2.0 * (8 + 31) / 127.0 - 1.0
+    assert inputs[-2, 0, 0].item() == pytest.approx(expected_y0)
+    assert inputs[-1, 0, 0].item() == pytest.approx(expected_x0)
+    assert inputs[-2, -1, -1].item() == pytest.approx(expected_y_last)
+    assert inputs[-1, -1, -1].item() == pytest.approx(expected_x_last)
+
+
+def test_grid_source_appends_terrain_derivatives_from_elevation(temp_data_dir, monkeypatch):
+    tmpdir, *_ = temp_data_dir
+    monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation", lambda *_args, **_kwargs: (3100.0, 0.0))
+
+    sample_path = os.path.join(tmpdir, "sample_0.npy")
+    arr = np.zeros((32, 32, 7), dtype=np.float32)
+    arr[:, :, 1] = np.broadcast_to(np.arange(32, dtype=np.float32) * 100.0, (32, 32))
+    arr[:, :, 4] = 0.25
+    np.save(sample_path, arr)
+
+    grid_params = GridParams(
+        feature_names_list=["elevation_grid"],
+        target_name="bp",
+        out_norm="none",
+        terrain_derivatives=["slope", "aspect_sin", "aspect_cos"],
+        terrain_cell_size_m=100.0,
+    )
+    grid_source = GridSource(root_dir=tmpdir, params=grid_params, modelling_approach="1")
+
+    inputs, _, _ = grid_source.get_sample({"file_path": sample_path})
+
+    assert grid_source.input_dim() == 4
+    assert inputs.shape == (4, 32, 32)
+    torch.testing.assert_close(inputs[1], torch.full((32, 32), 0.5), rtol=1e-5, atol=1e-5)
+    torch.testing.assert_close(inputs[2], torch.full((32, 32), -1.0), rtol=1e-5, atol=1e-5)
+    torch.testing.assert_close(inputs[3], torch.zeros((32, 32)), rtol=1e-5, atol=1e-5)
+
+
+def test_grid_source_terrain_derivatives_are_computed_after_transforms(temp_data_dir, monkeypatch):
+    tmpdir, *_ = temp_data_dir
+    monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation", lambda *_args, **_kwargs: (3100.0, 0.0))
+
+    sample_path = os.path.join(tmpdir, "sample_0.npy")
+    arr = np.zeros((32, 32, 7), dtype=np.float32)
+    arr[:, :, 1] = np.broadcast_to(np.arange(32, dtype=np.float32) * 100.0, (32, 32))
+    arr[:, :, 4] = 0.25
+    np.save(sample_path, arr)
+
+    def hflip_transform(x, target, mask):
+        return F.hflip(x), F.hflip(target), F.hflip(mask)
+
+    grid_params = GridParams(
+        feature_names_list=["elevation_grid"],
+        target_name="bp",
+        out_norm="none",
+        terrain_derivatives=["aspect_sin"],
+        terrain_cell_size_m=100.0,
+    )
+    grid_source = GridSource(root_dir=tmpdir, params=grid_params, modelling_approach="1", transform=hflip_transform)
+
+    inputs, _, _ = grid_source.get_sample({"file_path": sample_path})
+
+    torch.testing.assert_close(inputs[-1], torch.full((32, 32), 1.0), rtol=1e-5, atol=1e-5)
+
+
+def test_grid_source_sets_flat_terrain_aspect_to_zero(temp_data_dir, monkeypatch):
+    tmpdir, *_ = temp_data_dir
+    monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation", lambda *_args, **_kwargs: (1000.0, 0.0))
+
+    sample_path = os.path.join(tmpdir, "sample_0.npy")
+    arr = np.zeros((32, 32, 7), dtype=np.float32)
+    arr[:, :, 1] = 500.0
+    arr[:, :, 4] = 0.25
+    np.save(sample_path, arr)
+
+    grid_params = GridParams(
+        feature_names_list=["elevation_grid"],
+        target_name="bp",
+        out_norm="none",
+        terrain_derivatives=["slope", "aspect_sin", "aspect_cos"],
+        terrain_cell_size_m=100.0,
+    )
+    grid_source = GridSource(root_dir=tmpdir, params=grid_params, modelling_approach="1")
+
+    inputs, _, _ = grid_source.get_sample({"file_path": sample_path})
+
+    torch.testing.assert_close(inputs[1:], torch.zeros((3, 32, 32)), rtol=1e-5, atol=1e-5)
+
+
+def test_grid_source_terrain_derivatives_require_elevation(temp_data_dir):
+    tmpdir, *_ = temp_data_dir
+    grid_params = GridParams(
+        feature_names_list=["ignition_grid"],
+        target_name="bp",
+        terrain_derivatives=["slope"],
+    )
+
+    with pytest.raises(ValueError, match="requires 'elevation_grid'"):
+        GridSource(root_dir=tmpdir, params=grid_params, modelling_approach="1")
+
+
+def test_grid_source_rejects_unknown_terrain_derivatives(temp_data_dir):
+    tmpdir, *_ = temp_data_dir
+    grid_params = GridParams(
+        feature_names_list=["elevation_grid"],
+        target_name="bp",
+        terrain_derivatives=["aspect_degrees"],
+    )
+
+    with pytest.raises(ValueError, match="Invalid terrain_derivatives"):
+        GridSource(root_dir=tmpdir, params=grid_params, modelling_approach="1")
+
+
 def test_mask_threshold(temp_data_dir):
-    tmpdir, train_csv, _, _, _, _, _, _ = temp_data_dir
+    tmpdir, train_csv, _, _, _, _, _, _, _ = temp_data_dir
     # Set threshold above 1.0 so no samples are valid
     ds = MultiSourceDataset(csv_name="train.csv", root_dir=tmpdir, valid_mask_threshold=1.0)
 
@@ -262,7 +750,7 @@ def test_mask_threshold(temp_data_dir):
 
 
 def test_grid_transforms(temp_data_dir):
-    tmpdir, train_csv, _, _, _, _, _, _ = temp_data_dir
+    tmpdir, train_csv, _, _, _, _, _, _, _ = temp_data_dir
 
     base_params_dict = {
         "feature_names_list": ["ignition_grid", "fuel_grid", "elevation_grid"],
@@ -344,8 +832,21 @@ def test_grid_transforms(temp_data_dir):
     assert is_90 or is_180 or is_270
 
 
+def test_get_transforms_returns_grid_augmentations():
+    config = DataSourceConfig(
+        name="grid",
+        params=GridParams(
+            feature_names_list=["ignition_grid"],
+            transforms_list=["random_flip", "random_rotate"],
+            augmentation_prob=0.5,
+        ),
+    )
+
+    assert get_transforms(config) is not None
+
+
 def test_tabular_weighted_sampling(temp_data_dir):
-    tmpdir, train_csv, _, _, _, _, fire_size_csv, fire_size_feats = temp_data_dir
+    tmpdir, train_csv, _, _, _, _, fire_size_csv, fire_size_feats, _ = temp_data_dir
 
     fire_size_params = TabularParams(
         csv_name=fire_size_csv,
@@ -378,7 +879,8 @@ def test_tabular_weighted_sampling(temp_data_dir):
         sample = fire_size_source.get_sample({"data": data})
 
         # Ensure we captured probabilities and that sample has expected shape
-        assert "p" in captured and captured["p"] is not None
+        assert "p" in captured
+        assert captured["p"] is not None
         assert sample.shape == (2, len(fire_size_feats))
 
         # Compute expected raw weights: for each zone, weight per candidate = count_in_patch / len(zone_cands)
@@ -414,6 +916,24 @@ def test_grid_output_channel_from_feature_map(temp_data_dir, target_name, expect
     target_np = target.squeeze(0).numpy()
     mask_np = mask.squeeze(0).numpy()
     np.testing.assert_allclose(target_np[mask_np], expected_value, rtol=1e-6, atol=1e-6)
+
+
+def test_grid_multi_target_output_channels(temp_data_dir):
+    tmpdir, *_ = temp_data_dir
+    grid_params = GridParams(
+        feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],
+        target_name=["bp", "fi", "ros"],
+        target_out_norms={"bp": "none", "fi": "none", "ros": "none"},
+        fuel_feats_encoding="ordinal",
+        normalize_fuel_feats_ordinal=True,
+    )
+
+    grid_source = GridSource(root_dir=tmpdir, params=grid_params, modelling_approach="1")
+    _, target, mask = grid_source.get_sample({"file_path": os.path.join(tmpdir, "sample_0.npy")})
+
+    assert target.shape == (3, 32, 32)
+    assert mask.shape == (3, 32, 32)
+    torch.testing.assert_close(target[:, 0, 0], torch.tensor([0.25, 0.50, 0.75]))
 
 
 def test_grid_target_nan_excluded_from_mask(temp_data_dir):

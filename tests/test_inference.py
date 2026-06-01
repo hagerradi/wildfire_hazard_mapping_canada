@@ -2,6 +2,8 @@ import torch
 
 from inference.predictor import BurnRiskPredictor
 from inference.run_ai_surrogate_model_hexel_inference import get_grid_params_from_data_config, get_target_spec_from_data_config
+from src.config import ModelConfig
+from src.models.smp import SMPDensePredictionModel
 
 
 def test_inference_target_spec_defaults_to_bp_for_old_checkpoints():
@@ -49,3 +51,20 @@ def test_predictor_sigmoids_bp_outputs():
     predictions = predictor(torch.zeros(1, 1, 2, 2))
 
     assert torch.allclose(predictions, torch.full((1, 1, 2, 2), 0.5))
+
+
+def test_predictor_builds_smp_model_from_checkpoint_config():
+    model_config = ModelConfig(
+        architecture="smp",
+        input_feature_list=["spatial", "auxiliary"],
+        smp_architecture="Unet",
+        smp_encoder_name="resnet18",
+        smp_encoder_weights=None,
+        auxiliary_feature_encoder_poolings={"weather": "max"},
+    ).model_dump()
+
+    model = BurnRiskPredictor._build_model(model_config=model_config, spatial_channels=3, auxiliary_input_dims={"weather": 5})
+
+    assert isinstance(model, SMPDensePredictionModel)
+    out = model(torch.randn(1, 3, 64, 64), {"weather": torch.randn(1, 4, 5)})
+    assert out.shape == (1, 1, 64, 64)

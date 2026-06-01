@@ -7,6 +7,16 @@ import torch.nn.functional as F
 from src.models.utils import conv_block, double_conv_block
 
 
+def append_coord_channels(x: torch.Tensor) -> torch.Tensor:
+    """Append patch-local row/column coordinates normalized to [-1, 1]."""
+    batch_size, _, height, width = x.shape
+    y = torch.linspace(-1.0, 1.0, height, device=x.device, dtype=x.dtype).view(1, 1, height, 1)
+    y = y.expand(batch_size, 1, height, width)
+    x_coord = torch.linspace(-1.0, 1.0, width, device=x.device, dtype=x.dtype).view(1, 1, 1, width)
+    x_coord = x_coord.expand(batch_size, 1, height, width)
+    return torch.cat([x, y, x_coord], dim=1)
+
+
 class EncoderBase(nn.Module, ABC):
     """Abstract base class for encoders.
     forward(x) -> (out, skips) where skips is List[Tensor] (shallow -> deep).
@@ -30,15 +40,18 @@ class BaselineEncoder(EncoderBase):
     Sets self.out_channels to bottleneck channels.
     """
 
-    def __init__(self, in_channels: int, hidden_features: list[int] | None):
+    def __init__(self, in_channels: int, hidden_features: list[int] | None, use_coordconv: bool = False):
         super().__init__()
         if hidden_features is None:
             raise ValueError("Hidden features cannot be None")
         self.hidden_features = hidden_features
+        self.use_coordconv = use_coordconv
 
         self.layers = nn.ModuleList()
         in_ch = in_channels
         for h_feature in self.hidden_features:
+            if self.use_coordconv:
+                in_ch += 2
             self.layers.append(double_conv_block(in_ch, h_feature))
             in_ch = h_feature
 
@@ -47,6 +60,8 @@ class BaselineEncoder(EncoderBase):
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, list[torch.Tensor]]:
         skip_connections = []
         for layer in self.layers:
+            if self.use_coordconv:
+                x = append_coord_channels(x)
             x = layer(x)
             skip_connections.append(x)
             x = self.maxpool(x)
@@ -212,3 +227,88 @@ class WindFeatureEncoderSpatial(nn.Module):
         x = self.feature_extractor(x)
         x = self.projector(x)
         return x  # Output is (B, embed_dim, 8, 8)
+
+
+class GlobalContextGridEncoder(nn.Module):
+    """Encodes a downsampled full-hex context grid to the U-Net bottleneck scale."""
+
+    def __init__(self, in_channels: int, hidden_dims: list[int] | None = None, embed_dim: int = 64, output_size: int = 16):
+        super().__init__()
+        self.hidden_dims = hidden_dims if hidden_dims is not None else [16, 32, 64]
+        self.embed_dim = embed_dim
+        self.output_size = output_size
+
+        layers: list[nn.Module] = []
+        prev_channels = in_channels
+        for hidden_dim in self.hidden_dims:
+            layers.append(double_conv_block(prev_channels, hidden_dim))
+            layers.append(nn.MaxPool2d(kernel_size=2, stride=2))
+            prev_channels = hidden_dim
+
+        self.feature_extractor = nn.Sequential(*layers)
+        self.projector = double_conv_block(prev_channels, self.embed_dim)
+        self.scale = nn.Parameter(torch.ones(1) * 0.1)
+
+    def _match_output_size(self, x: torch.Tensor) -> torch.Tensor:
+        output_shape = (self.output_size, self.output_size)
+        if x.shape[-2:] == output_shape:
+            return x
+
+        height, width = x.shape[-2:]
+        if height < self.output_size or width < self.output_size:
+            raise ValueError(
+                "Global context feature map is smaller than the requested bottleneck size: "
+                f"feature_map={(height, width)}, output_shape={output_shape}."
+            )
+        if height % self.output_size != 0 or width % self.output_size != 0:
+            raise ValueError(
+                "Global context feature map dimensions must be divisible by the requested bottleneck size "
+                f"to use deterministic average pooling: feature_map={(height, width)}, output_shape={output_shape}."
+            )
+
+        kernel_size = (height // self.output_size, width // self.output_size)
+        return F.avg_pool2d(x, kernel_size=kernel_size, stride=kernel_size)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.feature_extractor(x)
+        x = self._match_output_size(x)
+        return self.projector(x) * self.scale
+
+
+class GlobalContextMultiScaleEncoder(nn.Module):
+    """Projects a global context grid onto all U-Net skip scales plus bottleneck scale."""
+
+    def __init__(
+        self,
+        in_channels: int,
+        hidden_features: list[int],
+        bottleneck_channels: int,
+        hidden_dim: int = 32,
+    ):
+        super().__init__()
+        self.target_channels = [*hidden_features, bottleneck_channels]
+        self.projectors = nn.ModuleList(
+            [
+                nn.Sequential(
+                    nn.Conv2d(in_channels, hidden_dim, kernel_size=3, padding=1, bias=False),
+                    nn.BatchNorm2d(hidden_dim),
+                    nn.ReLU(inplace=True),
+                    nn.Conv2d(hidden_dim, channels, kernel_size=1),
+                )
+                for channels in self.target_channels
+            ]
+        )
+        self.scales = nn.Parameter(torch.full((len(self.target_channels),), 0.1))
+
+    def forward(
+        self, x: torch.Tensor, skip_shapes: list[tuple[int, int]], bottleneck_shape: tuple[int, int]
+    ) -> tuple[list[torch.Tensor], torch.Tensor]:
+        target_shapes = [*skip_shapes, bottleneck_shape]
+        if len(target_shapes) != len(self.projectors):
+            raise ValueError(f"Expected {len(self.projectors)} target shapes, got {len(target_shapes)}.")
+
+        outputs = []
+        for idx, (projector, target_shape) in enumerate(zip(self.projectors, target_shapes, strict=True)):
+            resized = F.interpolate(x, size=target_shape, mode="nearest")
+            outputs.append(projector(resized) * self.scales[idx])
+        return outputs[:-1], outputs[-1]

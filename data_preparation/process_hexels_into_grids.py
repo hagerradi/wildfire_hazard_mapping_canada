@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 
 from data_preparation.hexel_loader import load_spatial_features_per_hexel
+from data_preparation.paths import MASK_SCOPE_CHOICES, prepared_mask_scope
 from data_preparation.spatial import NODATA
 from data_preparation.utils import find_hex_ids, get_processed_hex_ids
 
@@ -31,6 +32,7 @@ def get_split_hexel_window(
     win_h: int = 128,
     win_w: int = 128,
     overlap_ratio: float = 0.2,
+    mask_scope: str = "actual",
 ):
     """
     Split the hexel using sliding windows for inp to the model
@@ -38,6 +40,7 @@ def get_split_hexel_window(
         season_cause_stacked_feats(np.ndarray): Stacked array of all the features of the shape (num_season_cause, H, W, num_feats)
         season_cause_mask(np.ndarray): A bool array where True means to ignore the pixel (num_season_cause, H,W)
     """
+    scope = prepared_mask_scope(mask_scope)
     print("============Splitting the hexel==================")
     num_season_cause, H, W, _ = season_cause_stacked_feats.shape
     stride_h = max(1, int(win_h * (1 - overlap_ratio)))  # n_rows = (H-win_h)//stride_h + 1
@@ -87,6 +90,7 @@ def get_split_hexel_window(
                         row,
                         col,
                         valid_ratio,
+                        scope,
                     ]
                 )
     df_coords = pd.DataFrame(valid_coords)
@@ -99,6 +103,7 @@ def get_split_hexel_window(
         "row",
         "col",
         "valid_ratio",
+        "mask_scope",
     ]
     df_coords.to_csv(os.path.join(out_dir, f"meta_hex_{hex_id}.csv"), index=False)
     print(f"=====Hexel data Saved at {out_dir} ========")
@@ -114,11 +119,14 @@ def generate_data_samples(
     is_array_job: bool = False,
     task_id: int = 0,
     num_tasks: int = 1,
+    mask_scope: str = "actual",
 ):
+    scope = prepared_mask_scope(mask_scope)
     if save_dir:
         out_dir = save_dir
     else:
-        out_dir = os.path.join(root_dir, f"data_samples_approach_{modelling_approach}")
+        suffix = "" if scope == "actual" else f"_{scope}"
+        out_dir = os.path.join(root_dir, f"data_samples_approach_{modelling_approach}{suffix}")
     os.makedirs(out_dir, exist_ok=True)
     os.makedirs(os.path.join(out_dir, "numpy_files"), exist_ok=True)
     completed_hex_ids = get_processed_hex_ids(out_dir)
@@ -148,6 +156,7 @@ def generate_data_samples(
             hex_id=hex_id,
             feature_channel_map_path=os.path.join(out_dir, f"feature_channel_map_{modelling_approach}.json"),
             modelling_approach=modelling_approach,
+            mask_scope=scope,
         )
         if (stacked_feats is None) or (mask is None):
             print(f"================Failed for hex {hex_id}===================")
@@ -162,6 +171,7 @@ def generate_data_samples(
             win_h=win_h,
             win_w=win_w,
             overlap_ratio=overlap_ratio,
+            mask_scope=scope,
         )
         print(f"======Processed Hex ID: {hex_id}==========")
 
@@ -178,6 +188,7 @@ def main():
     parser.add_argument("--is_array_job", action="store_true", help="Boolean to indicate if using SLURM job array")
     parser.add_argument("--task_id", type=int, default=0, help="SLURM array ID")
     parser.add_argument("--num_tasks", type=int, default=1, help="Total number of array tasks")
+    parser.add_argument("--mask_scope", choices=MASK_SCOPE_CHOICES, default="actual", help="Mask scope for generated patch rasters.")
     args = parser.parse_args()
 
     generate_data_samples(
@@ -190,6 +201,7 @@ def main():
         is_array_job=args.is_array_job,
         task_id=args.task_id,
         num_tasks=args.num_tasks,
+        mask_scope=args.mask_scope,
     )
 
 

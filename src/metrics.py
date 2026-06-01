@@ -1,8 +1,30 @@
 # Definitions of metrics for model evaluation
+import math
+
 import torch
 import torch.nn.functional as F
 from torchmetrics.functional.image import structural_similarity_index_measure
-from torchmetrics.functional.regression import spearman_corrcoef
+
+
+def _topk_threshold(values: torch.Tensor, percentile: float) -> torch.Tensor:
+    """Return a top-k threshold without torch.quantile's large-tensor limit."""
+    flat = values.reshape(-1).float()
+    if flat.numel() == 0:
+        return flat.new_tensor(float("nan"))
+    percentile = min(max(float(percentile), 0.0), 1.0)
+    top_fraction = 1.0 - percentile
+    if top_fraction <= 0.0:
+        top_count = 1
+    else:
+        raw_count = flat.numel() * top_fraction
+        nearest_count = round(raw_count)
+        top_count = int(nearest_count if math.isclose(raw_count, nearest_count, rel_tol=1e-6, abs_tol=1e-6) else math.ceil(raw_count))
+    k = max(1, min(flat.numel(), top_count))
+    return torch.topk(flat, k=k, largest=True, sorted=False).values.min()
+
+
+def _topk_thresholds(values: torch.Tensor, percentiles: torch.Tensor) -> torch.Tensor:
+    return torch.stack([_topk_threshold(values, float(percentile.item())) for percentile in percentiles.reshape(-1)])
 
 
 def compute_mse(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor | None = None, eps: float = 1e-8) -> torch.Tensor:
@@ -33,6 +55,50 @@ def compute_mae(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor |
     return loss.sum() / denom
 
 
+def compute_normalized_mae(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor | None = None, eps: float = 1e-8) -> torch.Tensor:
+    """Computes MAE normalized by the mean absolute target magnitude over valid pixels."""
+    preds = preds.float()
+    targets = targets.float()
+
+    if mask is None:
+        abs_error = torch.abs(preds - targets).mean()
+        target_scale = torch.abs(targets).mean().clamp_min(eps)
+        return abs_error / target_scale
+
+    valid = mask.to(dtype=preds.dtype)
+    abs_error_sum = (torch.abs(preds - targets) * valid).sum()
+    target_scale_sum = (torch.abs(targets) * valid).sum().clamp_min(eps)
+    return abs_error_sum / target_scale_sum
+
+
+def _rank_data_average_ties(data: torch.Tensor) -> torch.Tensor:
+    """Rank 1D data with average ranks for ties, avoiding int32 overflow on large hexels."""
+    flat = data.reshape(-1)
+    n = flat.numel()
+    order = flat.argsort()
+    ranks = torch.empty(n, dtype=torch.float64, device=flat.device)
+    ranks[order] = torch.arange(1, n + 1, dtype=torch.float64, device=flat.device)
+    _, inverse, counts = torch.unique(flat, sorted=True, return_inverse=True, return_counts=True)
+    rank_sums = torch.zeros(counts.numel(), dtype=torch.float64, device=flat.device)
+    rank_sums.scatter_add_(0, inverse, ranks)
+    mean_ranks = rank_sums / counts.to(dtype=torch.float64)
+    return mean_ranks[inverse]
+
+
+def _spearman_corrcoef_1d(preds: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+    if preds.numel() < 2:
+        return torch.tensor(float("nan"), device=preds.device)
+
+    pred_ranks = _rank_data_average_ties(preds)
+    target_ranks = _rank_data_average_ties(targets)
+    pred_diff = pred_ranks - pred_ranks.mean()
+    target_diff = target_ranks - target_ranks.mean()
+    denom = torch.linalg.vector_norm(pred_diff) * torch.linalg.vector_norm(target_diff)
+    if denom == 0:
+        return torch.tensor(float("nan"), device=preds.device)
+    return torch.clamp(torch.sum(pred_diff * target_diff) / denom, -1.0, 1.0)
+
+
 def compute_spearman(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor | None = None) -> torch.Tensor:
     """
     Computes Spearman correlation per sample, then averages. Optionally uses a mask.
@@ -46,7 +112,7 @@ def compute_spearman(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Ten
     corrs = []
     if mask is None:
         for i in range(batch_size):
-            corrs.append(spearman_corrcoef(flat_preds[i], flat_targets[i]))
+            corrs.append(_spearman_corrcoef_1d(flat_preds[i], flat_targets[i]))
     else:
         valid_mask = mask.bool().reshape(batch_size, -1)  # True = valid
         for i in range(batch_size):
@@ -54,9 +120,9 @@ def compute_spearman(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Ten
             if sample_valid_mask.sum() < min_valid:
                 corrs.append(torch.tensor(float("nan"), device=preds.device))
                 continue
-            corrs.append(spearman_corrcoef(flat_preds[i][sample_valid_mask], flat_targets[i][sample_valid_mask]))
+            corrs.append(_spearman_corrcoef_1d(flat_preds[i][sample_valid_mask], flat_targets[i][sample_valid_mask]))
 
-    return torch.nanmean(torch.stack(corrs))
+    return torch.nanmean(torch.stack(corrs)).to(dtype=preds.dtype)
 
 
 def compute_ssim(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor | None = None) -> torch.Tensor:
@@ -115,8 +181,8 @@ def compute_topK_iou(
             p = flat_preds[i]
             t = flat_targets[i]
 
-            p_thresh = torch.quantile(p.float(), percentile)
-            t_thresh = torch.quantile(t.float(), percentile)
+            p_thresh = _topk_threshold(p, percentile)
+            t_thresh = _topk_threshold(t, percentile)
 
             # binarization
             p_bin = p >= p_thresh
@@ -138,8 +204,8 @@ def compute_topK_iou(
             p_valid = flat_preds[i][sample_valid_mask]
             t_valid = flat_targets[i][sample_valid_mask]
 
-            p_thresh = torch.quantile(p_valid.float(), percentile)
-            t_thresh = torch.quantile(t_valid.float(), percentile)
+            p_thresh = _topk_threshold(p_valid, percentile)
+            t_thresh = _topk_threshold(t_valid, percentile)
 
             p_bin = p_valid >= p_thresh
             t_bin = t_valid >= t_thresh
@@ -194,8 +260,8 @@ def compute_auc_iou(
             p = flat_preds[i]
             t = flat_targets[i]
 
-            p_thresh = torch.quantile(p.float(), percentiles)
-            t_thresh = torch.quantile(t.float(), percentiles)
+            p_thresh = _topk_thresholds(p, percentiles)
+            t_thresh = _topk_thresholds(t, percentiles)
 
             p_bin = p.unsqueeze(0) >= p_thresh.unsqueeze(1)
             t_bin = t.unsqueeze(0) >= t_thresh.unsqueeze(1)
@@ -221,8 +287,8 @@ def compute_auc_iou(
             p_valid = flat_preds[i][sample_valid_mask]
             t_valid = flat_targets[i][sample_valid_mask]
 
-            p_thresh = torch.quantile(p_valid.float(), percentiles)
-            t_thresh = torch.quantile(t_valid.float(), percentiles)
+            p_thresh = _topk_thresholds(p_valid, percentiles)
+            t_thresh = _topk_thresholds(t_valid, percentiles)
 
             p_bin = p_valid.unsqueeze(0) >= p_thresh.unsqueeze(1)
             t_bin = t_valid.unsqueeze(0) >= t_thresh.unsqueeze(1)
@@ -344,8 +410,8 @@ def compute_topK_mae(
             p = flat_preds[i]
             t = flat_targets[i]
 
-            p_thresh = torch.quantile(p.float(), percentile)
-            t_thresh = torch.quantile(t.float(), percentile)
+            p_thresh = _topk_threshold(p, percentile)
+            t_thresh = _topk_threshold(t, percentile)
 
             topK_mask = (p >= p_thresh) | (t >= t_thresh)
 
@@ -370,8 +436,8 @@ def compute_topK_mae(
             p_valid = flat_preds[i][sample_valid_mask]
             t_valid = flat_targets[i][sample_valid_mask]
 
-            p_thresh = torch.quantile(p_valid.float(), percentile)
-            t_thresh = torch.quantile(t_valid.float(), percentile)
+            p_thresh = _topk_threshold(p_valid, percentile)
+            t_thresh = _topk_threshold(t_valid, percentile)
 
             topK_mask = (p_valid >= p_thresh) | (t_valid >= t_thresh)
 

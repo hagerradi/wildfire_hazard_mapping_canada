@@ -1,5 +1,7 @@
 # base configurations for experiments
-from pydantic import BaseModel, Field
+from typing import Any
+
+from pydantic import BaseModel, Field, model_validator
 
 
 class LoggerConfig(BaseModel):
@@ -12,6 +14,7 @@ class LoggerConfig(BaseModel):
 
 
 class ModelConfig(BaseModel):
+    architecture: str = "auto"
     num_classes: int = 1
     hidden_features: list[int] = [64, 128, 256, 512]
 
@@ -24,6 +27,14 @@ class ModelConfig(BaseModel):
     use_skip_connections: bool = True
     use_transpose_conv: bool = False
     use_activation_after_upsampling: bool = False
+    use_coordconv: bool = False
+    use_multiscale_global_context: bool = False
+
+    # segmentation_models_pytorch models. Used when architecture is "smp".
+    smp_architecture: str = "Unet"
+    smp_encoder_name: str = "resnet34"
+    smp_encoder_weights: str | None = None
+    smp_kwargs: dict[str, Any] = Field(default_factory=dict)
 
     # specific to auxiliary model
     auxiliary_hidden_dims: dict[str, list[int] | dict[str, list[int]]] = {"weather": [32, 64]}
@@ -36,6 +47,12 @@ class OptimizerConfig(BaseModel):
     lr: float = 1e-3
     loss: str | list[str]
     loss_weights: dict[str, float] = {}
+    huber_beta: float = Field(default=1.0, gt=0.0)
+    tail_loss_percentile: float = Field(default=0.75, gt=0.0, lt=1.0)
+    tail_loss_weight: float = Field(default=5.0, ge=1.0)
+    quantile: float = Field(default=0.85, gt=0.0, lt=1.0)
+    target_losses: dict[str, str] = {}
+    target_loss_weights: dict[str, float] = {}
 
 
 class SchedulerConfig(BaseModel):
@@ -58,21 +75,31 @@ class EvaluationConfig(BaseModel):
     best_ckpt_metrics: list[str] = ["spearman"]  # metric to choose best checkpoint
     best_ckpt_metrics_mode: list[str] = ["max"]  # max, or min
     checkpoint_filename: str = "best.pth"
+    bp_nodata_as_zero: bool = True
+    prediction_support_policy: str = "input"
 
 
 class GridParams(BaseModel):
     """Specific parameters for the GridSource."""
 
     feature_names_list: list[str]
-    target_name: str = "bp"
+    target_name: str | list[str] = "bp"
     # TODO: move out_norm outside of grid source config since it's for GT
     out_norm: str = "min_max"
+    target_out_norms: dict[str, str] = {}
     target_log_mean: float | None = None
     target_log_std: float | None = None
+    target_log_means: dict[str, float] = {}
+    target_log_stds: dict[str, float] = {}
     fuel_feats_encoding: str = "one_hot"
     normalize_fuel_feats_ordinal: bool = True
     transforms_list: list[str] = Field(default_factory=list)
     augmentation_prob: float = 0.0
+    include_hex_coords: bool = False
+    terrain_derivatives: list[str] = Field(default_factory=list)
+    terrain_cell_size_m: float = Field(default=100.0, gt=0.0)
+    bp_nodata_as_zero: bool = False
+    input_mask_policy: str = "input_only"
 
 
 class TabularParams(BaseModel):
@@ -91,9 +118,73 @@ class TabularParams(BaseModel):
     feature_to_bias: str | None = None  # The feature to bias sampling towards if sampling_bias is not None
 
 
+class SpatializedTabularParams(TabularParams):
+    """Parameters for rasterizing zone-level tabular covariates onto patch pixels."""
+
+    zone_channel_key: str = "firezones_grid"
+    aggregation: str = "mean"
+    shuffle_lut: bool = False
+    shuffle_seed: int = 42
+    include_missing_mask: bool = False
+    missing_value_strategy: str = "global_mean"
+
+
+class GlobalContextParams(BaseModel):
+    """Parameters for downsampled full-hex context grids."""
+
+    context_dir: str
+    num_context_channels: int
+    context_filename_template: str = "hex_{hex_id_padded}_global_context.npz"
+    metadata_key_col: str = "hex_id"
+    include_patch_footprint: bool = True
+    patch_height: int = 256
+    patch_width: int = 256
+
+
+class BPPredictionParams(BaseModel):
+    """Parameters for appending precomputed BP predictions as a scalar raster channel."""
+
+    prediction_dir: str
+    filename_template: str = "hexel_{hex_id_padded}_predicted.tif"
+    metadata_key_col: str = "hex_id"
+    fill_value: float = 0.0
+    clip_min: float | None = 0.0
+    clip_max: float | None = 1.0
+    validate_alignment: bool = True
+
+
 class DataSourceConfig(BaseModel):
     name: str
-    params: GridParams | TabularParams
+    params: GridParams | TabularParams | SpatializedTabularParams | GlobalContextParams | BPPredictionParams
+
+    @model_validator(mode="before")
+    @classmethod
+    def parse_params_for_source(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        name = data.get("name")
+        params = data.get("params")
+        if not isinstance(name, str):
+            return data
+        if not isinstance(params, dict):
+            return data
+
+        param_classes = {
+            "grid": GridParams,
+            "weather": TabularParams,
+            "fire_size": TabularParams,
+            "spatialized_weather": SpatializedTabularParams,
+            "spatialized_fire_size": SpatializedTabularParams,
+            "global_context_grid": GlobalContextParams,
+            "bp_prediction": BPPredictionParams,
+        }
+        param_class = param_classes.get(name)
+        if param_class is None:
+            return data
+
+        parsed = dict(data)
+        parsed["params"] = param_class(**params)
+        return parsed
 
 
 class DataConfig(BaseModel):
@@ -107,6 +198,7 @@ class DataConfig(BaseModel):
     test_split: str
     filename_col: str = "filename"
     valid_mask_threshold: float = 0.01
+    include_patch_metadata: bool = False
 
     input_sources: list[DataSourceConfig]
 

@@ -1,5 +1,6 @@
 import os
 import random
+import warnings
 from collections.abc import Callable
 from functools import partial
 
@@ -8,7 +9,25 @@ import torch
 from matplotlib import pyplot as plt
 from torch.utils.data import DataLoader
 
-from src.losses import BCELoss, BernoulliKLLoss, DiceLoss, FocalLoss, HuberLoss, MAELoss, MSELoss
+from src.losses import (
+    BCELoss,
+    BernoulliKLLoss,
+    CCCLoss,
+    DiceLoss,
+    FocalLoss,
+    HexSummaryLoss,
+    HuberLoss,
+    LogCoshLoss,
+    MAELoss,
+    MSELoss,
+    PearsonLoss,
+    QuantileLoss,
+    RegressionCCCLoss,
+    RegressionMSELoss,
+    RegressionPearsonLoss,
+    SampledCellRankLoss,
+    TailWeightedHuberLoss,
+)
 from src.metrics import (
     compute_auc_iou,
     compute_bias,
@@ -16,6 +35,7 @@ from src.metrics import (
     compute_kl_divergence,
     compute_mae,
     compute_mse,
+    compute_normalized_mae,
     compute_spearman,
     compute_ssim,
     compute_topK_iou,
@@ -25,6 +45,8 @@ from src.metrics import (
 AVAILABLE_METRICS: dict[str, Callable[..., torch.Tensor]] = {
     "mse": compute_mse,
     "mae": compute_mae,
+    "normalized_mae": compute_normalized_mae,
+    "nmae": compute_normalized_mae,
     "spearman": compute_spearman,
     "ssim": compute_ssim,
     "bias": compute_bias,
@@ -47,23 +69,70 @@ AVAILABLE_METRICS: dict[str, Callable[..., torch.Tensor]] = {
 AVAILABLE_LR_SCHEDULERS = ["onecycle", "cosine_warmup", "plateau", "multistep"]
 
 
-def build_single_loss(name: str) -> torch.nn.Module:
+def build_single_loss(
+    name: str,
+    huber_beta: float = 1.0,
+    tail_loss_percentile: float = 0.75,
+    tail_loss_weight: float = 5.0,
+    quantile: float = 0.85,
+) -> torch.nn.Module:
     name = str(name).lower()
     if name in ["bce", "bceloss"]:
         return BCELoss()
     if name in ["mse", "mseloss"]:
         return MSELoss()
+    if name in ["raw_mse", "mse_raw", "regression_mse", "regressionmseloss"]:
+        return RegressionMSELoss()
+    if name in ["ccc", "cccloss"]:
+        return CCCLoss()
+    if name in ["raw_ccc", "regression_ccc", "regressioncccloss"]:
+        return RegressionCCCLoss()
+    if name in ["pearson", "pearsonloss", "corr", "correlation"]:
+        return PearsonLoss()
+    if name in ["raw_pearson", "regression_pearson", "regressionpearsonloss", "raw_corr"]:
+        return RegressionPearsonLoss()
+    if name in ["log_cosh", "logcosh", "logcoshloss"]:
+        return LogCoshLoss()
+    if name in ["tail_huber", "tail_weighted_huber", "tailweightedhuberloss"]:
+        return TailWeightedHuberLoss(beta=huber_beta, percentile=tail_loss_percentile, tail_weight=tail_loss_weight)
+    if name in ["quantile", "quantile_loss", "pinball", "pinball_loss"]:
+        return QuantileLoss(quantile=quantile)
     if name in ["mae", "maeloss"]:
         return MAELoss()
     if name in ["huber", "huberloss", "smoothl1", "smooth_l1", "smoothl1loss"]:
-        return HuberLoss()
+        return HuberLoss(beta=huber_beta)
     if name in ["focal", "focalloss"]:
         return FocalLoss()
     if name in ["dice", "diceloss"]:
         return DiceLoss()
     if name in ["klloss", "kl", "bernoullikl", "bernoulliklloss"]:
         return BernoulliKLLoss()
+    if name in ["hex_mean_pearson", "hex_summary_mean_pearson"]:
+        return HexSummaryLoss(summary="mean", correlation="pearson")
+    if name in ["hex_top10_pearson", "hex_summary_top10_pearson"]:
+        return HexSummaryLoss(summary="topk_mean", correlation="pearson", top_fraction=0.10)
+    if name in ["hex_mean_ccc", "hex_summary_mean_ccc"]:
+        return HexSummaryLoss(summary="mean", correlation="ccc")
+    if name in ["hex_top10_ccc", "hex_summary_top10_ccc"]:
+        return HexSummaryLoss(summary="topk_mean", correlation="ccc", top_fraction=0.10)
+    if name in ["hex_mean_pairwise_rank", "hex_summary_mean_pairwise_rank"]:
+        return HexSummaryLoss(summary="mean", correlation="pairwise_rank")
+    if name in ["hex_top10_pairwise_rank", "hex_summary_top10_pairwise_rank"]:
+        return HexSummaryLoss(summary="topk_mean", correlation="pairwise_rank", top_fraction=0.10)
+    if name in ["hotspot_cell_rank", "cell_rank", "sampled_cell_rank"]:
+        return SampledCellRankLoss(use_sigmoid=True)
+    if name in ["raw_hotspot_cell_rank", "raw_cell_rank", "raw_sampled_cell_rank"]:
+        return SampledCellRankLoss(use_sigmoid=False)
     raise ValueError(f"Unknown loss type: {name}")
+
+
+def default_target_loss_name(target_name: str) -> str:
+    target_name = target_name.lower()
+    if target_name == "bp":
+        return "kl"
+    if target_name in {"fi", "ros"}:
+        return "huber"
+    raise ValueError(f"Unsupported target_name={target_name!r}")
 
 
 def visualize_model_predictions(
@@ -71,9 +140,9 @@ def visualize_model_predictions(
     test_predictions: np.ndarray,
     n_samples: int = 4,
     seed: int = 42,
-    save_path: str = None,
-    channel_map: dict = None,
-    feature_names_list: list = None,
+    save_path: str | None = None,
+    channel_map: dict | None = None,
+    feature_names_list: list | None = None,
 ) -> None:
     """
     Visualize model predictions versus targets for a selection of random samples.
@@ -265,8 +334,8 @@ def seed_everything(seed: int = 42, deterministic: bool = True):
     if deterministic:
         try:
             torch.use_deterministic_algorithms(True)
-        except Exception:
-            pass
+        except RuntimeError as exc:
+            warnings.warn(f"Could not enable deterministic PyTorch algorithms: {exc}", RuntimeWarning, stacklevel=2)
 
     print(f"[Info] Seed set to: {seed}")
 

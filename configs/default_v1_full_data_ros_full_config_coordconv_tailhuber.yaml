@@ -1,0 +1,137 @@
+save_dir: experiments/ros_full_config_v3_tailhuber_coordconv
+modelling_approach: '1'
+seed: 42
+deterministic: true
+model:
+  num_classes: 1
+  input_feature_list:
+  - spatial
+  - auxiliary
+  use_coordconv: true
+  auxiliary_hidden_dims:
+    weather:
+    - 32
+    - 64
+    - 128
+    fire_size:
+    - 8
+    - 16
+  auxiliary_embed_dims:
+    weather: 128
+    fire_size: 16
+  auxiliary_feature_encoder_poolings:
+    weather: max
+    fire_size: max
+optimizer:
+  name: AdamW
+  lr: 0.0007
+  loss: tail_huber
+  huber_beta: 1.0
+  tail_loss_percentile: 0.75
+  tail_loss_weight: 5.0
+lr_scheduler:
+  name: cosine_warmup
+  warmup_epochs: 5
+training:
+  max_epochs: 25
+  log_every_n_epoch: 1
+evaluation:
+  best_ckpt_metrics:
+  - loss
+  best_ckpt_metrics_mode:
+  - min
+  checkpoint_filename: best.pth
+data:
+  root_dir: /network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA/data_samples_v3
+  raw_data_dir: /network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA
+  train_split: train_indices.csv
+  val_split: val_indices.csv
+  test_split: test_indices.csv
+  batch_size: 32
+  num_workers: 2
+  valid_mask_threshold: 0.01
+  input_sources:
+  - name: grid
+    params:
+      feature_names_list:
+      - ignition_grid
+      - fuel_grid
+      - elevation_grid
+      target_name: ros
+      out_norm: log_standard
+      target_log_mean: 1.759765073915
+      target_log_std: 0.532782452748
+      fuel_feats_encoding: one_hot
+      normalize_fuel_feats_ordinal: true
+      transforms_list: []
+      augmentation_prob: 0.0
+  - name: weather
+    params:
+      csv_name: weather_table_processed.csv
+      feature_names_list:
+      - Temperature
+      - RelativeHumidity
+      - Precipitation
+      - FineFuelMoistureCode
+      - DuffMoistureCode
+      - DroughtCode
+      - InitialSpreadIndex
+      - BuildupIndex
+      - FireWeatherIndex
+      - WindSpeed
+      - wd_sin
+      - wd_cos
+      fire_weather_zone_id_col: WeatherZone
+      fire_weather_zone_selection_approach: mode
+      num_samples_per_patch: 256
+      sampling_bias: null
+      feature_to_bias: null
+      transforms_list: []
+      augmentation_prob: 0.0
+  - name: fire_size
+    params:
+      csv_name: df_fire_fru_processed.csv
+      feature_names_list:
+      - NORM_LOG_SIZE_HA
+      fire_weather_zone_id_col: GRIDCODE
+      fire_weather_zone_selection_approach: mode
+      num_samples_per_patch: 128
+      sampling_bias: high_values
+      feature_to_bias: NORM_LOG_SIZE_HA
+      transforms_list: []
+      augmentation_prob: 0.0
+logger:
+  enabled: true
+  project_name: nrcan05-wildfireriskmapping
+  workspace: mila-amlrt
+  experiment_name: ros_full_config_v3_tailhuber_coordconv
+  tags:
+  - full_data
+  - modelling_approach=1
+  - target=ros
+  - spatial_weather_fire_size
+  - coordconv=patch_local_multiscale
+  - data_samples_v3
+  - fuel_one_hot_encoding
+  - best_ckpt=loss
+  - loss=tail_huber_p75_w5
+  - target_norm=log_standard
+  log_every_n_step: 10
+metrics:
+- mse
+- mae
+- normalized_mae
+- mae_top01
+- mae_top02
+- mae_top05
+- mae_top10
+- spearman
+- bias
+- ccc
+- iou_top005
+- iou_top01
+- iou_top02
+- iou_top05
+- iou_top10
+- auc_iou_top10
+- auc_iou_full

@@ -1,0 +1,18 @@
+raw_data_dir: /network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA
+bp_pred_dir: experiments/bp_full_config_v3_kl_ccc_hexpairrank_fullsupport_bpzero/buffer_mask_eval/predicted_hexels
+fi_pred_dir: experiments/fi_full_config_v3_coordconv_spatialized_weather_fire_size_missing_mask_terrain_fullsupport/buffer_mask_eval/predicted_hexels
+hex_ids:
+- 01
+- 12
+- 16
+- 39
+- 49
+mask_scope: buffer
+save_dir: experiments/hazard_eval/bp_fullsupport_fi_fullsupport_buffer
+spearman_sample_size: 1000000
+seed: 42
+fi_cap_sensitivity:
+- 10000
+- none
+- 5000
+- 20000

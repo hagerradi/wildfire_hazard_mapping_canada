@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 import torch
 import torch.nn as nn
 
+from src.models.encoders import append_coord_channels
 from src.models.utils import double_conv_block
 
 
@@ -33,6 +34,7 @@ class BaselineDecoder(DecoderBase):
         use_skip_connections: bool = True,
         use_transpose_conv: bool = False,
         use_activation_after_upsampling: bool = False,
+        use_coordconv: bool = False,
     ):
         super().__init__()
         if hidden_features is None:
@@ -41,6 +43,7 @@ class BaselineDecoder(DecoderBase):
         self.use_skip_connections = use_skip_connections
         self.use_transpose_conv = use_transpose_conv
         self.use_activation_after_upsampling = use_activation_after_upsampling
+        self.use_coordconv = use_coordconv
 
         self.layers = nn.ModuleList()
 
@@ -69,6 +72,8 @@ class BaselineDecoder(DecoderBase):
                 self.layers.append(upsample_layer)
 
             decoder_in_channels = h_feature * 2 if use_skip_connections else h_feature
+            if self.use_coordconv:
+                decoder_in_channels += 2
             self.layers.append(double_conv_block(decoder_in_channels, h_feature))
 
     def forward(self, x: torch.Tensor, skip_connections: list[torch.Tensor]) -> torch.Tensor:
@@ -85,6 +90,8 @@ class BaselineDecoder(DecoderBase):
             if self.use_skip_connections:
                 skip_x = skip_connections[i]
                 x = torch.cat([skip_x, x], dim=1)
+            if self.use_coordconv:
+                x = append_coord_channels(x)
             x = self.layers[2 * i + 1](x)  # double conv block
 
         return x

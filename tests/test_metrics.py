@@ -9,6 +9,7 @@ from src.metrics import (
     compute_kl_divergence,
     compute_mae,
     compute_mse,
+    compute_normalized_mae,
     compute_spearman,
     compute_ssim,
     compute_topK_iou,
@@ -57,6 +58,23 @@ def test_mae_perfect_match_with_mask():
     assert torch.isclose(loss, torch.tensor(0.0))
 
 
+def test_normalized_mae_known_values():
+    preds = torch.tensor([[[[2.0, 1.0], [4.0, 2.0]]]])
+    targets = torch.tensor([[[[1.0, 1.0], [2.0, 2.0]]]])
+    expected = torch.tensor(3.0 / 6.0)
+    result = compute_normalized_mae(preds, targets)
+    assert torch.isclose(result, expected)
+
+
+def test_normalized_mae_with_mask():
+    preds = torch.tensor([[[[2.0, 100.0], [4.0, 2.0]]]])
+    targets = torch.tensor([[[[1.0, 100.0], [2.0, 2.0]]]])
+    mask = torch.tensor([[[[1.0, 0.0], [1.0, 1.0]]]])
+    expected = torch.tensor(3.0 / 5.0)
+    result = compute_normalized_mae(preds, targets, mask=mask)
+    assert torch.isclose(result, expected)
+
+
 def test_spearman_perfect_correlation():
     targets = torch.rand(4, 1, 16, 16)
     preds = targets * 2.0
@@ -70,6 +88,20 @@ def test_spearman_perfect_correlation_with_mask():
     mask = torch.ones_like(targets)
     score = compute_spearman(preds, targets, mask=mask)
     assert torch.isclose(score, torch.tensor(1.0), atol=1e-4)
+
+
+def test_spearman_handles_large_tied_targets_without_rank_overflow():
+    preds = torch.arange(100_000, dtype=torch.float32).reshape(1, 1, -1)
+    targets = torch.cat(
+        [
+            torch.zeros(50_000, dtype=torch.float32),
+            torch.ones(50_000, dtype=torch.float32),
+        ]
+    ).reshape(1, 1, -1)
+
+    score = compute_spearman(preds, targets)
+
+    assert score == pytest.approx(0.866025, rel=1e-4)
 
 
 def test_ssim_range(dummy_data):
@@ -118,6 +150,15 @@ def test_topK_iou_completely_disjoint():
 
     iou = compute_topK_iou(preds, targets, percentile=0.90)
     assert torch.isclose(iou, torch.tensor(0.0))
+
+
+def test_topK_iou_handles_large_flat_tensors():
+    targets = torch.linspace(0.0, 1.0, steps=200_000).reshape(1, 1, -1)
+    preds = targets.clone()
+
+    iou = compute_topK_iou(preds, targets, percentile=0.99)
+
+    assert torch.isclose(iou, torch.tensor(1.0))
 
 
 def test_bias_zero_when_perfect_match(dummy_data, dummy_mask):
@@ -195,13 +236,22 @@ def test_auc_iou_completely_disjoint():
     assert torch.isclose(auc, torch.tensor(0.0))
 
 
+def test_auc_iou_handles_large_flat_tensors():
+    targets = torch.linspace(0.0, 1.0, steps=200_000).reshape(1, 1, -1)
+    preds = targets.clone()
+
+    auc = compute_auc_iou(preds, targets, k_values=(0.01, 0.10), steps=10)
+
+    assert torch.isclose(auc, torch.tensor(1.0))
+
+
 def test_auc_iou_invalid_k_values(dummy_data):
     preds, targets = dummy_data
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="k_values must be a tuple"):
         compute_auc_iou(preds, targets, k_values="all")  # type: ignore
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="k_values must be a tuple"):
         compute_auc_iou(preds, targets, k_values=[0.01, 0.10])  # type: ignore
 
 
@@ -387,3 +437,12 @@ def test_topK_mae_disjoint_topK_zones():
 
     mae = compute_topK_mae(preds, targets, percentile=0.50)
     assert torch.isclose(mae, torch.tensor(1.0), atol=1e-5)
+
+
+def test_topK_mae_handles_large_flat_tensors():
+    targets = torch.linspace(0.0, 1.0, steps=200_000).reshape(1, 1, -1)
+    preds = targets.clone()
+
+    mae = compute_topK_mae(preds, targets, percentile=0.99)
+
+    assert torch.isclose(mae, torch.tensor(0.0))

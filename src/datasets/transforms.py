@@ -75,3 +75,4 @@ def get_transforms(config: DataSourceConfig):
         transforms_list = setup_augmentations(config)
     else:
         return transforms_list
+    return transforms_list
