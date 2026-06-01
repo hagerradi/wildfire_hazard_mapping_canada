@@ -109,13 +109,7 @@ def generate_stitched_map(
                         cached_mask = create_geometric_mask(arr.shape, std_hex_verts)
                     arr = np.ma.masked_where(~cached_mask, arr)
 
-                    # scale-specific visualization
-                    if scale == "log":
-                        # clamp zeros to min. positive
-                        arr = np.maximum(arr, pos_min)
-                    else:
-                        # just mask negatives if any
-                        arr = np.ma.masked_less(arr, 0)
+                    arr = np.maximum(arr, pos_min) if scale == "log" else np.ma.masked_less(arr, 0)
 
                     extent = (cx - img_size / 2, cx + img_size / 2, cy - img_size / 2, cy + img_size / 2)
                     im = ax.imshow(arr, extent=extent, cmap=cmap, norm=norm, zorder=1)

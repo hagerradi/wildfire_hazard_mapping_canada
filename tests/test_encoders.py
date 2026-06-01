@@ -63,11 +63,11 @@ def test_multisource_unet_supports_multiscale_context_and_coordconv():
         input_channels=3,
         num_classes=1,
         hidden_features=[4, 8],
-        input_feature_list=["spatial", "auxiliary"],
-        auxiliary_input_dims={"weather": 2, "fire_size": 1, "global_context_grid": 3},
-        auxiliary_hidden_dims={"weather": [4], "fire_size": [4], "global_context_grid": [4]},
-        auxiliary_embed_dims={"weather": 4, "fire_size": 2, "global_context_grid": 4},
-        auxiliary_feature_encoder_poolings={"weather": "mean", "fire_size": "mean"},
+        input_branches=["spatial", "auxiliary"],
+        auxiliary_input_dims={"tabular_weather": 2, "tabular_fire_size": 1, "global_context_grid": 3},
+        auxiliary_hidden_dims={"tabular_weather": [4], "tabular_fire_size": [4], "global_context_grid": [4]},
+        auxiliary_embed_dims={"tabular_weather": 4, "tabular_fire_size": 2, "global_context_grid": 4},
+        auxiliary_feature_encoder_poolings={"tabular_weather": "mean", "tabular_fire_size": "mean"},
         use_coordconv=True,
         use_multiscale_global_context=True,
     )
@@ -75,8 +75,8 @@ def test_multisource_unet_supports_multiscale_context_and_coordconv():
     y = model(
         torch.randn(2, 3, 32, 32),
         {
-            "weather": torch.randn(2, 5, 2),
-            "fire_size": torch.randn(2, 5, 1),
+            "tabular_weather": torch.randn(2, 5, 2),
+            "tabular_fire_size": torch.randn(2, 5, 1),
             "global_context_grid": torch.randn(2, 3, 32, 32),
         },
     )

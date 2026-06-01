@@ -16,7 +16,7 @@ def _normalize_architecture_name(name: str) -> str:
 def resolve_model_architecture(model_config: ModelConfig) -> str:
     architecture = _normalize_architecture_name(model_config.architecture)
     if architecture == "auto":
-        return "multi_source_unet" if "auxiliary" in model_config.input_feature_list else "baseline_unet"
+        return "multi_source_unet" if "auxiliary" in model_config.input_branches else "baseline_unet"
     return architecture
 
 
@@ -31,7 +31,7 @@ def build_model(
 
     auxiliary_input_dims = auxiliary_input_dims or {}
     architecture = resolve_model_architecture(model_config)
-    auxiliary_requested = "auxiliary" in model_config.input_feature_list
+    auxiliary_requested = "auxiliary" in model_config.input_branches
 
     if architecture in BASELINE_UNET_NAMES:
         if auxiliary_requested:
@@ -40,7 +40,7 @@ def build_model(
             input_channels=spatial_input_channels,
             num_classes=model_config.num_classes,
             hidden_features=model_config.hidden_features,
-            input_feature_list=model_config.input_feature_list,
+            input_branches=model_config.input_branches,
             use_skip_connections=model_config.use_skip_connections,
             use_transpose_conv=model_config.use_transpose_conv,
             use_activation_after_upsampling=model_config.use_activation_after_upsampling,
@@ -54,7 +54,7 @@ def build_model(
             input_channels=spatial_input_channels,
             num_classes=model_config.num_classes,
             hidden_features=model_config.hidden_features,
-            input_feature_list=model_config.input_feature_list,
+            input_branches=model_config.input_branches,
             use_skip_connections=model_config.use_skip_connections,
             use_transpose_conv=model_config.use_transpose_conv,
             use_activation_after_upsampling=model_config.use_activation_after_upsampling,

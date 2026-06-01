@@ -62,8 +62,11 @@ def parse_fi_cap_value(value: object) -> float | None:
         normalized = value.strip().lower()
         if normalized in {"none", "null", "uncapped", "no_cap", "no-cap"}:
             return None
-        value = normalized
-    cap = float(value)
+        cap = float(normalized)
+    elif isinstance(value, int | float | np.integer | np.floating):
+        cap = float(value)
+    else:
+        raise ValueError(f"FI cap must be positive, finite, or 'none'; got {value!r}.")
     if not np.isfinite(cap) or cap <= 0.0:
         raise ValueError(f"FI cap must be positive, finite, or 'none'; got {value!r}.")
     return cap

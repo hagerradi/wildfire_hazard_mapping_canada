@@ -73,7 +73,7 @@ class Trainer:
             )
 
         # Flag to indicate we are including auxiliary features
-        self.auxiliary = "auxiliary" in self.config.model.input_feature_list
+        self.auxiliary = "auxiliary" in self.config.model.input_branches
 
         resolved_architecture = resolve_model_architecture(self.config.model)
         print(f"[Trainer] Model architecture: {self.config.model.architecture} -> {resolved_architecture}")
@@ -272,7 +272,7 @@ class Trainer:
 
     def _step(self, batch: Any) -> tuple[torch.Tensor, torch.Tensor, dict[str, torch.Tensor] | None, torch.Tensor, torch.Tensor]:
         """
-        Default step. Expects batch -> {'grid': (inputs, targets, masks), 'weather': ...}.
+        Default step. Expects batch -> {'grid': (inputs, targets, masks), 'tabular_weather': ...}.
         Returns (predictions, loss, loss_parts, targets_on_device, masks_on_device).
         """
         # Get the spatial grid inputs, targets and masks.

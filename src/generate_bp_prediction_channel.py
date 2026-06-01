@@ -8,6 +8,7 @@ import argparse
 import os
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import torch
 import yaml
@@ -125,7 +126,7 @@ def main() -> None:
                 hex_id = str(int(hex_raw)).zfill(2)
                 one_hexel_df = split_df[split_df["hex_id"] == hex_raw]
                 hexel_indices = split_df[split_df["hex_id"] == hex_raw].index.tolist()
-                hex_predictions = split_predictions[hexel_indices]
+                hex_predictions = np.asarray(split_predictions[hexel_indices])
                 reconstructed, profile = get_predicted_hexel(
                     base_dir=config.data.root_dir,
                     raw_data_dir=config.data.raw_data_dir,

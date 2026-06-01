@@ -1,11 +1,58 @@
+import math
+from typing import overload
+
 import numpy as np
+import torch
 
 from data_preparation.spatial.utils import FUEL_GROUP_MAP
 
 SPATIALIZED_TABULAR_SOURCE_NAMES = {"spatialized_weather", "spatialized_fire_size"}
+TABULAR_SOURCE_NAMES = {"tabular_weather", "tabular_fire_size"}
 SPATIAL_APPEND_SOURCE_NAMES = {*SPATIALIZED_TABULAR_SOURCE_NAMES, "bp_prediction"}
-AVAILABLE_DATA_SOURCES = ["grid", "weather", "fire_size", *sorted(SPATIALIZED_TABULAR_SOURCE_NAMES), "global_context_grid", "bp_prediction"]
+AVAILABLE_DATA_SOURCES = [
+    "grid",
+    "tabular_weather",
+    "tabular_fire_size",
+    *sorted(SPATIALIZED_TABULAR_SOURCE_NAMES),
+    "global_context_grid",
+    "bp_prediction",
+]
 MAX_FUEL_GRID = float(max(FUEL_GROUP_MAP.values()))
+
+
+def finite_difference(values: torch.Tensor, dim: int, spacing: float) -> torch.Tensor:
+    """
+    Computes first-order finite differences along one spatial dimension.
+    """
+    grad = torch.zeros_like(values)
+    size = values.shape[dim]
+    if size < 2:
+        return grad
+
+    if dim == 0:
+        grad[0, :] = (values[1, :] - values[0, :]) / spacing
+        grad[-1, :] = (values[-1, :] - values[-2, :]) / spacing
+        if size > 2:
+            grad[1:-1, :] = (values[2:, :] - values[:-2, :]) / (2.0 * spacing)
+    elif dim == 1:
+        grad[:, 0] = (values[:, 1] - values[:, 0]) / spacing
+        grad[:, -1] = (values[:, -1] - values[:, -2]) / spacing
+        if size > 2:
+            grad[:, 1:-1] = (values[:, 2:] - values[:, :-2]) / (2.0 * spacing)
+    else:
+        raise ValueError(f"Expected dim 0 or 1 for finite differences, got {dim}.")
+    return grad
+
+
+def raster_cell_spacing(transform) -> tuple[float, float]:
+    """
+    Returns row and column pixel spacing from a raster affine transform, in CRS units.
+    """
+    col_spacing = math.hypot(float(transform.a), float(transform.d))
+    row_spacing = math.hypot(float(transform.b), float(transform.e))
+    if row_spacing <= 0.0 or col_spacing <= 0.0:
+        raise ValueError(f"Invalid raster transform pixel spacing: row={row_spacing}, col={col_spacing}.")
+    return row_spacing, col_spacing
 
 
 def get_data_source_class(name: str):
@@ -16,7 +63,7 @@ def get_data_source_class(name: str):
         from src.datasets.sources import GridSource
 
         return GridSource
-    elif name in ["weather", "fire_size"]:
+    elif name in TABULAR_SOURCE_NAMES:
         from src.datasets.sources import TabularSource
 
         return TabularSource
@@ -44,7 +91,7 @@ def get_data_source_param_class(name: str):
         from src.config import GridParams
 
         return GridParams
-    elif name in ["weather", "fire_size"]:
+    elif name in TABULAR_SOURCE_NAMES:
         from src.config import TabularParams
 
         return TabularParams
@@ -146,10 +193,10 @@ def log_norm(out_arr: np.ndarray, multiplier: int = 1000) -> np.ndarray:
     return np.log1p(multiplier * out_arr) / np.log1p(multiplier)
 
 
-def output_burn_prob_norm(
+def output_target_norm(
     output_arr: np.ndarray,
-    burn_prob_max: float,
-    burn_prob_min: float,
+    target_max: float,
+    target_min: float,
     out_norm: str,
     target_log_mean: float | None = None,
     target_log_std: float | None = None,
@@ -158,7 +205,7 @@ def output_burn_prob_norm(
     Normalize the output target map.
     """
     if out_norm == "min_max":
-        output_arr = (output_arr - burn_prob_min) / (burn_prob_max - burn_prob_min)
+        output_arr = (output_arr - target_min) / (target_max - target_min)
         output_arr = np.clip(output_arr, 0.0, 1.0)
     elif out_norm == "log":
         output_arr = log_norm(output_arr).astype(np.float32)
@@ -173,6 +220,95 @@ def output_burn_prob_norm(
     else:
         raise ValueError(f"Unsupported output normalization: {out_norm!r}")
     return output_arr
+
+
+def output_burn_prob_norm(
+    output_arr: np.ndarray,
+    burn_prob_max: float,
+    burn_prob_min: float,
+    out_norm: str,
+    target_log_mean: float | None = None,
+    target_log_std: float | None = None,
+) -> np.ndarray:
+    return output_target_norm(
+        output_arr=output_arr,
+        target_max=burn_prob_max,
+        target_min=burn_prob_min,
+        out_norm=out_norm,
+        target_log_mean=target_log_mean,
+        target_log_std=target_log_std,
+    )
+
+
+@overload
+def denormalize_output_target(
+    data: torch.Tensor,
+    target_min: float,
+    target_max: float,
+    out_norm: str,
+    target_log_mean: float | None = None,
+    target_log_std: float | None = None,
+    multiplier: float = 1000.0,
+) -> torch.Tensor: ...
+
+
+@overload
+def denormalize_output_target(
+    data: np.ndarray,
+    target_min: float,
+    target_max: float,
+    out_norm: str,
+    target_log_mean: float | None = None,
+    target_log_std: float | None = None,
+    multiplier: float = 1000.0,
+) -> np.ndarray: ...
+
+
+def denormalize_output_target(
+    data: np.ndarray | torch.Tensor,
+    target_min: float,
+    target_max: float,
+    out_norm: str,
+    target_log_mean: float | None = None,
+    target_log_std: float | None = None,
+    multiplier: float = 1000.0,
+) -> np.ndarray | torch.Tensor:
+    """
+    Reverse target normalization to recover values in the original target scale.
+    """
+    if out_norm == "log_standard":
+        if target_log_mean is None or target_log_std is None:
+            raise ValueError("target_log_mean and target_log_std are required for out_norm='log_standard'.")
+        if target_log_std <= 0.0:
+            raise ValueError(f"target_log_std must be positive for out_norm='log_standard', got {target_log_std}.")
+        log_mean = target_log_mean
+        log_std = target_log_std
+    else:
+        log_mean = 0.0
+        log_std = 1.0
+
+    if isinstance(data, torch.Tensor):
+        data = data.float()
+        if out_norm == "min_max":
+            return data * (target_max - target_min) + target_min
+        if out_norm == "log":
+            return torch.expm1(data * float(np.log1p(multiplier))) / multiplier
+        if out_norm == "log_standard":
+            return torch.expm1(data * log_std + log_mean).clamp_min(0.0)
+        if out_norm in {"none", "total_iters", "season_cause_iters"}:
+            return data
+    else:
+        data = data.astype("float32")
+        if out_norm == "min_max":
+            return (data * (target_max - target_min) + target_min).astype("float32")
+        if out_norm == "log":
+            return (np.expm1(data * np.log1p(multiplier)) / multiplier).astype("float32")
+        if out_norm == "log_standard":
+            return np.clip(np.expm1(data * log_std + log_mean), 0.0, None).astype("float32")
+        if out_norm in {"none", "total_iters", "season_cause_iters"}:
+            return data
+
+    raise ValueError(f"Unsupported output normalization: {out_norm!r}")
 
 
 def apply_bp_nodata_zero_range(

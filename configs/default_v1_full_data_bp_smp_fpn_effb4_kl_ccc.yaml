@@ -10,13 +10,13 @@ model:
   smp_encoder_weights: imagenet
   smp_kwargs: {}
   num_classes: 1
-  input_feature_list:
+  input_branches:
     - spatial
     - auxiliary
   use_coordconv: true
   auxiliary_feature_encoder_poolings:
-    weather: max
-    fire_size: max
+    tabular_weather: max
+    tabular_fire_size: max
 
 optimizer:
   name: AdamW

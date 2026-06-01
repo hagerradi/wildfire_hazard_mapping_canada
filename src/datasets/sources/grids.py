@@ -51,7 +51,7 @@ class GridSource(DataSource):
         """
 
         self.root_dir = root_dir
-        self.raw_data_dir = raw_data_dir if raw_data_dir is not None else os.path.dirname(self.root_dir)
+        self.raw_data_dir = raw_data_dir if raw_data_dir is not None else self.root_dir
         self._validate_raw_ranges = raw_data_dir is not None
         self.params = params
         self.modelling_approach = modelling_approach
@@ -97,7 +97,12 @@ class GridSource(DataSource):
             for target in self.targets:
                 if self._target_out_norm(target.name) != "min_max":
                     continue
-                target_max, target_min = get_range_output(self.raw_data_dir, target.output_type)
+                try:
+                    target_max, target_min = get_range_output(self.raw_data_dir, target.output_type)
+                except ValueError:
+                    if self._validate_raw_ranges:
+                        raise
+                    target_max, target_min = 1.0, 0.0
                 target_max, target_min = apply_bp_nodata_zero_range(
                     target_name=target.name,
                     max_value=target_max,
@@ -169,7 +174,12 @@ class GridSource(DataSource):
                     elev_feat_encoded_index += self.num_fuel_classes - 1
                 self.elevation_input_channel_index = self.input_channel_indices.index(elev_feat_encoded_index)
         # 3. normalization for elevation grid
-        self.ELEVATION_MAX, self.ELEVATION_MIN = get_range_elevation(self.raw_data_dir)
+        try:
+            self.ELEVATION_MAX, self.ELEVATION_MIN = get_range_elevation(self.raw_data_dir)
+        except ValueError:
+            if self._validate_raw_ranges:
+                raise
+            self.ELEVATION_MAX, self.ELEVATION_MIN = 1.0, 0.0
         if self._validate_raw_ranges:
             self._validate_range(
                 max_value=self.ELEVATION_MAX,

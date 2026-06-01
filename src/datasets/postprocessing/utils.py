@@ -17,7 +17,6 @@ from rasterio.profiles import Profile
 from data_preparation.paths import MaskScope, Paths, normalize_mask_scope
 from data_preparation.spatial.utils import (
     denormalize_burn_count,
-    denormalize_burn_prob,
     get_range_output,
     load_spatial_raster,
 )
@@ -30,7 +29,7 @@ from src.datasets.postprocessing.visualize_predictions import (
     visualize_target_grids,
 )
 from src.datasets.targets import TargetSpec, get_target_specs
-from src.datasets.utils import apply_bp_nodata_zero_range
+from src.datasets.utils import apply_bp_nodata_zero_range, denormalize_output_target
 from src.logger import CometLogger
 
 
@@ -175,13 +174,13 @@ def load_target_grid_for_mask_scope(
 ) -> tuple[np.ndarray, np.ndarray]:
     scope = normalize_mask_scope(mask_scope)
     target_path = getattr(paths, target.path_method)()
-    target_grid, _ = load_spatial_raster(
+    loaded_target_grid, _ = load_spatial_raster(
         path=target_path,
         mask_path=paths.mask_grid(hex_id=hex_id, mask_scope=scope),
         reference_profile=profile,
     )
     target_grid, pred_grid = apply_mask_scope_to_grids(
-        gt_grid=target_grid,
+        gt_grid=as_float_array_with_nan(loaded_target_grid),
         pred_grid=pred_grid,
         profile=profile,
         mask_path=paths.mask_grid_actual(hex_id=hex_id),
@@ -396,7 +395,7 @@ def denormalize_model_target(
             raise ValueError(f"target_log_std must be positive for out_norm='log_standard', got {target_log_std}.")
         return np.clip(np.expm1(data.astype("float32") * target_log_std + target_log_mean), 0.0, None).astype("float32")
 
-    return denormalize_burn_prob(data=data, min_val=min_val, max_val=max_val, out_norm=out_norm)
+    return denormalize_output_target(data=data, target_min=min_val, target_max=max_val, out_norm=out_norm)
 
 
 def get_target_channel_index(data_dir: str, modelling_approach: str, target: TargetSpec) -> int:
@@ -763,7 +762,7 @@ def evaluate_and_visualize_hexels(
                 hex_metrics = calculate_hexel_metrics_pytorch(
                     gt_grid=grid_gt, pred_grid=reconstructed_hexel_denorm, device=device, metric_functions=metric_functions
                 )
-                metric_scope = None if scope == "actual" else scope
+                metric_scope: str | None = None if scope == "actual" else scope
                 all_hexel_metrics.append((str(hex_id).zfill(2), target.name if is_multitarget else None, metric_scope, hex_metrics))
 
                 if scope == "buffer" and actual_support_mask is not None:

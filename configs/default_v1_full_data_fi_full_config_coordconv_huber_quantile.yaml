@@ -4,24 +4,24 @@ seed: 42
 deterministic: true
 model:
   num_classes: 1
-  input_feature_list:
+  input_branches:
   - spatial
   - auxiliary
   use_coordconv: true
   auxiliary_hidden_dims:
-    weather:
+    tabular_weather:
     - 32
     - 64
     - 128
-    fire_size:
+    tabular_fire_size:
     - 8
     - 16
   auxiliary_embed_dims:
-    weather: 128
-    fire_size: 16
+    tabular_weather: 128
+    tabular_fire_size: 16
   auxiliary_feature_encoder_poolings:
-    weather: max
-    fire_size: max
+    tabular_weather: max
+    tabular_fire_size: max
 optimizer:
   name: AdamW
   lr: 0.0007

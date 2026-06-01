@@ -2,6 +2,7 @@ import os
 
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.artist import Artist
 from matplotlib.colors import TwoSlopeNorm
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
@@ -375,7 +376,7 @@ def visualize_hexel_iou(
         if actual_support_mask is not None:
             _add_mask_outline(ax, actual_support_mask, color="red", linewidth=0.8)
 
-    legend_elements = [
+    legend_elements: list[Artist] = [
         Patch(facecolor="magenta", edgecolor="black", label="Intersection"),
         Patch(facecolor="red", edgecolor="black", label="Prediction Only"),
         Patch(facecolor="blue", edgecolor="black", label="Ground Truth Only"),

@@ -72,12 +72,7 @@ class TabularSource(DataSource):
         self._fallback_candidates = np.concatenate(list(self.lut.values()))
 
     def get_sample(self, patch_info: dict):
-        if "data" in patch_info:
-            # Fast load (Training)
-            data = patch_info["data"]
-        else:
-            # Slow Path (Debugging / Standalone)
-            data = np.load(patch_info["file_path"])
+        data = patch_info["data"] if "data" in patch_info else np.load(patch_info["file_path"])
         zone_arr = data[:, :, self.zone_channel]
         mask = ~np.isnan(zone_arr) & (zone_arr > 0)
         zone_arr = zone_arr[mask]
@@ -108,7 +103,7 @@ class TabularSource(DataSource):
         ):  # Selects candidates from all zones in the patch, with probability proportional to their frequency
             all_candidates = []
             probs = []
-            for val, count in zip(values, counts):
+            for val, count in zip(values, counts, strict=False):
                 zone_cands = self.lut.get(int(val))
                 if zone_cands is not None:
                     all_candidates.append(zone_cands)

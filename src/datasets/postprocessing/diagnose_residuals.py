@@ -1,6 +1,8 @@
 import argparse
 import os
+from collections.abc import Mapping
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -130,7 +132,7 @@ def summarize_grouped_errors(
     group_name: str,
     target: str,
     hex_id: str,
-    label_lookup: dict[int | float, str] | None = None,
+    label_lookup: Mapping[Any, str] | None = None,
     max_groups: int | None = None,
 ) -> pd.DataFrame:
     flat_valid = valid_mask.ravel()
@@ -155,7 +157,7 @@ def summarize_grouped_errors(
         if group_diff.size == 0:
             continue
         label = label_lookup.get(value, str(value)) if label_lookup is not None else str(value)
-        row = {
+        row: dict[str, object] = {
             "target": target,
             "hex_id": hex_id,
             "group": group_name,
@@ -335,7 +337,7 @@ def run_residual_diagnostics(
         )
         fuel, firezone, elevation = _load_context_grids(config.data.raw_data_dir, hex_id, pred_profile, mask_scope=mask_scope)
 
-        hex_row = {
+        hex_row: dict[str, object] = {
             "target": target.name,
             "hex_id": hex_id,
             "split": split_name,

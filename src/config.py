@@ -21,7 +21,7 @@ class ModelConfig(BaseModel):
     # Controls if we use MultiSourceUNet or BaselineUNet
     # Use ["spatial"] for base unet
     # Extra tabular features are detected automatically from the dataset config.
-    input_feature_list: list[str] = ["spatial"]
+    input_branches: list[str] = ["spatial"]
 
     # encoder/decoder
     use_skip_connections: bool = True
@@ -37,9 +37,9 @@ class ModelConfig(BaseModel):
     smp_kwargs: dict[str, Any] = Field(default_factory=dict)
 
     # specific to auxiliary model
-    auxiliary_hidden_dims: dict[str, list[int] | dict[str, list[int]]] = {"weather": [32, 64]}
-    auxiliary_embed_dims: dict[str, int] = {"weather": 128}
-    auxiliary_feature_encoder_poolings: dict[str, str] = {"weather": "max"}
+    auxiliary_hidden_dims: dict[str, list[int] | dict[str, list[int]]] = {"tabular_weather": [32, 64]}
+    auxiliary_embed_dims: dict[str, int] = {"tabular_weather": 128}
+    auxiliary_feature_encoder_poolings: dict[str, str] = {"tabular_weather": "max"}
 
 
 class OptimizerConfig(BaseModel):
@@ -75,6 +75,7 @@ class EvaluationConfig(BaseModel):
     best_ckpt_metrics: list[str] = ["spearman"]  # metric to choose best checkpoint
     best_ckpt_metrics_mode: list[str] = ["max"]  # max, or min
     checkpoint_filename: str = "best.pth"
+    robust_plot_percentile: float | None = Field(default=None, gt=0.0, le=100.0)
     bp_nodata_as_zero: bool = True
     prediction_support_policy: str = "input"
 
@@ -171,8 +172,8 @@ class DataSourceConfig(BaseModel):
 
         param_classes = {
             "grid": GridParams,
-            "weather": TabularParams,
-            "fire_size": TabularParams,
+            "tabular_weather": TabularParams,
+            "tabular_fire_size": TabularParams,
             "spatialized_weather": SpatializedTabularParams,
             "spatialized_fire_size": SpatializedTabularParams,
             "global_context_grid": GlobalContextParams,

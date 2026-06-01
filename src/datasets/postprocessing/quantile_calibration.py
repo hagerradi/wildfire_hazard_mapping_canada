@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -259,7 +261,7 @@ def _collect_stitched_split(
 
 def _metric_rows(
     split_data: StitchedSplit,
-    metric_functions: dict[str, object],
+    metric_functions: dict[str, Callable[..., Any]],
     device: torch.device,
     mapping: QuantileMapping | None,
 ) -> pd.DataFrame:
@@ -270,25 +272,29 @@ def _metric_rows(
             continue
         metrics_by_stage[stage] = {}
         for item in split_data.hex_predictions:
-            pred_grid = item.pred_grid if stage == "uncalibrated" else apply_quantile_mapping(item.pred_grid, mapping)
+            if stage == "uncalibrated":
+                pred_grid = item.pred_grid
+            else:
+                assert mapping is not None
+                pred_grid = apply_quantile_mapping(item.pred_grid, mapping)
             metrics = calculate_hexel_metrics_pytorch(
                 gt_grid=item.target_grid,
                 pred_grid=pred_grid,
                 device=device,
                 metric_functions=metric_functions,
             )
-            row = {"split": split_data.split, "target": split_data.target, "stage": stage, "hex_id": item.hex_id}
+            row: dict[str, object] = {"split": split_data.split, "target": split_data.target, "stage": stage, "hex_id": item.hex_id}
             row.update(metrics)
             rows.append(row)
             for key, value in metrics.items():
                 metrics_by_stage[stage].setdefault(key, []).append(value)
 
     for stage, stage_metrics in metrics_by_stage.items():
-        row = {"split": split_data.split, "target": split_data.target, "stage": stage, "hex_id": "all"}
+        aggregate_row: dict[str, object] = {"split": split_data.split, "target": split_data.target, "stage": stage, "hex_id": "all"}
         for key, values in stage_metrics.items():
             finite_values = [float(value) for value in values if np.isfinite(value)]
-            row[key] = float(np.mean(finite_values)) if finite_values else float("nan")
-        rows.append(row)
+            aggregate_row[key] = float(np.mean(finite_values)) if finite_values else float("nan")
+        rows.append(aggregate_row)
 
     return pd.DataFrame(rows)
 
@@ -329,7 +335,11 @@ def _iter_stage_values(
     all_pred = []
     all_target = []
     for item in split_data.hex_predictions:
-        pred_grid = item.pred_grid if stage == "uncalibrated" else apply_quantile_mapping(item.pred_grid, mapping)
+        if stage == "uncalibrated":
+            pred_grid = item.pred_grid
+        else:
+            assert mapping is not None
+            pred_grid = apply_quantile_mapping(item.pred_grid, mapping)
         pred_values = pred_grid[item.valid_mask]
         target_values = item.target_values
         all_pred.append(pred_values)
@@ -352,9 +362,10 @@ def run_quantile_calibration(
     target = get_config_target_spec(config)
     max_target_val, min_target_val = get_range_output(root_dir=config.data.raw_data_dir, output_type=target.output_type)
     output_min = max(0.0, float(min_target_val))
-    output_max = float(max_target_val) if target.probability_scale else None
     if target.probability_scale:
-        output_max = min(1.0, output_max)
+        output_max: float | None = min(1.0, float(max_target_val))
+    else:
+        output_max = None
 
     output_dir.mkdir(parents=True, exist_ok=True)
     print(f"[quantile calibration] Collecting calibration split={calibration_split}")

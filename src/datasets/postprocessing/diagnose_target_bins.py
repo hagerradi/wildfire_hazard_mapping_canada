@@ -173,7 +173,7 @@ def _predict_split(config: Config, split: str, device: torch.device) -> tuple[np
         _, predictions = trainer.test(loader, return_predictions=True)
         split_df = pd.read_csv(os.path.join(config.data.root_dir, split_name))
         split_df = split_df[split_df["valid_ratio"] > config.data.valid_mask_threshold].reset_index(drop=True)
-        return predictions, split_df
+        return np.asarray(predictions), split_df
     finally:
         config.data.test_split = original_test_split
 

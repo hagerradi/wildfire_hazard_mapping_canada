@@ -4,7 +4,7 @@ seed: 42
 deterministic: true
 model:
   num_classes: 1
-  input_feature_list:
+  input_branches:
   - spatial
 optimizer:
   name: AdamW

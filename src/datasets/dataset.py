@@ -37,7 +37,7 @@ class MultiSourceDataset(Dataset):
             filename_col (str): Column name in CSV containing the filenames.
             val_mask_threshold (float): The threshold for how much valid data should be present in a data sample
             input_sources (dict[str, DataSource]): A dictionary mapping output keys
-            (example: 'grid', 'weather') to their respective data sources (example: GridSource, WeatherSource)
+            (example: 'grid', 'tabular_weather') to their respective data sources (example: GridSource, WeatherSource)
         """
 
         self.csv_name = csv_name

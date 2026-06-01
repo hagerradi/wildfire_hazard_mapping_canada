@@ -417,6 +417,8 @@ def load_quantile_mapping(mapping_dir: Path) -> QuantileMapping:
 def _optional_float(value: object) -> float | None:
     if value is None or pd.isna(value):
         return None
+    if not isinstance(value, str | int | float | np.integer | np.floating):
+        raise ValueError(f"Expected optional float-compatible value, got {value!r}.")
     parsed = float(value)
     return None if np.isnan(parsed) else parsed
 
@@ -439,7 +441,11 @@ def _iter_stage_arrays(split_data, mapping: QuantileMapping | None):
         all_pred = []
         all_target = []
         for item in split_data.hex_predictions:
-            pred_grid = item.pred_grid if stage == "uncalibrated" else apply_quantile_mapping(item.pred_grid, mapping)
+            if stage == "uncalibrated":
+                pred_grid = item.pred_grid
+            else:
+                assert mapping is not None
+                pred_grid = apply_quantile_mapping(item.pred_grid, mapping)
             pred_values = pred_grid[item.valid_mask]
             target_values = item.target_values
             all_pred.append(pred_values)

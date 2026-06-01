@@ -56,15 +56,15 @@ def test_predictor_sigmoids_bp_outputs():
 def test_predictor_builds_smp_model_from_checkpoint_config():
     model_config = ModelConfig(
         architecture="smp",
-        input_feature_list=["spatial", "auxiliary"],
+        input_branches=["spatial", "auxiliary"],
         smp_architecture="Unet",
         smp_encoder_name="resnet18",
         smp_encoder_weights=None,
-        auxiliary_feature_encoder_poolings={"weather": "max"},
+        auxiliary_feature_encoder_poolings={"tabular_weather": "max"},
     ).model_dump()
 
-    model = BurnRiskPredictor._build_model(model_config=model_config, spatial_channels=3, auxiliary_input_dims={"weather": 5})
+    model = BurnRiskPredictor._build_model(model_config=model_config, spatial_channels=3, auxiliary_input_dims={"tabular_weather": 5})
 
     assert isinstance(model, SMPDensePredictionModel)
-    out = model(torch.randn(1, 3, 64, 64), {"weather": torch.randn(1, 4, 5)})
+    out = model(torch.randn(1, 3, 64, 64), {"tabular_weather": torch.randn(1, 4, 5)})
     assert out.shape == (1, 1, 64, 64)

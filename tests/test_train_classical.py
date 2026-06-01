@@ -86,7 +86,7 @@ def _make_config(root) -> Config:
             "modelling_approach": "1",
             "seed": 42,
             "deterministic": True,
-            "model": {"num_classes": 1, "input_feature_list": ["spatial", "auxiliary"]},
+            "model": {"num_classes": 1, "input_branches": ["spatial", "auxiliary"]},
             "optimizer": {"name": "AdamW", "lr": 1e-3, "loss": "kl"},
             "training": {"max_epochs": 1, "log_every_n_epoch": 1},
             "evaluation": {"best_ckpt_metrics": ["ccc"], "best_ckpt_metrics_mode": ["max"]},
@@ -110,7 +110,7 @@ def _make_config(root) -> Config:
                         },
                     },
                     {
-                        "name": "weather",
+                        "name": "tabular_weather",
                         "params": {
                             "csv_name": "weather_table_processed.csv",
                             "feature_names_list": ["Temperature", "RelativeHumidity"],
@@ -119,7 +119,7 @@ def _make_config(root) -> Config:
                         },
                     },
                     {
-                        "name": "fire_size",
+                        "name": "tabular_fire_size",
                         "params": {
                             "csv_name": "df_fire_fru_processed.csv",
                             "feature_names_list": ["NORM_LOG_SIZE_HA"],

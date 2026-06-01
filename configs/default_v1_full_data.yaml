@@ -9,7 +9,7 @@ deterministic: True
 
 model:
   num_classes: 1
-  input_feature_list: ["spatial"]
+  input_branches: ["spatial"]
 
 optimizer:
   name: "AdamW" # "SGD", "Adam", "AdamW"

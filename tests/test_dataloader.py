@@ -162,13 +162,15 @@ def test_multi_source_integration(temp_data_dir):
     fire_size_source = TabularSource(root_dir=tmpdir, params=fire_size_params, modelling_approach="1")
 
     ds = MultiSourceDataset(
-        csv_name="train.csv", root_dir=tmpdir, sources={"grid": grid_source, "weather": weather_source, "fire_size": fire_size_source}
+        csv_name="train.csv",
+        root_dir=tmpdir,
+        sources={"grid": grid_source, "tabular_weather": weather_source, "tabular_fire_size": fire_size_source},
     )
     sample = ds[0]
 
     assert "grid" in sample
-    assert "weather" in sample
-    assert "fire_size" in sample
+    assert "tabular_weather" in sample
+    assert "tabular_fire_size" in sample
     input_arr, target, mask = sample["grid"]
     assert isinstance(input_arr, torch.Tensor)
     assert input_arr.shape[0] == 3
@@ -177,9 +179,9 @@ def test_multi_source_integration(temp_data_dir):
     assert not mask_np[1, 1]
     assert not mask_np[10, 20]
     assert mask_np[0, 0]
-    weather = sample["weather"]
+    weather = sample["tabular_weather"]
     assert weather.shape == (2, len(weather_feats))
-    fire_size = sample["fire_size"]
+    fire_size = sample["tabular_fire_size"]
     assert fire_size.shape == (2, len(fire_size_feats))
 
 

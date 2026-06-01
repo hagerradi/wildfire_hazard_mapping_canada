@@ -84,9 +84,11 @@ class TabularSummaryProvider:
             if not lut:
                 raise ValueError(f"Tabular LUT for source={source.name!r} is empty.")
             fallback = np.concatenate(list(lut.values()), axis=0)
+            feature_prefix = source.name.removeprefix("tabular_")
             self.sources.append(
                 {
                     "name": source.name,
+                    "feature_prefix": feature_prefix,
                     "lut": lut,
                     "fallback": fallback,
                     "feature_names": list(params.feature_names_list),
@@ -96,9 +98,9 @@ class TabularSummaryProvider:
 
             for feature_name in params.feature_names_list:
                 for stat in self._STATS:
-                    self.feature_names.append(f"{source.name}_{feature_name}_{stat}")
-            self.feature_names.append(f"{source.name}_candidate_count")
-            self.feature_names.append(f"{source.name}_used_fallback")
+                    self.feature_names.append(f"{feature_prefix}_{feature_name}_{stat}")
+            self.feature_names.append(f"{feature_prefix}_candidate_count")
+            self.feature_names.append(f"{feature_prefix}_used_fallback")
 
     def summarize(self, data: np.ndarray) -> np.ndarray:
         if not self.sources:

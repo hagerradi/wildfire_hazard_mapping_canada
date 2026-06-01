@@ -26,7 +26,7 @@ class UNetBase(nn.Module, ABC):
         self.input_channels: int
         self.num_classes: int
         self.hidden_features: list[int] | None
-        self.input_feature_list: list | None
+        self.input_branches: list | None
         self.use_skip_connections: bool
         self.use_transpose_conv: bool
         self.use_activation_after_upsampling: bool
@@ -70,7 +70,7 @@ class BaselineUNet(UNetBase):
         input_channels: int = 1,
         num_classes: int = 1,
         hidden_features: list[int] | None = None,
-        input_feature_list: list | None = None,
+        input_branches: list | None = None,
         use_skip_connections: bool = True,
         use_transpose_conv: bool = False,
         use_activation_after_upsampling: bool = False,
@@ -79,8 +79,8 @@ class BaselineUNet(UNetBase):
         super().__init__()
         if hidden_features is None:
             hidden_features = [64, 128, 256, 512]
-        if input_feature_list is None:
-            input_feature_list = ["spatial"]
+        if input_branches is None:
+            input_branches = ["spatial"]
 
         self.input_channels = input_channels
         self.num_classes = num_classes
@@ -89,7 +89,7 @@ class BaselineUNet(UNetBase):
         self.use_transpose_conv = use_transpose_conv
         self.use_activation_after_upsampling = use_activation_after_upsampling
         self.use_coordconv = use_coordconv
-        self.input_feature_list = input_feature_list
+        self.input_branches = input_branches
         self._build_components()
         # output layer
         self.out_conv = nn.Conv2d(self.hidden_features[0], self.num_classes, kernel_size=1)
@@ -130,7 +130,7 @@ class MultiSourceUNet(UNetBase):
         input_channels: int = 1,
         num_classes: int = 1,
         hidden_features: list[int] | None = None,
-        input_feature_list: list | None = None,
+        input_branches: list | None = None,
         use_skip_connections: bool = True,
         use_transpose_conv: bool = False,
         use_activation_after_upsampling: bool = False,
@@ -146,7 +146,7 @@ class MultiSourceUNet(UNetBase):
         self.input_channels = input_channels
         self.num_classes = num_classes
         self.hidden_features = hidden_features if hidden_features else [64, 128, 256, 512]
-        self.input_feature_list = input_feature_list
+        self.input_branches = input_branches
         self.use_skip_connections = use_skip_connections
         self.use_transpose_conv = use_transpose_conv
         self.use_activation_after_upsampling = use_activation_after_upsampling
@@ -164,7 +164,7 @@ class MultiSourceUNet(UNetBase):
         if self.hidden_features is None:
             raise ValueError("Hidden features cannot be None.")
 
-        features = self.input_feature_list if self.input_feature_list is not None else []
+        features = self.input_branches if self.input_branches is not None else []
 
         # Build base spatial grids encoder.
         if "spatial" in features:
@@ -266,7 +266,7 @@ class MultiSourceUNet(UNetBase):
         """
         Args:
             x: Spatial input (B, C, H, W) (torch.Tensor)
-            x_auxiliary: Dict. of auxiliary inputs {'weather': (B, N, D), ...} (dict[str, torch.Tensor] | None)
+            x_auxiliary: Dict. of auxiliary inputs {'tabular_weather': (B, N, D), ...} (dict[str, torch.Tensor] | None)
         """
 
         skip_connections = []

@@ -225,7 +225,7 @@ def test_evaluate_and_visualize_hexels_hides_support_outline_for_target_policy(t
     config = Config(
         save_dir=str(tmp_path / "out"),
         modelling_approach="1",
-        model=ModelConfig(num_classes=1, input_feature_list=["spatial"], hidden_features=[8, 16]),
+        model=ModelConfig(num_classes=1, input_branches=["spatial"], hidden_features=[8, 16]),
         optimizer=OptimizerConfig(loss="mse", name="Adam", lr=0.001),
         training=TrainingConfig(max_epochs=1, log_every_n_epoch=1),
         evaluation=EvaluationConfig(
@@ -490,7 +490,7 @@ def test_evaluate_and_visualize_hexels_stitches_each_multitarget_channel(tmp_pat
     config = Config(
         save_dir=str(tmp_path / "out"),
         modelling_approach="1",
-        model=ModelConfig(num_classes=3, input_feature_list=["spatial"], hidden_features=[8, 16]),
+        model=ModelConfig(num_classes=3, input_branches=["spatial"], hidden_features=[8, 16]),
         optimizer=OptimizerConfig(loss="multi_target", name="Adam", lr=0.001),
         training=TrainingConfig(max_epochs=1, log_every_n_epoch=1),
         evaluation=EvaluationConfig(best_ckpt_metrics=["loss"], best_ckpt_metrics_mode=["min"]),
@@ -578,7 +578,7 @@ def test_evaluate_and_visualize_hexels_metrics_only_skips_artifacts(tmp_path, mo
     config = Config(
         save_dir=str(tmp_path / "out"),
         modelling_approach="1",
-        model=ModelConfig(num_classes=1, input_feature_list=["spatial"], hidden_features=[8, 16]),
+        model=ModelConfig(num_classes=1, input_branches=["spatial"], hidden_features=[8, 16]),
         optimizer=OptimizerConfig(loss="mse", name="Adam", lr=0.001),
         training=TrainingConfig(max_epochs=1, log_every_n_epoch=1),
         evaluation=EvaluationConfig(best_ckpt_metrics=["loss"], best_ckpt_metrics_mode=["min"]),
@@ -657,7 +657,7 @@ def test_evaluate_and_visualize_hexels_uses_buffer_scope_paths_and_outputs(tmp_p
     config = Config(
         save_dir=str(tmp_path / "out"),
         modelling_approach="1",
-        model=ModelConfig(num_classes=1, input_feature_list=["spatial"], hidden_features=[8, 16]),
+        model=ModelConfig(num_classes=1, input_branches=["spatial"], hidden_features=[8, 16]),
         optimizer=OptimizerConfig(loss="mse", name="Adam", lr=0.001),
         training=TrainingConfig(max_epochs=1, log_every_n_epoch=1),
         evaluation=EvaluationConfig(best_ckpt_metrics=["loss"], best_ckpt_metrics_mode=["min"]),
@@ -729,7 +729,7 @@ def test_buffer_scope_evaluation_reports_actual_and_buffer_only_splits(tmp_path,
     config = Config(
         save_dir=str(tmp_path / "out"),
         modelling_approach="1",
-        model=ModelConfig(num_classes=1, input_feature_list=["spatial"], hidden_features=[8, 16]),
+        model=ModelConfig(num_classes=1, input_branches=["spatial"], hidden_features=[8, 16]),
         optimizer=OptimizerConfig(loss="mse", name="Adam", lr=0.001),
         training=TrainingConfig(max_epochs=1, log_every_n_epoch=1),
         evaluation=EvaluationConfig(best_ckpt_metrics=["loss"], best_ckpt_metrics_mode=["min"]),
@@ -807,7 +807,7 @@ def test_evaluate_and_visualize_hexels_writes_optional_robust_plot(tmp_path, mon
     config = Config(
         save_dir=str(tmp_path / "out"),
         modelling_approach="1",
-        model=ModelConfig(num_classes=1, input_feature_list=["spatial"], hidden_features=[8, 16]),
+        model=ModelConfig(num_classes=1, input_branches=["spatial"], hidden_features=[8, 16]),
         optimizer=OptimizerConfig(loss="mse", name="Adam", lr=0.001),
         training=TrainingConfig(max_epochs=1, log_every_n_epoch=1),
         evaluation=EvaluationConfig(best_ckpt_metrics=["loss"], best_ckpt_metrics_mode=["min"]),

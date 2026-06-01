@@ -5,7 +5,6 @@ import matplotlib.path as mpath
 import numpy as np
 import rasterio
 from matplotlib.colors import LogNorm, Normalize
-from rasterio.enums import Resampling
 
 # The grid layout for the Canada map (Row, Col)
 # Geometry: rows and columns are offset by 0.5 hexel

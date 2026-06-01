@@ -24,8 +24,8 @@ training:
   log_every_n_epoch: 1
 
 evaluation:
-  best_ckpt_metric: ["spearman", "ssim"] # loss, ssim, mae, etc
-  best_ckpt_metric_mode: ["max", "max"] # max, or min
+  best_ckpt_metrics: ["spearman", "ssim"] # loss, ssim, mae, etc
+  best_ckpt_metrics_mode: ["max", "max"] # max, or min
   checkpoint_filename: "best.pth" # option to load best or last
 
 data:
@@ -48,6 +48,17 @@ data:
   fuel_feats_encoding: "one_hot" # ordinal, one_hot
   normalize_fuel_feats_ordinal: True
   valid_mask_threshold:  0.00
+
+  input_sources:
+    - name: "grid"
+      params:
+        feature_names_list: ["ignition_grid", "fuel_grid", "elevation_grid"]
+        target_name: "bp"
+        out_norm: "min_max"
+        fuel_feats_encoding: "one_hot"
+        normalize_fuel_feats_ordinal: True
+        transforms_list: []
+        augmentation_prob: 0.0
 
 logger:
   enabled: True
