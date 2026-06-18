@@ -12,6 +12,8 @@ import torch
 import torchvision.transforms.functional as F
 from rasterio.transform import from_origin
 
+from data_preparation.tabular.weather import preprocess_weather_list
+from data_preparation.utils import process_fire_size_df
 from src.config import (
     BPPredictionParams,
     DataConfig,
@@ -252,7 +254,7 @@ def test_grid_source_input_and_all_targets_policy_clips_legacy_context(temp_data
 
 
 def test_spatialized_tabular_source_rasterizes_zone_summaries(temp_data_dir):
-    tmpdir, _, _, _, weather_csv, weather_feats, _, _, _ = temp_data_dir
+    tmpdir, train_csv, _, _, weather_csv, weather_feats, _, _, _ = temp_data_dir
 
     params = SpatializedTabularParams(
         csv_name=weather_csv,
@@ -260,7 +262,7 @@ def test_spatialized_tabular_source_rasterizes_zone_summaries(temp_data_dir):
         fire_weather_zone_id_col="WeatherZone",
         include_missing_mask=True,
     )
-    source = SpatializedTabularSource(root_dir=tmpdir, params=params, modelling_approach="1")
+    source = SpatializedTabularSource(root_dir=tmpdir, params=params, modelling_approach="1", train_split_csv_name=train_csv)
 
     sample = source.get_sample({"file_path": os.path.join(tmpdir, "sample_0.npy")})
     expected_zone_100 = (
@@ -274,6 +276,73 @@ def test_spatialized_tabular_source_rasterizes_zone_summaries(temp_data_dir):
     np.testing.assert_allclose(sample[:2, 0, 0].numpy(), expected_zone_100)
     assert sample[-1, 0, 0].item() == 0.0
     assert sample[-1, 1, 1].item() == 1.0
+
+
+def test_spatialized_tabular_global_mean_uses_training_zones_only(temp_data_dir):
+    tmpdir, train_csv, _, _, _, _, _, _, _ = temp_data_dir
+
+    weather_csv = "weather_leakage.csv"
+    pd.DataFrame(
+        {
+            "WeatherZone": [100, 100, 200],
+            "Temperature": [1.0, 3.0, 1000.0],
+        }
+    ).to_csv(os.path.join(tmpdir, weather_csv), index=False)
+    missing_patch = np.zeros((4, 4, 7), dtype=np.float32)
+    missing_patch[:, :, 3] = np.nan
+    missing_patch_path = os.path.join(tmpdir, "missing_zone.npy")
+    np.save(missing_patch_path, missing_patch)
+
+    params = SpatializedTabularParams(
+        csv_name=weather_csv,
+        feature_names_list=["Temperature"],
+        fire_weather_zone_id_col="WeatherZone",
+        include_missing_mask=True,
+        missing_value_strategy="global_mean",
+    )
+    source = SpatializedTabularSource(root_dir=tmpdir, params=params, modelling_approach="1", train_split_csv_name=train_csv)
+
+    sample = source.get_sample({"file_path": missing_patch_path})
+
+    assert sample.shape == (2, 4, 4)
+    np.testing.assert_allclose(sample[0].numpy(), np.full((4, 4), 2.0, dtype=np.float32))
+    np.testing.assert_allclose(sample[1].numpy(), np.ones((4, 4), dtype=np.float32))
+
+
+def test_weather_preprocessing_scalers_fit_train_rows_only():
+    weather = pd.DataFrame(
+        {
+            "Season": [1, 1, 1],
+            "WeatherZone": [1, 1, 2],
+            "Temperature": [0.0, 10.0, 100.0],
+            "RelativeHumidity": [10.0, 20.0, 30.0],
+            "WindSpeed": [1.0, 3.0, 5.0],
+            "WindDirection": [0.0, 90.0, 180.0],
+            "Precipitation": [0.0, 1.0, 3.0],
+            "FineFuelMoistureCode": [80.0, 90.0, 100.0],
+            "DuffMoistureCode": [1.0, 3.0, 5.0],
+            "DroughtCode": [10.0, 20.0, 30.0],
+            "InitialSpreadIndex": [1.0, 2.0, 3.0],
+            "BuildupIndex": [2.0, 4.0, 6.0],
+            "FireWeatherIndex": [3.0, 6.0, 9.0],
+        }
+    )
+
+    processed = preprocess_weather_list(weather, fit_mask=np.array([True, True, False]))
+
+    assert processed.loc[2, "Temperature"] == pytest.approx(19.0)
+    assert processed.loc[2, "RelativeHumidity"] == pytest.approx(2.0)
+    assert processed.loc[2, "FineFuelMoistureCode"] == pytest.approx(2.0)
+
+
+def test_fire_size_processing_normalizes_with_train_gridcodes_only():
+    fire_size = pd.DataFrame({"GRIDCODE": [1, 2, 3], "SIZE_HA": [9.0, 99.0, 999.0]})
+
+    processed = process_fire_size_df(fire_size, fit_gridcodes={1, 2})
+
+    assert processed.loc[processed["GRIDCODE"].eq(1), "NORM_LOG_SIZE_HA"].item() == pytest.approx(0.0)
+    assert processed.loc[processed["GRIDCODE"].eq(2), "NORM_LOG_SIZE_HA"].item() == pytest.approx(1.0, abs=2e-5)
+    assert processed.loc[processed["GRIDCODE"].eq(3), "NORM_LOG_SIZE_HA"].item() > 1.5
 
 
 def test_build_dataset_appends_spatialized_tabular_channels_to_grid(temp_data_dir, monkeypatch):

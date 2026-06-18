@@ -7,7 +7,13 @@ import numpy as np
 import torch
 
 from data_preparation.paths import Paths, normalize_mask_scope
-from data_preparation.spatial.utils import FUEL_GROUP_MAP, get_range_elevation, get_range_output, load_spatial_raster
+from data_preparation.spatial.utils import (
+    FUEL_GROUP_MAP,
+    get_output_log_stats_cached,
+    get_range_elevation,
+    get_range_output,
+    load_spatial_raster,
+)
 from src.config import GridParams
 from src.datasets.sources.base import DataSource
 from src.datasets.targets import TARGET_SPECS, get_target_specs
@@ -117,6 +123,20 @@ class GridSource(DataSource):
                         label=target.label,
                         source_dir=self.raw_data_dir,
                     )
+
+            for target in self.targets:
+                if self._target_out_norm(target.name) != "log_standard":
+                    continue
+                mean = self.target_log_means.get(target.name, self.target_log_mean)
+                std = self.target_log_stds.get(target.name, self.target_log_std)
+                if mean is None or std is None:
+                    mean, std = get_output_log_stats_cached(self.root_dir, target.output_type)
+                    if target.name in self.target_log_stds or target.name in self.target_log_means:
+                        self.target_log_means[target.name] = mean
+                        self.target_log_stds[target.name] = std
+                    else:
+                        self.target_log_mean = mean
+                        self.target_log_std = std
 
         # 2. Update indices
         with open(os.path.join(self.root_dir, f"feature_channel_map_{self.modelling_approach}.json")) as f:

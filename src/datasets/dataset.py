@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader, Dataset
 from src.config import DataConfig
 from src.datasets.sources import DataSource
 from src.datasets.transforms import get_transforms
-from src.datasets.utils import AVAILABLE_DATA_SOURCES, SPATIAL_APPEND_SOURCE_NAMES, get_data_source_class
+from src.datasets.utils import AVAILABLE_DATA_SOURCES, SPATIAL_APPEND_SOURCE_NAMES, SPATIALIZED_TABULAR_SOURCE_NAMES, get_data_source_class
 from src.utils import seed_worker
 
 
@@ -132,6 +132,10 @@ def build_dataset(config: DataConfig, csv_name: str, modelling_approach: str = "
             source_kwargs["raw_data_dir"] = config.raw_data_dir
         if source_conf.name == "bp_prediction":
             source_kwargs["raw_data_dir"] = config.raw_data_dir
+        if source_conf.name in SPATIALIZED_TABULAR_SOURCE_NAMES:
+            source_kwargs["train_split_csv_name"] = config.train_split
+            source_kwargs["filename_col"] = config.filename_col
+            source_kwargs["valid_mask_threshold"] = config.valid_mask_threshold
         sources[source_conf.name] = source_class(**source_kwargs)
 
     dataset = MultiSourceDataset(

@@ -1,4 +1,6 @@
-save_dir: experiments/bp_full_config_v3_kl_ccc_hexpairrank_fullsupport_bpzero
+# BP best-model config: kl+ccc+hexpairrank, full-support, bp-nodata-as-zero.
+# Wind representation: Cartesian components (wind_x, wind_y) replace wd_sin/wd_cos.
+save_dir: experiments/bp_full_config_v3_kl_ccc_hexpairrank_fullsupport_bpzero_wind_vector_dist_ignition
 modelling_approach: '1'
 seed: 42
 deterministic: true
@@ -55,7 +57,7 @@ evaluation:
   prediction_support_policy: input
 
 data:
-  root_dir: /network/scratch/o/olutayot/nrcan_wildfireriskmapping/data_samples/data_samples_v3_full_support
+  root_dir: /network/scratch/o/olutayot/nrcan_wildfireriskmapping/data_samples/data_samples_v3_full_support_dist_ignition
   raw_data_dir: /network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA
   train_split: train_indices.csv
   val_split: val_indices.csv
@@ -68,7 +70,8 @@ data:
   - name: grid
     params:
       feature_names_list:
-      - ignition_grid
+      - ignition_grid_human
+      - ignition_grid_lightning
       - fuel_grid
       - elevation_grid
       target_name: bp
@@ -93,8 +96,8 @@ data:
       - BuildupIndex
       - FireWeatherIndex
       - WindSpeed
-      - wd_sin
-      - wd_cos
+      - wind_x
+      - wind_y
       fire_weather_zone_id_col: WeatherZone
       fire_weather_zone_selection_approach: mode
       num_samples_per_patch: 256
@@ -119,13 +122,13 @@ logger:
   enabled: true
   project_name: nrcan05-wildfireriskmapping
   workspace: mila-amlrt
-  experiment_name: bp_full_config_v3_kl_ccc_hexpairrank_fullsupport_bpzero
+  experiment_name: bp_full_config_v3_kl_ccc_hexpairrank_fullsupport_bpzero_wind_vector_dist_ignition
   tags:
   - full_data
   - modelling_approach=1
   - target=bp
   - spatial_weather_fire_size
-  - data_samples_v3_full_support
+  - data_samples_v3_full_support_dist_ignition
   - fuel_one_hot_encoding
   - loss=kl_ccc_hexpairrank
   - hex_loss=mean_pairwise_rank_top10_pairwise_rank
@@ -133,6 +136,8 @@ logger:
   - include_patch_metadata=true
   - input_mask_policy=input_only
   - bp_nodata_as_zero=true
+  - wind=vector_components
+  - ignition=distribution_weighted
   log_every_n_step: 10
 
 metrics:

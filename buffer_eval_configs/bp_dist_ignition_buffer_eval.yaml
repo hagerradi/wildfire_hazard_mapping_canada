@@ -1,8 +1,7 @@
-save_dir: experiments/bp_full_config_v3_kl_ccc_hexpairrank_fullsupport_bpzero
+save_dir: experiments/bp_full_config_v3_kl_ccc_hexpairrank_fullsupport_bpzero_wind_vector_dist_ignition
 modelling_approach: '1'
 seed: 42
 deterministic: true
-
 model:
   num_classes: 1
   input_branches:
@@ -22,7 +21,6 @@ model:
   auxiliary_feature_encoder_poolings:
     tabular_weather: max
     tabular_fire_size: max
-
 optimizer:
   name: AdamW
   lr: 0.0007
@@ -36,15 +34,12 @@ optimizer:
     ccc: 0.45
     hex_mean_pairwise_rank: 0.05
     hex_top10_pairwise_rank: 0.05
-
 lr_scheduler:
   name: cosine_warmup
   warmup_epochs: 5
-
 training:
   max_epochs: 25
   log_every_n_epoch: 1
-
 evaluation:
   best_ckpt_metrics:
   - ccc
@@ -53,9 +48,8 @@ evaluation:
   checkpoint_filename: best.pth
   bp_nodata_as_zero: true
   prediction_support_policy: input
-
 data:
-  root_dir: /network/scratch/o/olutayot/nrcan_wildfireriskmapping/data_samples/data_samples_v3_full_support
+  root_dir: /network/scratch/o/olutayot/nrcan_wildfireriskmapping/data_samples/data_samples_v3_buffer_test_full_support_dist_ignition
   raw_data_dir: /network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA
   train_split: train_indices.csv
   val_split: val_indices.csv
@@ -68,7 +62,8 @@ data:
   - name: grid
     params:
       feature_names_list:
-      - ignition_grid
+      - ignition_grid_human
+      - ignition_grid_lightning
       - fuel_grid
       - elevation_grid
       target_name: bp
@@ -93,8 +88,8 @@ data:
       - BuildupIndex
       - FireWeatherIndex
       - WindSpeed
-      - wd_sin
-      - wd_cos
+      - wind_x
+      - wind_y
       fire_weather_zone_id_col: WeatherZone
       fire_weather_zone_selection_approach: mode
       num_samples_per_patch: 256
@@ -114,18 +109,17 @@ data:
       feature_to_bias: NORM_LOG_SIZE_HA
       transforms_list: []
       augmentation_prob: 0.0
-
 logger:
-  enabled: true
+  enabled: false
   project_name: nrcan05-wildfireriskmapping
   workspace: mila-amlrt
-  experiment_name: bp_full_config_v3_kl_ccc_hexpairrank_fullsupport_bpzero
+  experiment_name: bp_full_config_v3_kl_ccc_hexpairrank_fullsupport_bpzero_wind_vector_dist_ignition
   tags:
   - full_data
   - modelling_approach=1
   - target=bp
   - spatial_weather_fire_size
-  - data_samples_v3_full_support
+  - data_samples_v3_full_support_dist_ignition
   - fuel_one_hot_encoding
   - loss=kl_ccc_hexpairrank
   - hex_loss=mean_pairwise_rank_top10_pairwise_rank
@@ -133,8 +127,9 @@ logger:
   - include_patch_metadata=true
   - input_mask_policy=input_only
   - bp_nodata_as_zero=true
+  - wind=vector_components
+  - ignition=distribution_weighted
   log_every_n_step: 10
-
 metrics:
 - mse
 - mae
@@ -154,7 +149,6 @@ metrics:
 - iou_top10
 - auc_iou_top10
 - auc_iou_full
-
 data_prep:
   modelling_approach: 1
   win_h: 256

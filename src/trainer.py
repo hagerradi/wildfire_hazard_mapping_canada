@@ -9,7 +9,7 @@ from torch.optim.lr_scheduler import LRScheduler, ReduceLROnPlateau
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from data_preparation.spatial.utils import get_range_output
+from data_preparation.spatial.utils import get_output_log_stats_cached, get_range_output
 from src.config import Config, GridParams
 from src.datasets.targets import get_target_specs
 from src.datasets.utils import apply_bp_nodata_zero_range
@@ -202,6 +202,11 @@ class Trainer:
                         bp_nodata_as_zero=self._grid_params.bp_nodata_as_zero,
                     )
             elif out_norm == "log_standard":
+                if (target_log_mean is None or target_log_std is None) and self.config.data.root_dir:
+                    target_log_mean, target_log_std = get_output_log_stats_cached(
+                        root_dir=self.config.data.root_dir,
+                        output_type=target.output_type,
+                    )
                 if target_log_mean is None or target_log_std is None:
                     raise ValueError(f"target_log_mean/std are required for target={target.name!r} with out_norm='log_standard'.")
                 if target_log_std <= 0.0:

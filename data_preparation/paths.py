@@ -61,6 +61,12 @@ class Paths:
     def weather_table(self, hex_id: int | str) -> Path:
         return self.tabular_dir / f"hex{hex_id}_DailyWeather.csv"
 
+    def ignition_distribution_table(self, hex_id: int | str) -> Path:
+        return self.tabular_dir / f"hex{hex_id}_IgnitionDistribution.csv"
+
+    def firezones_table(self, hex_id: int | str) -> Path:
+        return self.tabular_dir / f"hex{hex_id}_FireZones.csv"
+
     def output_burn_prob(self) -> Path:
         return self.base_dir / "results" / "burnP3Plus_OutputBurnProbability" / "burnProbability-sn2.tif"
 

@@ -11,6 +11,16 @@ from sklearn.model_selection import train_test_split
 from data_preparation.paths import Paths
 
 feature_names = ["fuel_grid", "elevation_grid", "ignition_grid", "firezones_grid", "bp_out_grid", "fi_out_grid", "ros_out_grid"]
+feature_names_weighted_ignition = [
+    "fuel_grid",
+    "elevation_grid",
+    "ignition_grid_human",
+    "ignition_grid_lightning",
+    "firezones_grid",
+    "bp_out_grid",
+    "fi_out_grid",
+    "ros_out_grid",
+]
 FIRE_SIZE_FEATURE_COLS = ["GRIDCODE", "SIZE_HA"]
 
 
@@ -23,7 +33,7 @@ def find_file_path(filename: str, *search_dirs: Path) -> Path:
     raise FileNotFoundError(f"Could not find {filename} in {', '.join(str(d) for d in search_dirs)}")
 
 
-def process_fire_size_df(df_fire_size: pd.DataFrame) -> pd.DataFrame:
+def process_fire_size_df(df_fire_size: pd.DataFrame, fit_gridcodes: set[int] | None = None) -> pd.DataFrame:
     # Validate that required columns are present before selecting them
     missing_cols = [col for col in FIRE_SIZE_FEATURE_COLS if col not in df_fire_size.columns]
     if missing_cols:
@@ -41,8 +51,13 @@ def process_fire_size_df(df_fire_size: pd.DataFrame) -> pd.DataFrame:
         )  # Only append synthetic zone 36 if it is not already present, and avoid duplicate indices
 
     df_fire_size["LOG_SIZE_HA"] = np.log10(df_fire_size["SIZE_HA"] + 1)
-    min_val = df_fire_size["LOG_SIZE_HA"].min()
-    max_val = df_fire_size["LOG_SIZE_HA"].max()
+    fit_rows = np.ones(len(df_fire_size), dtype=bool)
+    if fit_gridcodes is not None:
+        fit_rows = df_fire_size["GRIDCODE"].astype(int).isin(fit_gridcodes).to_numpy(dtype=bool)
+        if not fit_rows.any():
+            raise ValueError(f"No fire-size rows match train split GRIDCODE values: {sorted(fit_gridcodes)[:20]}")
+    min_val = df_fire_size.loc[fit_rows, "LOG_SIZE_HA"].min()
+    max_val = df_fire_size.loc[fit_rows, "LOG_SIZE_HA"].max()
     if max_val == min_val:
         # Avoid division by zero when all LOG_SIZE_HA values are identical
         df_fire_size["NORM_LOG_SIZE_HA"] = 0.0

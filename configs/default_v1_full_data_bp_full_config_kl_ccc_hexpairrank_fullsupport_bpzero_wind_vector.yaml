@@ -1,4 +1,6 @@
-save_dir: experiments/bp_full_config_v3_kl_ccc_hexpairrank_fullsupport_bpzero
+# BP best-model config: kl+ccc+hexpairrank, full-support, bp-nodata-as-zero.
+# Wind representation: Cartesian components (wind_x, wind_y) replace wd_sin/wd_cos.
+save_dir: experiments/bp_full_config_v3_kl_ccc_hexpairrank_fullsupport_bpzero_wind_vector
 modelling_approach: '1'
 seed: 42
 deterministic: true
@@ -93,8 +95,8 @@ data:
       - BuildupIndex
       - FireWeatherIndex
       - WindSpeed
-      - wd_sin
-      - wd_cos
+      - wind_x
+      - wind_y
       fire_weather_zone_id_col: WeatherZone
       fire_weather_zone_selection_approach: mode
       num_samples_per_patch: 256
@@ -119,7 +121,7 @@ logger:
   enabled: true
   project_name: nrcan05-wildfireriskmapping
   workspace: mila-amlrt
-  experiment_name: bp_full_config_v3_kl_ccc_hexpairrank_fullsupport_bpzero
+  experiment_name: bp_full_config_v3_kl_ccc_hexpairrank_fullsupport_bpzero_wind_vector
   tags:
   - full_data
   - modelling_approach=1
@@ -133,6 +135,7 @@ logger:
   - include_patch_metadata=true
   - input_mask_policy=input_only
   - bp_nodata_as_zero=true
+  - wind=vector_components
   log_every_n_step: 10
 
 metrics:

@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from data_preparation.hexel_loader import load_spatial_features_per_hexel
+from data_preparation.hexel_loader import IGNITION_WEIGHTING_CHOICES, load_spatial_features_per_hexel
 from data_preparation.paths import MASK_SCOPE_CHOICES, prepared_mask_scope
 from data_preparation.spatial import NODATA
 from data_preparation.utils import find_hex_ids, get_processed_hex_ids
@@ -120,6 +120,7 @@ def generate_data_samples(
     task_id: int = 0,
     num_tasks: int = 1,
     mask_scope: str = "actual",
+    ignition_weighting: str = "max",
 ):
     scope = prepared_mask_scope(mask_scope)
     if save_dir:
@@ -157,6 +158,7 @@ def generate_data_samples(
             feature_channel_map_path=os.path.join(out_dir, f"feature_channel_map_{modelling_approach}.json"),
             modelling_approach=modelling_approach,
             mask_scope=scope,
+            ignition_weighting=ignition_weighting,
         )
         if (stacked_feats is None) or (mask is None):
             print(f"================Failed for hex {hex_id}===================")
@@ -189,6 +191,12 @@ def main():
     parser.add_argument("--task_id", type=int, default=0, help="SLURM array ID")
     parser.add_argument("--num_tasks", type=int, default=1, help="Total number of array tasks")
     parser.add_argument("--mask_scope", choices=MASK_SCOPE_CHOICES, default="actual", help="Mask scope for generated patch rasters.")
+    parser.add_argument(
+        "--ignition_weighting",
+        choices=IGNITION_WEIGHTING_CHOICES,
+        default="max",
+        help="'max' for original max-aggregation (1 channel) or 'distribution' for zone-area-weighted 2-channel ignition.",
+    )
     args = parser.parse_args()
 
     generate_data_samples(
@@ -202,6 +210,7 @@ def main():
         task_id=args.task_id,
         num_tasks=args.num_tasks,
         mask_scope=args.mask_scope,
+        ignition_weighting=args.ignition_weighting,
     )
 
 

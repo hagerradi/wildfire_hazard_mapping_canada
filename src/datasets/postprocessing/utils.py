@@ -17,6 +17,7 @@ from rasterio.profiles import Profile
 from data_preparation.paths import MaskScope, Paths, normalize_mask_scope
 from data_preparation.spatial.utils import (
     denormalize_burn_count,
+    get_output_log_stats_cached,
     get_range_output,
     load_spatial_raster,
 )
@@ -564,6 +565,7 @@ def evaluate_and_visualize_hexels(
     stitch_mode: str = "mean",
     center_crop_fraction: float = 0.8,
     save_artifacts: bool = True,
+    save_plots: bool = True,
     robust_plot_percentile: float | None = None,
     mask_scope: str = "actual",
 ) -> dict[str, float]:
@@ -603,13 +605,16 @@ def evaluate_and_visualize_hexels(
             bp_nodata_as_zero=config.evaluation.bp_nodata_as_zero,
         )
         target_log_mean, target_log_std = get_target_log_stats(grid_params=grid_params, target=target)
+        target_out_norm = get_target_out_norm(grid_params=grid_params, target=target, fallback_out_norm=out_norm)
+        if target_out_norm == "log_standard" and (target_log_mean is None or target_log_std is None):
+            target_log_mean, target_log_std = get_output_log_stats_cached(str(data_dir), target.output_type)
         target_settings.append(
             TargetPostprocessingSettings(
                 target=target,
                 target_channel_index=target_channel_index,
                 max_target_val=max_target_val,
                 min_target_val=min_target_val,
-                out_norm=get_target_out_norm(grid_params=grid_params, target=target, fallback_out_norm=out_norm),
+                out_norm=target_out_norm,
                 target_log_mean=target_log_mean,
                 target_log_std=target_log_std,
             )
@@ -702,24 +707,7 @@ def evaluate_and_visualize_hexels(
                     artifacts_save_dir,
                     target_name=target_name_for_artifacts,
                 )
-                visualize_target_grids(
-                    gt_grid=grid_gt,
-                    pred_grid=reconstructed_hexel_denorm,
-                    hex_id=hex_id,
-                    save_dir=artifacts_save_dir,
-                    experiment_logger=experiment_logger,
-                    target_label=target.label,
-                    target_name=target_name_for_artifacts,
-                    actual_support_mask=actual_support_mask,
-                    buffer_support_mask=buffer_support_mask,
-                    prediction_support_label=prediction_support_label,
-                    show_prediction_support_outline=show_prediction_support_outline,
-                )
-                target_robust_plot_percentile = effective_robust_plot_percentile(
-                    target=target,
-                    robust_plot_percentile=robust_plot_percentile,
-                )
-                if target_robust_plot_percentile is not None:
+                if save_plots:
                     visualize_target_grids(
                         gt_grid=grid_gt,
                         pred_grid=reconstructed_hexel_denorm,
@@ -728,34 +716,52 @@ def evaluate_and_visualize_hexels(
                         experiment_logger=experiment_logger,
                         target_label=target.label,
                         target_name=target_name_for_artifacts,
-                        value_percentile=target_robust_plot_percentile,
-                        diff_percentile=target_robust_plot_percentile,
-                        filename_suffix=f"_p{target_robust_plot_percentile:g}",
                         actual_support_mask=actual_support_mask,
                         buffer_support_mask=buffer_support_mask,
                         prediction_support_label=prediction_support_label,
                         show_prediction_support_outline=show_prediction_support_outline,
                     )
-                plot_hexbin_distribution(
-                    gt_grid=grid_gt,
-                    pred_grid=reconstructed_hexel_denorm,
-                    hex_id=hex_id,
-                    save_dir=artifacts_save_dir,
-                    experiment_logger=experiment_logger,
-                    target_label=target.label,
-                    probability_scale=target.probability_scale,
-                    target_name=target_name_for_artifacts,
-                )
-                plot_histogram_distribution(
-                    gt_grid=grid_gt,
-                    pred_grid=reconstructed_hexel_denorm,
-                    hex_id=hex_id,
-                    save_dir=artifacts_save_dir,
-                    experiment_logger=experiment_logger,
-                    target_label=target.label,
-                    probability_scale=target.probability_scale,
-                    target_name=target_name_for_artifacts,
-                )
+                    target_robust_plot_percentile = effective_robust_plot_percentile(
+                        target=target,
+                        robust_plot_percentile=robust_plot_percentile,
+                    )
+                    if target_robust_plot_percentile is not None:
+                        visualize_target_grids(
+                            gt_grid=grid_gt,
+                            pred_grid=reconstructed_hexel_denorm,
+                            hex_id=hex_id,
+                            save_dir=artifacts_save_dir,
+                            experiment_logger=experiment_logger,
+                            target_label=target.label,
+                            target_name=target_name_for_artifacts,
+                            value_percentile=target_robust_plot_percentile,
+                            diff_percentile=target_robust_plot_percentile,
+                            filename_suffix=f"_p{target_robust_plot_percentile:g}",
+                            actual_support_mask=actual_support_mask,
+                            buffer_support_mask=buffer_support_mask,
+                            prediction_support_label=prediction_support_label,
+                            show_prediction_support_outline=show_prediction_support_outline,
+                        )
+                    plot_hexbin_distribution(
+                        gt_grid=grid_gt,
+                        pred_grid=reconstructed_hexel_denorm,
+                        hex_id=hex_id,
+                        save_dir=artifacts_save_dir,
+                        experiment_logger=experiment_logger,
+                        target_label=target.label,
+                        probability_scale=target.probability_scale,
+                        target_name=target_name_for_artifacts,
+                    )
+                    plot_histogram_distribution(
+                        gt_grid=grid_gt,
+                        pred_grid=reconstructed_hexel_denorm,
+                        hex_id=hex_id,
+                        save_dir=artifacts_save_dir,
+                        experiment_logger=experiment_logger,
+                        target_label=target.label,
+                        probability_scale=target.probability_scale,
+                        target_name=target_name_for_artifacts,
+                    )
 
             # compute per-hexel metrics
             if metric_functions is not None:
@@ -800,7 +806,7 @@ def evaluate_and_visualize_hexels(
                     if isinstance(fn, functools.partial) and "percentile" in fn.keywords
                 ]
 
-                if save_artifacts:
+                if save_artifacts and save_plots:
                     for p in percentiles_to_plot:
                         pred_bin, gt_bin = get_hexel_binary_maps(reconstructed_hexel_denorm, grid_gt, percentile=p)
                         visualize_hexel_iou(
@@ -818,7 +824,8 @@ def evaluate_and_visualize_hexels(
                         )
 
         if save_artifacts:
-            print(f"=======Saved subplots for hex{hex_id}==============")
+            artifact_label = "subplots" if save_plots else "predicted rasters"
+            print(f"=======Saved {artifact_label} for hex{hex_id}==============")
 
     # aggregate final scores
     hexel_metrics = {}

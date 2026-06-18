@@ -39,7 +39,9 @@ python -m data_preparation.process_tabular_data \
 	--save_dir="/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA/data_samples_v1" \
 	--weather_output_file="weather_table_processed.csv" \
 	--fire_size_input_file="df_fire_fru.csv" \
-	--fire_size_output_file="df_fire_fru_processed.csv"
+	--fire_size_output_file="df_fire_fru_processed.csv" \
+	--train_split_file="train_indices.csv" \
+	--modelling_approach=1
 ```
 
 Notes: If you used modelling approach 2, set `--save_dir` to `data_samples_approach_2`. The `process_tabular_data` script will look for the fire-size file in `--root_dir` first, then in `--save_dir`; ensure `df_fire_fru.csv` is present in one of those places.

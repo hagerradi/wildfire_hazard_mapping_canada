@@ -352,6 +352,25 @@ def get_range_output(root_dir: str, output_type: str) -> tuple[float, float]:
     return max_value, min_value
 
 
+def get_output_log_stats_cached(root_dir: str, output_type: str) -> tuple[float, float]:
+    """
+    Return log1p mean/std for a target, reading from a cached JSON file if available.
+    Falls back to scanning raw rasters via get_output_log_stats.
+    """
+    import json as _json
+
+    cache_path = os.path.join(root_dir, "target_log_stats.json")
+    if os.path.exists(cache_path):
+        with open(cache_path) as f:
+            cached = _json.load(f)
+        entry = cached.get(output_type, {})
+        mean = entry.get("log_mean")
+        std = entry.get("log_std")
+        if mean is not None and std is not None:
+            return float(mean), float(std)
+    return get_output_log_stats(root_dir, output_type)
+
+
 def get_output_log_stats(root_dir: str, output_type: str) -> tuple[float, float]:
     """
     Get global mean/std of log1p target values for one output type across all valid hexels.

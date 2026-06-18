@@ -48,6 +48,11 @@ def parse_args() -> argparse.Namespace:
         help="Compute stitched hexel metrics without writing predicted hexels or plots.",
     )
     parser.add_argument(
+        "--skip_hexel_plots",
+        action="store_true",
+        help="Write stitched predicted hexel rasters and metrics, but skip per-hexel PNG diagnostics.",
+    )
+    parser.add_argument(
         "--no_save_predictions",
         action="store_true",
         help="Do not save patch-level test_predictions.npy.",
@@ -184,6 +189,7 @@ def main() -> None:
             stitch_mode=args.stitch_mode,
             center_crop_fraction=args.center_crop_fraction,
             save_artifacts=not args.metrics_only,
+            save_plots=not args.skip_hexel_plots,
             robust_plot_percentile=args.robust_plot_percentile,
             mask_scope=args.mask_scope,
         )
