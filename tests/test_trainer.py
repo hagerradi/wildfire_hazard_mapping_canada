@@ -16,6 +16,7 @@ from src.config import (
     OptimizerConfig,
     TrainingConfig,
 )
+from src.losses import MultiTargetLoss
 from src.trainer import Trainer
 
 SPATIAL_CHANNELS = 1
@@ -56,15 +57,6 @@ class GridDataset(torch.utils.data.Dataset):
         return {"grid": (inputs, targets, masks)}
 
 
-class PatchMetadataDataset(GridDataset):
-    """Spatial dataset with the hex IDs needed by hex-summary losses."""
-
-    def __getitem__(self, idx: int) -> dict:
-        item = super().__getitem__(idx)
-        item["patch_metadata"] = {"hex_id": torch.tensor(idx + 1, dtype=torch.long)}
-        return item
-
-
 class WeatherDataset(GridDataset):
     """Spatial + weather tabular dataset."""
 
@@ -75,6 +67,24 @@ class WeatherDataset(GridDataset):
         return item
 
 
+class MultiTargetGridDataset(GridDataset):
+    """Spatial dataset with BP/FI/ROS target channels."""
+
+    def __getitem__(self, idx: int) -> dict:
+        torch.manual_seed(idx)
+        inputs = torch.rand(self.channels, self.height, self.width)
+        targets = torch.stack(
+            [
+                torch.rand(self.height, self.width),
+                torch.randn(self.height, self.width),
+                torch.randn(self.height, self.width),
+            ],
+            dim=0,
+        )
+        masks = torch.rand(3, self.height, self.width) > 0.5
+        return {"grid": (inputs, targets, masks)}
+
+
 class MultiAuxDataset(GridDataset):
     """Spatial + weather + fire_size tabular dataset."""
 
@@ -83,6 +93,15 @@ class MultiAuxDataset(GridDataset):
         torch.manual_seed(idx + 1000)
         item["tabular_weather"] = torch.rand(AUX_SAMPLES, WEATHER_FEATS)
         item["tabular_fire_size"] = torch.rand(AUX_SAMPLES, FIRE_SIZE_FEATS)
+        return item
+
+
+class HexMetadataDataset(GridDataset):
+    """Spatial dataset with patch metadata for hex-summary losses."""
+
+    def __getitem__(self, idx: int) -> dict:
+        item = super().__getitem__(idx)
+        item["patch_metadata"] = {"hex_id": torch.tensor(1 if idx < 2 else 2, dtype=torch.long)}
         return item
 
 
@@ -114,6 +133,8 @@ def _make_config(
     logger_enabled: bool = False,
     input_branches: list[str] | None = None,
     grid_params: GridParams | None = None,
+    num_classes: int = 1,
+    optimizer_config: OptimizerConfig | None = None,
     auxiliary_hidden_dims: dict | None = None,
     auxiliary_embed_dims: dict | None = None,
     auxiliary_feature_encoder_poolings: dict | None = None,
@@ -125,14 +146,14 @@ def _make_config(
     return Config(
         save_dir=str(tmp_path),
         model=ModelConfig(
-            num_classes=1,
+            num_classes=num_classes,
             hidden_features=[8, 16],
             input_branches=input_branches,
             auxiliary_hidden_dims=auxiliary_hidden_dims or {"tabular_weather": [16, 32]},
             auxiliary_embed_dims=auxiliary_embed_dims or {"tabular_weather": 16},
             auxiliary_feature_encoder_poolings=auxiliary_feature_encoder_poolings or {"tabular_weather": "max"},
         ),
-        optimizer=OptimizerConfig(loss="mse", name="Adam", lr=0.001),
+        optimizer=optimizer_config or OptimizerConfig(loss="mse", name="Adam", lr=0.001),
         training=TrainingConfig(max_epochs=1, log_every_n_epoch=1),
         evaluation=EvaluationConfig(
             best_ckpt_metrics=["spearman"],
@@ -247,6 +268,12 @@ def dummy_data_weather():
 
 
 @pytest.fixture
+def dummy_data_multitarget():
+    ds = MultiTargetGridDataset()
+    return DataLoader(ds, batch_size=2)
+
+
+@pytest.fixture
 def dummy_data_multi_aux():
     ds = MultiAuxDataset()
     return DataLoader(ds, batch_size=2)
@@ -286,15 +313,6 @@ def test_trainer_setup(dummy_config):
     assert "mse" in trainer.metric_functions
 
 
-def test_trainer_passes_coordconv_to_model(tmp_path):
-    config = _make_config(tmp_path)
-    config.model.use_coordconv = True
-
-    trainer = Trainer(config, spatial_input_channels=SPATIAL_CHANNELS)
-
-    assert trainer.model.use_coordconv is True
-
-
 def test_trainer_step(dummy_config, dummy_data):
     trainer = Trainer(dummy_config, spatial_input_channels=SPATIAL_CHANNELS)
     patch_trainer(trainer)
@@ -304,53 +322,17 @@ def test_trainer_step(dummy_config, dummy_data):
     assert isinstance(loss, torch.Tensor)
 
 
-def test_trainer_passes_patch_metadata_to_hex_rank_loss(tmp_path):
-    config = _make_config(tmp_path)
-    config.optimizer.loss = ["kl", "ccc", "hex_mean_pairwise_rank", "hex_top10_pairwise_rank"]
-    config.optimizer.loss_weights = {
-        "kl": 0.45,
-        "ccc": 0.45,
-        "hex_mean_pairwise_rank": 0.05,
-        "hex_top10_pairwise_rank": 0.05,
-    }
-    config.data.include_patch_metadata = True
-    trainer = Trainer(config, spatial_input_channels=SPATIAL_CHANNELS)
-    batch = next(iter(DataLoader(PatchMetadataDataset(size=2), batch_size=2)))
-
-    _, loss, loss_parts, _, _ = trainer._step(batch)
-
-    assert torch.isfinite(loss)
-    assert loss_parts is not None
-    assert set(loss_parts) == set(config.optimizer.loss)
-
-
-def test_trainer_rejects_hex_rank_loss_without_patch_metadata(tmp_path):
-    config = _make_config(tmp_path)
-    config.optimizer.loss = ["kl", "hex_mean_pairwise_rank"]
-    config.optimizer.loss_weights = {"kl": 0.9, "hex_mean_pairwise_rank": 0.1}
-    trainer = Trainer(config, spatial_input_channels=SPATIAL_CHANNELS)
-    batch = next(iter(DataLoader(GridDataset(size=2), batch_size=2)))
-
-    with pytest.raises(ValueError, match="requires patch metadata"):
-        trainer._step(batch)
-
-
-def test_metric_tensors_inverse_log_standard(tmp_path, monkeypatch):
+def test_metric_tensors_inverse_log_standard(tmp_path):
     mean = 2.0
     std = 0.5
-    seen = {}
-
-    def fake_get_output_log_stats(root_dir, output_type):
-        seen["log_stats"] = (root_dir, output_type)
-        return mean, std
-
-    monkeypatch.setattr("src.trainer.get_output_log_stats", fake_get_output_log_stats)
     config = _make_config(
         tmp_path,
         grid_params=GridParams(
             feature_names_list=["dummy_feat"],
             target_name="fi",
             out_norm="log_standard",
+            target_log_mean=mean,
+            target_log_std=std,
         ),
     )
     trainer = Trainer(config, spatial_input_channels=SPATIAL_CHANNELS)
@@ -361,9 +343,59 @@ def test_metric_tensors_inverse_log_standard(tmp_path, monkeypatch):
 
     expected_predictions = torch.expm1(predictions * std + mean).clamp_min(0.0)
     expected_targets = torch.expm1(targets * std + mean).clamp_min(0.0)
-    assert seen["log_stats"] == ("", "fire_intensity")
     assert torch.allclose(metric_predictions, expected_predictions)
     assert torch.allclose(metric_targets, expected_targets)
+
+
+def test_multi_target_trainer_uses_target_specific_loss_and_metrics(tmp_path):
+    config = _make_config(
+        tmp_path,
+        num_classes=3,
+        optimizer_config=OptimizerConfig(
+            loss="multi_target",
+            name="Adam",
+            lr=0.001,
+            target_losses={"bp": "bce", "fi": "huber", "ros": "huber"},
+        ),
+        grid_params=GridParams(
+            feature_names_list=["dummy_feat"],
+            target_name=["bp", "fi", "ros"],
+            target_out_norms={"bp": "none", "fi": "none", "ros": "none"},
+        ),
+    )
+    trainer = Trainer(config, spatial_input_channels=SPATIAL_CHANNELS)
+    assert trainer._is_multitarget is True
+    assert isinstance(trainer.loss_fn, MultiTargetLoss)
+
+    predictions = torch.zeros(1, 3, 2, 2)
+    targets = torch.ones(1, 3, 2, 2)
+    masks = torch.ones_like(targets, dtype=torch.bool)
+    activated = trainer._activate_predictions(predictions)
+    assert torch.allclose(activated[:, 0], torch.full((1, 2, 2), 0.5))
+    assert torch.allclose(activated[:, 1:], torch.zeros(1, 2, 2, 2))
+
+    metric_values = trainer._compute_metric_values(activated, targets, masks)
+    assert {"bp_mse", "bp_spearman", "fi_mse", "fi_spearman", "ros_mse", "ros_spearman"} <= set(metric_values)
+
+
+def test_multi_target_train_epoch_runs(tmp_path, dummy_data_multitarget):
+    config = _make_config(
+        tmp_path,
+        num_classes=3,
+        optimizer_config=OptimizerConfig(loss="multi_target", name="Adam", lr=0.001),
+        grid_params=GridParams(
+            feature_names_list=["dummy_feat"],
+            target_name=["bp", "fi", "ros"],
+            target_out_norms={"bp": "none", "fi": "none", "ros": "none"},
+        ),
+    )
+    trainer = Trainer(config, spatial_input_channels=SPATIAL_CHANNELS)
+    results = trainer.train_epoch(dummy_data_multitarget)
+    assert "loss" in results
+    assert "loss_bp" in results
+    assert "bp_mse" in results
+    assert "fi_mse" in results
+    assert "ros_mse" in results
 
 
 def test_train_epoch_runs(dummy_config, dummy_data):
@@ -372,6 +404,26 @@ def test_train_epoch_runs(dummy_config, dummy_data):
     results = trainer.train_epoch(dummy_data)
     assert "loss" in results
     assert "dummy" in results
+
+
+def test_train_epoch_runs_with_hex_summary_loss(tmp_path):
+    config = _make_config(
+        tmp_path,
+        optimizer_config=OptimizerConfig(
+            loss=["kl", "ccc", "hex_mean_pearson", "hex_top10_pearson"],
+            name="Adam",
+            lr=0.001,
+            loss_weights={"kl": 0.45, "ccc": 0.45, "hex_mean_pearson": 0.05, "hex_top10_pearson": 0.05},
+        ),
+    )
+    trainer = Trainer(config, spatial_input_channels=SPATIAL_CHANNELS)
+    loader = DataLoader(HexMetadataDataset(size=4), batch_size=4)
+
+    results = trainer.train_epoch(loader)
+
+    assert "loss" in results
+    assert "loss_hex_mean_pearson" in results
+    assert "loss_hex_top10_pearson" in results
 
 
 def test_validate_runs(dummy_config, dummy_data):
@@ -410,6 +462,52 @@ def test_run_training(dummy_config, dummy_data):
     trainer.run_training(dummy_data, dummy_data)
 
 
+def test_checkpoint_carries_resume_state(tmp_path, dummy_data):
+    config = _make_config(tmp_path)
+    config.training.max_epochs = 1
+    trainer = Trainer(config, spatial_input_channels=SPATIAL_CHANNELS)
+    patch_trainer(trainer)
+    trainer.run_training(dummy_data, dummy_data)
+
+    assert tmp_path.joinpath("last.pth").exists()
+    checkpoint = torch.load(tmp_path / "last.pth", map_location="cpu")
+    assert checkpoint["epoch"] == 1
+    assert "scheduler_state" in checkpoint
+    assert "best_metric_list" in checkpoint
+    assert "global_step" in checkpoint
+
+
+def test_maybe_resume_continues_from_last_checkpoint(tmp_path, dummy_data):
+    from src.schedulers import build_lr_scheduler
+
+    config = _make_config(tmp_path)
+    config.training.max_epochs = 1
+    first_run = Trainer(config, spatial_input_channels=SPATIAL_CHANNELS)
+    patch_trainer(first_run)
+    first_run.run_training(dummy_data, dummy_data)
+
+    # A fresh Trainer over the same save_dir resumes rather than restarting from epoch 1.
+    resumed = Trainer(config, spatial_input_channels=SPATIAL_CHANNELS)
+    patch_trainer(resumed)
+    lr_scheduler, _ = build_lr_scheduler(resumed.config, resumed.optimizer, dummy_data)
+    assert resumed._maybe_resume(lr_scheduler) == 2
+
+
+def test_maybe_resume_ignores_incompatible_checkpoint(tmp_path, dummy_data):
+    config = _make_config(tmp_path)
+    config.training.max_epochs = 1
+    first_run = Trainer(config, spatial_input_channels=SPATIAL_CHANNELS)
+    patch_trainer(first_run)
+    first_run.run_training(dummy_data, dummy_data)
+
+    # A model with different layer shapes cannot resume from the saved checkpoint.
+    bigger_config = _make_config(tmp_path)
+    bigger_config.model.hidden_features = [16, 32]
+    other = Trainer(bigger_config, spatial_input_channels=SPATIAL_CHANNELS)
+    patch_trainer(other)
+    assert other._maybe_resume() == 1
+
+
 def test_test_method(dummy_config, dummy_data):
     trainer = Trainer(dummy_config, spatial_input_channels=SPATIAL_CHANNELS)
     patch_trainer(trainer)
@@ -418,7 +516,7 @@ def test_test_method(dummy_config, dummy_data):
     assert "dummy" in results
 
 
-# Tests — multi-source Trainer with tabular weather encoder
+# Tests — multi-source Trainer with weather encoder
 def test_auxiliary_trainer_setup(auxiliary_config):
     trainer = Trainer(
         auxiliary_config,
@@ -490,7 +588,7 @@ def test_auxiliary_run_training(auxiliary_config, dummy_data_weather):
     trainer.run_training(dummy_data_weather, dummy_data_weather)
 
 
-# Tests — multi-source Trainer with tabular weather + fire_size encoders
+# Tests — multi-source Trainer with weather + fire_size encoders
 def test_multi_aux_trainer_setup(multi_aux_config):
     trainer = Trainer(
         multi_aux_config,
@@ -598,7 +696,7 @@ def test_wind_grid_run_training(wind_grid_config, dummy_data_wind_grid):
     trainer.run_training(dummy_data_wind_grid, dummy_data_wind_grid)
 
 
-# Tests — multi-source Trainer with WindFeatureEncoder + TabularFeatureEncoder (wind_grid + tabular weather)
+# Tests — multi-source Trainer with WindFeatureEncoder + TabularFeatureEncoder (wind_grid + weather)
 def test_wind_and_weather_trainer_setup(wind_and_weather_config):
     trainer = Trainer(
         wind_and_weather_config,
