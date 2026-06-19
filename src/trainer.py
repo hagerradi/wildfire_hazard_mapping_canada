@@ -18,7 +18,7 @@ from src.losses import MultiTargetLoss, WeightedLoss
 from src.models.factory import build_model, resolve_model_architecture
 from src.models.utils import get_nbr_model_parameters
 from src.schedulers import build_lr_scheduler
-from utils import AVAILABLE_METRICS, build_single_loss, default_target_loss_name, set_device
+from src.utils import AVAILABLE_METRICS, build_single_loss, default_target_loss_name, set_device
 
 
 class Trainer:
