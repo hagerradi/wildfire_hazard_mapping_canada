@@ -16,14 +16,22 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from data_preparation.hexel_loader import load_spatial_features_per_hexel
-from data_preparation.paths import Paths
+from data_preparation.paths import MASK_SCOPE_CHOICES, Paths, normalize_mask_scope, prepared_mask_scope
 from data_preparation.process_hexels_into_grids import get_split_hexel_window
 from data_preparation.process_tabular_data import build_weather_table, process_fire_size_distribution_table
-from data_preparation.spatial.utils import get_output_log_stats, get_range_output, load_spatial_raster
+from data_preparation.spatial.utils import get_range_output
 from data_preparation.utils import find_hex_ids
 from inference.predictor import BurnRiskPredictor
 from src.datasets.dataset import MultiSourceDataset
-from src.datasets.postprocessing.utils import get_predicted_hexel, get_target_channel_index, save_predicted_hexels
+from src.datasets.postprocessing.utils import (
+    get_mask_scope_save_dir,
+    get_predicted_hexel,
+    get_prediction_mask_channel_indices,
+    get_target_channel_index,
+    load_target_grid_for_mask_scope,
+    save_predicted_hexels,
+    validate_patch_metadata_mask_scope,
+)
 from src.datasets.postprocessing.visualize_predictions import visualize_target_grids
 from src.datasets.targets import TargetSpec, get_target_spec
 from src.datasets.utils import get_data_source_class, get_data_source_param_class, get_dataset_dimensions
@@ -49,6 +57,7 @@ def prepare_hexel_data(
     modelling_approach: int = 1,
     output_type: str = "prob",
     weather_sampling: str = "weather_zone_id",
+    mask_scope: str = "actual",
 ) -> Path:
     """
     Prepare data patches for a single hexel.
@@ -68,7 +77,9 @@ def prepare_hexel_data(
     Returns:
         Path to the output directory containing patches and metadata CSV.
     """
-    processed_data_dir = data_dir / f"data_samples_approach_{modelling_approach}"
+    scope = prepared_mask_scope(mask_scope)
+    suffix = "" if scope == "actual" else f"_{scope}"
+    processed_data_dir = data_dir / f"data_samples_approach_{modelling_approach}{suffix}"
     processed_data_dir.mkdir(parents=True, exist_ok=True)
     (processed_data_dir / "numpy_files").mkdir(parents=True, exist_ok=True)
 
@@ -96,6 +107,7 @@ def prepare_hexel_data(
         hex_id=hex_id,
         feature_channel_map_path=str(feature_channel_map_path),
         modelling_approach=modelling_approach,
+        mask_scope=scope,
     )
 
     if stacked_feats is None or mask is None:
@@ -113,6 +125,7 @@ def prepare_hexel_data(
         win_h=win_h,
         win_w=win_w,
         overlap_ratio=overlap_ratio,
+        mask_scope=scope,
     )
 
     logger.info(f"Data preparation complete. Output saved to {processed_data_dir}")
@@ -174,6 +187,7 @@ def run_single_hexel_pipeline(
     num_workers: int = 4,
     prepare_data: bool = False,
     save_dir: Path = Path("outputs"),
+    mask_scope: str = "actual",
 ) -> tuple[np.ndarray, Any]:
     """
     Orchestrate the end-to-end (data preparation + inference + post-processing) for one specific hexel.
@@ -198,6 +212,9 @@ def run_single_hexel_pipeline(
     """
     # Step 1: Load checkpoint
     logger.info("Step 1: Loading checkpoint and config...")
+    scope = normalize_mask_scope(mask_scope)
+    data_scope = prepared_mask_scope(scope)
+    artifact_save_dir = Path(get_mask_scope_save_dir(str(save_dir), scope))
     checkpoint = torch.load(checkpoint_path, map_location="cpu")
     data_config = checkpoint["config"]["data"]  # We use this to build dataset class
     data_prep_config = checkpoint["config"]["data_prep"]  # We use this to prepare data
@@ -214,14 +231,17 @@ def run_single_hexel_pipeline(
             modelling_approach=data_prep_config["modelling_approach"],
             output_type=data_prep_config["output_type"],
             weather_sampling=data_prep_config["weather_sampling"],
+            mask_scope=data_scope,
         )
     else:
-        processed_data_dir = data_dir / f"data_samples_approach_{data_prep_config['modelling_approach']}"
+        suffix = "" if data_scope == "actual" else f"_{data_scope}"
+        processed_data_dir = data_dir / f"data_samples_approach_{data_prep_config['modelling_approach']}{suffix}"
         logger.info(f"Step 2: Using existing data at {processed_data_dir}")
 
     # Step 3: Build Dataset
     logger.info("Step 3: Building Dataset...")
     dataset = create_dataset(processed_data_dir, hex_id, data_config)
+    validate_patch_metadata_mask_scope(dataset.metadata, scope)
     spatial_channels, auxiliary_input_dims = get_dataset_dimensions(dataset)
     if spatial_channels is None:
         raise ValueError("Could not determine spatial channels from dataset")
@@ -253,7 +273,7 @@ def run_single_hexel_pipeline(
     predictions = torch.cat(predictions_list, dim=0).numpy()
 
     # Step 6: Save patch predictions
-    save_pred_path = Path(save_dir) / "predicted_patches" / f"hexel_{hex_id}.npy"
+    save_pred_path = artifact_save_dir / "predicted_patches" / f"hexel_{hex_id}.npy"
     save_pred_path.parent.mkdir(parents=True, exist_ok=True)
     np.save(save_pred_path, predictions)
     logger.info(f"Step 6: Saved predictions patches to {save_pred_path}")
@@ -263,14 +283,15 @@ def run_single_hexel_pipeline(
     target = get_target_spec_from_data_config(data_config)
     grid_params = get_grid_params_from_data_config(data_config)
     max_target_val, min_target_val = get_range_output(root_dir=str(data_dir), output_type=target.output_type)
-    target_log_mean = grid_params.get("target_log_mean")
-    target_log_std = grid_params.get("target_log_std")
-    if grid_params.get("out_norm", "min_max") == "log_standard" and (target_log_mean is None or target_log_std is None):
-        target_log_mean, target_log_std = get_output_log_stats(root_dir=str(data_dir), output_type=target.output_type)
     target_channel_index = get_target_channel_index(
         data_dir=str(processed_data_dir),
         modelling_approach=str(data_prep_config["modelling_approach"]),
         target=target,
+    )
+    prediction_mask_channel_indices = get_prediction_mask_channel_indices(
+        data_dir=str(processed_data_dir),
+        modelling_approach=str(data_prep_config["modelling_approach"]),
+        grid_params=grid_params,
     )
     reconstructed_hexel_denorm, gt_elevation_grid_profile = get_predicted_hexel(
         base_dir=str(processed_data_dir),
@@ -281,30 +302,37 @@ def run_single_hexel_pipeline(
         max_target_val=max_target_val,
         hex_id=hex_id,
         out_norm=grid_params.get("out_norm", "min_max"),
-        target_log_mean=target_log_mean,
-        target_log_std=target_log_std,
+        target_log_mean=grid_params.get("target_log_mean"),
+        target_log_std=grid_params.get("target_log_std"),
         target_channel_index=target_channel_index,
+        prediction_mask_channel_indices=prediction_mask_channel_indices,
+        mask_scope=scope,
     )
 
     # Step 8: Save reconstructed hexel and visualization
-    save_predicted_hexels(
-        predicted_hexel=reconstructed_hexel_denorm, hexel_profile=gt_elevation_grid_profile, hex_id=hex_id, save_dir=str(save_dir)
-    )
     all_paths = Paths(hex_id=hex_id, root_dir=data_dir)
-    target_path = getattr(all_paths, target.path_method)()
-    gt_grid, _ = load_spatial_raster(
-        path=target_path,
-        actual_mask_path=all_paths.mask_grid_actual(hex_id=hex_id),
-        reference_profile=gt_elevation_grid_profile,
+    gt_grid, reconstructed_hexel_denorm = load_target_grid_for_mask_scope(
+        paths=all_paths,
+        target=target,
+        pred_grid=reconstructed_hexel_denorm,
+        profile=gt_elevation_grid_profile,
+        mask_scope=scope,
+        hex_id=hex_id,
+    )
+    save_predicted_hexels(
+        predicted_hexel=reconstructed_hexel_denorm,
+        hexel_profile=gt_elevation_grid_profile,
+        hex_id=hex_id,
+        save_dir=str(artifact_save_dir),
     )
     visualize_target_grids(
         gt_grid=gt_grid,
         pred_grid=reconstructed_hexel_denorm,
         hex_id=hex_id,
-        save_dir=str(save_dir),
+        save_dir=str(artifact_save_dir),
         target_label=target.label,
     )
-    logger.info(f"Step 8: Saved reconstructed hexel and visualization for hexel {hex_id} in {save_dir}")
+    logger.info(f"Step 8: Saved reconstructed hexel and visualization for hexel {hex_id} in {artifact_save_dir}")
 
     return reconstructed_hexel_denorm, gt_elevation_grid_profile
 
@@ -320,6 +348,7 @@ def main():
     parser.add_argument("--num_workers", type=int, default=None, help="Dataloader workers (overrides config).")
     parser.add_argument("--post_process", type=str, default=None, help="Whether to post-process predictions (overrides config).")
     parser.add_argument("--save_dir", type=str, default=None, help="Directory to save predictions and visualizations (overrides config).")
+    parser.add_argument("--mask_scope", choices=MASK_SCOPE_CHOICES, default=None, help="Evaluation/inference mask scope.")
     args = parser.parse_args()
 
     with open(args.config) as f:
@@ -333,6 +362,7 @@ def main():
     prepare_data = (args.prepare_data == "True") if args.prepare_data else config["prepare_data"]
     batch_size = args.batch_size if args.batch_size is not None else config["batch_size"]
     num_workers = args.num_workers if args.num_workers is not None else config["num_workers"]
+    mask_scope = args.mask_scope if args.mask_scope is not None else config.get("mask_scope", "actual")
 
     # Resolve "all" into the list of available hex IDs
     if hex_id == "all":
@@ -353,6 +383,7 @@ def main():
             num_workers=num_workers,
             prepare_data=prepare_data,
             save_dir=Path(save_dir),
+            mask_scope=mask_scope,
         )
 
     elapsed_time = time.time() - start_time

@@ -55,14 +55,20 @@ class MSELoss(nn.Module):
 
 
 class CCCLoss(nn.Module):
-    """Concordance correlation coefficient loss, 1 - CCC, on sigmoid probabilities."""
+    """
+    Concordance correlation coefficient loss, 1 - CCC.
 
-    def __init__(self, eps: float = 1e-8):
+    Use the sigmoid variant for probability targets such as BP.
+    """
+
+    def __init__(self, use_sigmoid: bool = True, eps: float = 1e-8):
         super().__init__()
+        self.use_sigmoid = use_sigmoid
         self.eps = eps
 
     def forward(self, logits: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None):
-        preds = torch.sigmoid(logits).flatten(1).float()
+        preds = torch.sigmoid(logits) if self.use_sigmoid else logits
+        preds = preds.flatten(1).float()
         targets = targets.flatten(1).float()
         mask_flat = None if mask is None else mask.bool().flatten(1)
 
@@ -85,6 +91,52 @@ class CCCLoss(nn.Module):
         if not ccc_values:
             return logits.new_tensor(0.0)
         return 1.0 - torch.stack(ccc_values).mean()
+
+
+class PearsonLoss(nn.Module):
+    """
+    Pearson correlation loss, 1 - r.
+
+    This is a differentiable rank-order proxy. Use the sigmoid variant for BP
+    and RegressionPearsonLoss for raw FI/ROS regression outputs.
+    """
+
+    def __init__(self, use_sigmoid: bool = True, eps: float = 1e-8):
+        super().__init__()
+        self.use_sigmoid = use_sigmoid
+        self.eps = eps
+
+    def forward(self, logits: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None):
+        preds = torch.sigmoid(logits) if self.use_sigmoid else logits
+        preds = preds.flatten(1).float()
+        targets = targets.flatten(1).float()
+        mask_flat = None if mask is None else mask.bool().flatten(1)
+
+        correlations = []
+        for idx in range(preds.shape[0]):
+            pred_i = preds[idx]
+            target_i = targets[idx]
+            if mask_flat is not None:
+                valid = mask_flat[idx]
+                pred_i = pred_i[valid]
+                target_i = target_i[valid]
+            if pred_i.numel() < 2:
+                continue
+            pred_centered = pred_i - pred_i.mean()
+            target_centered = target_i - target_i.mean()
+            denom = pred_centered.norm() * target_centered.norm()
+            correlations.append((pred_centered * target_centered).sum() / denom.clamp_min(self.eps))
+
+        if not correlations:
+            return logits.new_tensor(0.0)
+        return 1.0 - torch.stack(correlations).mean()
+
+
+class RegressionPearsonLoss(PearsonLoss):
+    """Pearson loss on raw model outputs."""
+
+    def __init__(self, eps: float = 1e-8):
+        super().__init__(use_sigmoid=False, eps=eps)
 
 
 class MAELoss(nn.Module):
@@ -136,39 +188,6 @@ class HuberLoss(nn.Module):
         loss = loss * mask
         denom = mask.sum().clamp_min(self.eps)
         return loss.sum() / denom
-
-
-class RegressionPearsonLoss(nn.Module):
-    """Pearson correlation loss, 1 - r, on raw regression outputs."""
-
-    def __init__(self, eps: float = 1e-8):
-        super().__init__()
-        self.eps = eps
-
-    def forward(self, logits: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None):
-        preds = logits.flatten(1).float()
-        targets = targets.flatten(1).float()
-        mask_flat = None if mask is None else mask.bool().flatten(1)
-
-        correlations = []
-        for idx in range(preds.shape[0]):
-            pred_i = preds[idx]
-            target_i = targets[idx]
-            if mask_flat is not None:
-                valid = mask_flat[idx]
-                pred_i = pred_i[valid]
-                target_i = target_i[valid]
-            if pred_i.numel() < 2:
-                continue
-
-            pred_centered = pred_i - pred_i.mean()
-            target_centered = target_i - target_i.mean()
-            denom = pred_centered.norm() * target_centered.norm()
-            correlations.append((pred_centered * target_centered).sum() / denom.clamp_min(self.eps))
-
-        if not correlations:
-            return logits.new_tensor(0.0)
-        return 1.0 - torch.stack(correlations).mean()
 
 
 class DiceLoss(nn.Module):
@@ -306,11 +325,12 @@ class BernoulliKLLoss(nn.Module):
 
 
 class HexSummaryLoss(nn.Module):
-    """Batch-level BP summary loss grouped by hex ID.
+    """Differentiable cross-hex loss on batch-level BP summaries.
 
-    This provides a lightweight differentiable proxy for stitched hex ranking:
-    each patch is summarized, patch summaries are averaged by hex in the batch,
-    then the hex-level predictions are compared by correlation or pairwise rank.
+    This is not a stitched-raster loss. It uses patch metadata to group patches
+    by hex ID within each batch, summarizes valid BP predictions per patch, then
+    compares grouped hex summaries. It is intended as a lightweight proxy for
+    the stitched/hex ranking failure mode.
     """
 
     requires_patch_metadata = True
@@ -508,5 +528,72 @@ class WeightedLoss(nn.Module):
                 loss_val = cast(torch.Tensor, loss_mod(logits, targets, mask))
             loss_parts[name] = loss_val
             total_loss = total_loss + (w[i].to(dtype=loss_val.dtype) * loss_val)
+
+        return total_loss, loss_parts
+
+
+class MultiTargetLoss(nn.Module):
+    """Combines target-specific losses for multi-output BP/FI/ROS models."""
+
+    losses: nn.ModuleDict
+    _weights: torch.Tensor
+
+    def __init__(
+        self,
+        target_names: list[str],
+        losses: dict[str, nn.Module],
+        weights: dict[str, float] | None = None,
+        normalize_weights: bool = True,
+        eps: float = 1e-8,
+    ):
+        super().__init__()
+        if not target_names:
+            raise ValueError("target_names must be non-empty.")
+        if set(target_names) != set(losses):
+            raise ValueError(f"losses must match target_names. target_names={target_names}, losses={sorted(losses)}")
+
+        self.target_names = list(target_names)
+        self.losses = nn.ModuleDict({name: losses[name] for name in self.target_names})
+        self.eps = eps
+        self.normalize_weights = normalize_weights
+
+        if weights is None:
+            weights = {name: 1.0 for name in self.target_names}
+
+        missing = set(self.target_names) - set(weights)
+        extra = set(weights) - set(self.target_names)
+        if missing:
+            raise ValueError(f"weights missing target keys: {sorted(missing)}")
+        if extra:
+            raise ValueError(f"weights has unknown target keys: {sorted(extra)}")
+
+        weight_values = torch.tensor([weights[name] for name in self.target_names], dtype=torch.float32)
+        if self.normalize_weights:
+            weight_values = weight_values / weight_values.sum().clamp_min(self.eps)
+        self.register_buffer("_weights", weight_values)
+
+    def forward(
+        self,
+        logits: torch.Tensor,
+        targets: torch.Tensor,
+        mask: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+        if logits.shape[1] != len(self.target_names):
+            raise ValueError(f"Expected {len(self.target_names)} output channels, got logits shape {tuple(logits.shape)}.")
+        if targets.shape[1] != len(self.target_names):
+            raise ValueError(f"Expected {len(self.target_names)} target channels, got targets shape {tuple(targets.shape)}.")
+        if mask is not None and mask.shape[1] != len(self.target_names):
+            raise ValueError(f"Expected {len(self.target_names)} mask channels, got mask shape {tuple(mask.shape)}.")
+
+        total_loss = logits.new_tensor(0.0)
+        loss_parts: dict[str, torch.Tensor] = {}
+        for idx, name in enumerate(self.target_names):
+            channel_mask = None if mask is None else mask[:, idx : idx + 1]
+            loss_val = cast(
+                torch.Tensor,
+                self.losses[name](logits[:, idx : idx + 1], targets[:, idx : idx + 1], channel_mask),
+            )
+            loss_parts[name] = loss_val
+            total_loss = total_loss + (self._weights[idx].to(dtype=loss_val.dtype) * loss_val)
 
         return total_loss, loss_parts
