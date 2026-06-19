@@ -14,6 +14,7 @@ class LoggerConfig(BaseModel):
 
 
 class ModelConfig(BaseModel):
+    architecture: str = "auto"
     num_classes: int = 1
     hidden_features: list[int] = [64, 128, 256, 512]
 
@@ -40,6 +41,8 @@ class OptimizerConfig(BaseModel):
     loss: str | list[str]
     loss_weights: dict[str, float] = {}
     huber_beta: float = Field(default=1.0, gt=0.0)
+    target_losses: dict[str, str] = {}
+    target_loss_weights: dict[str, float] = {}
 
 
 class SchedulerConfig(BaseModel):
@@ -63,22 +66,31 @@ class EvaluationConfig(BaseModel):
     best_ckpt_metrics_mode: list[str] = ["max"]  # max, or min
     checkpoint_filename: str = "best.pth"
     robust_plot_percentile: float | None = Field(default=None, gt=0.0, le=100.0)
+    bp_nodata_as_zero: bool = True
+    prediction_support_policy: str = "input"
 
 
 class GridParams(BaseModel):
     """Specific parameters for the GridSource."""
 
     feature_names_list: list[str]
-    target_name: str = "bp"
+    target_name: str | list[str] = "bp"
     # TODO: move out_norm outside of grid source config since it's for GT
     out_norm: str = "min_max"
+    target_out_norms: dict[str, str] = {}
     target_log_mean: float | None = None
     target_log_std: float | None = None
+    target_log_means: dict[str, float] = {}
+    target_log_stds: dict[str, float] = {}
     fuel_feats_encoding: str = "one_hot"
     normalize_fuel_feats_ordinal: bool = True
     transforms_list: list[str] = Field(default_factory=list)
     augmentation_prob: float = 0.0
+    include_hex_coords: bool = False
     terrain_derivatives: list[str] = Field(default_factory=list)
+    terrain_cell_size_m: float = Field(default=100.0, gt=0.0)
+    bp_nodata_as_zero: bool = False
+    input_mask_policy: str = "input_only"
 
 
 class TabularParams(BaseModel):
@@ -98,14 +110,15 @@ class TabularParams(BaseModel):
 
 
 class SpatializedTabularParams(TabularParams):
-    """Parameters for rasterizing zone-level tabular features onto patch pixels."""
+    """Parameters for rasterizing zone-level tabular covariates onto patch pixels."""
 
     zone_channel_key: str = "firezones_grid"
     aggregation: str = "mean"
-    include_missing_mask: bool = False
-    missing_value_strategy: str = "global_mean"
     shuffle_lut: bool = False
     shuffle_seed: int = 42
+    include_missing_mask: bool = False
+    missing_value_strategy: str = "global_mean"
+    imputation_stats_path: str | None = None
 
 
 class DataSourceConfig(BaseModel):
@@ -117,10 +130,11 @@ class DataSourceConfig(BaseModel):
     def parse_params_for_source(cls, data: Any) -> Any:
         if not isinstance(data, dict):
             return data
-
         name = data.get("name")
         params = data.get("params")
-        if not isinstance(name, str) or not isinstance(params, dict):
+        if not isinstance(name, str):
+            return data
+        if not isinstance(params, dict):
             return data
 
         param_classes = {

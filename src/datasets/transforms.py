@@ -3,7 +3,7 @@ import random
 import torch
 import torchvision.transforms.functional as F
 
-from src.config import DataSourceConfig
+from src.config import DataSourceConfig, GridParams
 
 
 class RandomFlip:
@@ -46,6 +46,8 @@ class Compose:
 def setup_augmentations(config: DataSourceConfig):
     """Utils. to get the list of transforms from config."""
     params = config.params
+    if not isinstance(params, GridParams):
+        return None
     transforms_list = params.transforms_list
     augmentation_prob = params.augmentation_prob
     if not transforms_list:

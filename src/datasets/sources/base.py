@@ -1,13 +1,12 @@
 from abc import ABC, abstractmethod
-
-import torch
+from typing import Any
 
 
 class DataSource(ABC):
     """Protocol for any feature (spatial grids, weather, wind, etc.)"""
 
     @abstractmethod
-    def get_sample(self, context: dict) -> torch.Tensor:
+    def get_sample(self, context: dict) -> Any:
         """Return the data for a single item"""
         pass
 

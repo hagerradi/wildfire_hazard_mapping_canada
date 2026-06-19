@@ -58,3 +58,11 @@ def get_target_spec(target_name: str) -> TargetSpec:
         supported = sorted(set(TARGET_SPECS) | set(TARGET_ALIASES))
         raise ValueError(f"Unsupported target_name={target_name!r}. Supported values: {supported}")
     return TARGET_SPECS[cast(TargetName, normalized)]
+
+
+def get_target_specs(target_names: str | list[str]) -> list[TargetSpec]:
+    if isinstance(target_names, str):
+        target_names = [target_names]
+    if not target_names:
+        raise ValueError("At least one target name is required.")
+    return [get_target_spec(target_name) for target_name in target_names]

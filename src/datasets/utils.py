@@ -198,6 +198,24 @@ def output_target_norm(
     return output_arr
 
 
+def output_burn_prob_norm(
+    output_arr: np.ndarray,
+    burn_prob_max: float,
+    burn_prob_min: float,
+    out_norm: str,
+    target_log_mean: float | None = None,
+    target_log_std: float | None = None,
+) -> np.ndarray:
+    return output_target_norm(
+        output_arr=output_arr,
+        target_max=burn_prob_max,
+        target_min=burn_prob_min,
+        out_norm=out_norm,
+        target_log_mean=target_log_mean,
+        target_log_std=target_log_std,
+    )
+
+
 @overload
 def denormalize_output_target(
     data: torch.Tensor,
@@ -267,3 +285,22 @@ def denormalize_output_target(
             return data
 
     raise ValueError(f"Unsupported output normalization: {out_norm!r}")
+
+
+def apply_bp_nodata_zero_range(
+    target_name: str,
+    max_value: float,
+    min_value: float,
+    bp_nodata_as_zero: bool,
+) -> tuple[float, float]:
+    if target_name == "bp" and bp_nodata_as_zero:
+        return max_value, 0.0
+    return max_value, min_value
+
+
+def default_target_norm(target_name: str) -> str:
+    if target_name == "bp":
+        return "min_max"
+    if target_name in {"fi", "ros"}:
+        return "log_standard"
+    raise ValueError(f"Unsupported target_name={target_name!r}")
