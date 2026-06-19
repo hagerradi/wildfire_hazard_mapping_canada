@@ -478,7 +478,7 @@ def select_prediction_target_channel(
 
 
 def calculate_hexel_metrics_pytorch(
-    gt_grid: np.ndarray, pred_grid: np.ndarray, device: torch.device, metric_functions: dict[str, Callable]
+    gt_grid: np.ndarray, pred_grid: np.ndarray, device: str | torch.device, metric_functions: dict[str, Callable]
 ) -> dict[str, float]:
     """
     Utils to convert 2D numpy hexels into torch tensors to run the global per-hexel eval. metrics.
@@ -547,7 +547,7 @@ def evaluate_and_visualize_hexels(
     test_predictions: np.ndarray,
     config: Config,
     out_norm: str,
-    device: torch.device,
+    device: str | torch.device,
     experiment_logger: CometLogger | None = None,
     metric_functions: dict[str, Callable] | None = None,
     stitch_mode: str = "mean",
