@@ -19,7 +19,7 @@ from data_preparation.hexel_loader import load_spatial_features_per_hexel
 from data_preparation.paths import MASK_SCOPE_CHOICES, Paths, normalize_mask_scope, prepared_mask_scope
 from data_preparation.process_hexels_into_grids import get_split_hexel_window
 from data_preparation.process_tabular_data import build_weather_table, process_fire_size_distribution_table
-from data_preparation.spatial.utils import get_range_output
+from data_preparation.spatial.utils import get_output_log_stats_cached, get_range_output
 from data_preparation.utils import find_hex_ids
 from inference.predictor import BurnRiskPredictor
 from src.datasets.dataset import MultiSourceDataset
@@ -293,6 +293,11 @@ def run_single_hexel_pipeline(
         modelling_approach=str(data_prep_config["modelling_approach"]),
         grid_params=grid_params,
     )
+    out_norm = grid_params.get("out_norm", "min_max")
+    target_log_mean = grid_params.get("target_log_mean")
+    target_log_std = grid_params.get("target_log_std")
+    if out_norm == "log_standard" and (target_log_mean is None or target_log_std is None):
+        target_log_mean, target_log_std = get_output_log_stats_cached(str(processed_data_dir), target.output_type)
     reconstructed_hexel_denorm, gt_elevation_grid_profile = get_predicted_hexel(
         base_dir=str(processed_data_dir),
         raw_data_dir=str(data_dir),
@@ -301,9 +306,9 @@ def run_single_hexel_pipeline(
         min_target_val=min_target_val,
         max_target_val=max_target_val,
         hex_id=hex_id,
-        out_norm=grid_params.get("out_norm", "min_max"),
-        target_log_mean=grid_params.get("target_log_mean"),
-        target_log_std=grid_params.get("target_log_std"),
+        out_norm=out_norm,
+        target_log_mean=target_log_mean,
+        target_log_std=target_log_std,
         target_channel_index=target_channel_index,
         prediction_mask_channel_indices=prediction_mask_channel_indices,
         mask_scope=scope,
