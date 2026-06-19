@@ -415,7 +415,7 @@ class GridSource(DataSource):
             input_arr, output_arr, mask = self.transform(input_arr, output_arr, mask)
         input_arr = self._append_terrain_derivative_channels(input_arr)
 
-        return (input_arr, output_arr, mask)  # (C, H, W), (1, H, W), (1, H, W)
+        return (input_arr, output_arr, mask)  # (C, H, W), (num_targets, H, W), (num_targets, H, W)
 
     def input_dim(self):
         """
