@@ -9,16 +9,16 @@ from torch.optim.lr_scheduler import LRScheduler, ReduceLROnPlateau
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from data_preparation.spatial.utils import get_output_log_stats, get_range_output
+from data_preparation.spatial.utils import get_output_log_stats_cached, get_range_output
 from src.config import Config, GridParams
-from src.datasets.targets import get_target_spec
-from src.datasets.utils import denormalize_output_target
+from src.datasets.targets import get_target_specs
+from src.datasets.utils import apply_bp_nodata_zero_range, default_target_norm
 from src.logger import CometLogger
-from src.losses import WeightedLoss
-from src.models.unet import BaselineUNet, MultiSourceUNet
+from src.losses import MultiTargetLoss, WeightedLoss
+from src.models.factory import build_model, resolve_model_architecture
 from src.models.utils import get_nbr_model_parameters
 from src.schedulers import build_lr_scheduler
-from utils import AVAILABLE_METRICS, build_single_loss, set_device
+from utils import AVAILABLE_METRICS, build_single_loss, default_target_loss_name, set_device
 
 
 class Trainer:
@@ -63,48 +63,27 @@ class Trainer:
         """
 
         self._grid_params = self._get_grid_params()
-        self._target_spec = get_target_spec(self._grid_params.target_name) if self._grid_params is not None else get_target_spec("bp")
+        self._target_specs = get_target_specs(self._grid_params.target_name) if self._grid_params is not None else get_target_specs("bp")
+        self._target_names = [target.name for target in self._target_specs]
+        self._is_multitarget = len(self._target_specs) > 1
+        if self.config.model.num_classes != len(self._target_specs):
+            raise ValueError(
+                f"model.num_classes={self.config.model.num_classes} must match number of configured targets "
+                f"({len(self._target_specs)}: {self._target_names})."
+            )
 
         # Flag to indicate we are including auxiliary features
         self.auxiliary = "auxiliary" in self.config.model.input_branches
 
-        # Multi-source path: spatial grids + auxiliary data.
-        if self.auxiliary:
-            if not self.auxiliary_input_dims:
-                raise ValueError("Config requests auxiliary features, but no auxiliary dim. were detected.")
+        resolved_architecture = resolve_model_architecture(self.config.model)
+        print(f"[Trainer] Model architecture: {self.config.model.architecture} -> {resolved_architecture}")
+        print(f"[Trainer] Spatial Channels: {self.spatial_input_channels}, Auxiliary Dim: {self.auxiliary_input_dims}")
 
-            print("[Trainer] Mode: Multi-Source (Spatial + auxiliary)")
-            print(f"[Trainer] Spatial Channels: {self.spatial_input_channels}, Auxiliary Dim: {self.auxiliary_input_dims}")
-
-            self.model = MultiSourceUNet(
-                input_channels=self.spatial_input_channels,
-                num_classes=self.config.model.num_classes,
-                hidden_features=self.config.model.hidden_features,
-                input_branches=self.config.model.input_branches,
-                use_skip_connections=self.config.model.use_skip_connections,
-                use_transpose_conv=self.config.model.use_transpose_conv,
-                use_activation_after_upsampling=self.config.model.use_activation_after_upsampling,
-                use_coordconv=self.config.model.use_coordconv,
-                auxiliary_input_dims=self.auxiliary_input_dims,
-                auxiliary_hidden_dims=self.config.model.auxiliary_hidden_dims,
-                auxiliary_embed_dims=self.config.model.auxiliary_embed_dims,
-                auxiliary_feature_encoder_poolings=self.config.model.auxiliary_feature_encoder_poolings,
-            )
-        # Single-source path: spatial grids only.
-        else:
-            print("[Trainer] Mode: Baseline (Spatial Only)")
-            print(f"[Trainer] Spatial Channels: {self.spatial_input_channels}")
-
-            self.model = BaselineUNet(
-                input_channels=self.spatial_input_channels,
-                num_classes=self.config.model.num_classes,
-                hidden_features=self.config.model.hidden_features,
-                input_branches=self.config.model.input_branches,
-                use_skip_connections=self.config.model.use_skip_connections,
-                use_transpose_conv=self.config.model.use_transpose_conv,
-                use_activation_after_upsampling=self.config.model.use_activation_after_upsampling,
-                use_coordconv=self.config.model.use_coordconv,
-            )
+        self.model = build_model(
+            model_config=self.config.model,
+            spatial_input_channels=self.spatial_input_channels,
+            auxiliary_input_dims=self.auxiliary_input_dims,
+        )
 
         self.model.to(self.device)
 
@@ -114,16 +93,7 @@ class Trainer:
         if self.logger:
             self.logger.log_params({"model_total_params": total_params, "model_trainable_params": trainable_params})
 
-        # Setup loss
-        loss_config = self.config.optimizer.loss
-        huber_beta = self.config.optimizer.huber_beta
-        if isinstance(loss_config, str):  # loss is a string
-            self.loss_fn = build_single_loss(loss_config, huber_beta=huber_beta)
-        else:  # loss is a list
-            loss_names = loss_config
-            weights = self.config.optimizer.loss_weights
-            losses = {n: build_single_loss(n, huber_beta=huber_beta) for n in loss_names}
-            self.loss_fn = WeightedLoss(losses=losses, weights=weights, normalize_weights=True)
+        self.loss_fn = self._build_loss()
 
         # Setup optimizer
         opt_name = self.config.optimizer.name
@@ -140,8 +110,35 @@ class Trainer:
         # Validate and load metrics from config.
         self._validate_and_load_metrics()
 
-        self._use_sigmoid_predictions = self._target_spec.probability_scale
         self._configure_metric_target_transform()
+
+    def _build_loss(self) -> torch.nn.Module:
+        loss_config = self.config.optimizer.loss
+        huber_beta = self.config.optimizer.huber_beta
+        loss_kwargs = {"huber_beta": huber_beta}
+
+        if self._is_multitarget:
+            if not isinstance(loss_config, str) or loss_config.lower() not in {"multi_target", "multitarget"}:
+                raise ValueError("Multi-target training requires optimizer.loss: 'multi_target'.")
+            target_losses = {
+                target_name: self.config.optimizer.target_losses.get(target_name, default_target_loss_name(target_name))
+                for target_name in self._target_names
+            }
+            losses = {name: build_single_loss(loss_name, **loss_kwargs) for name, loss_name in target_losses.items()}
+            return MultiTargetLoss(
+                target_names=self._target_names,
+                losses=losses,
+                weights=self.config.optimizer.target_loss_weights or None,
+                normalize_weights=True,
+            )
+
+        if isinstance(loss_config, str):  # loss is a string
+            return build_single_loss(loss_config, **loss_kwargs)
+
+        loss_names = loss_config
+        weights = self.config.optimizer.loss_weights
+        losses = {n: build_single_loss(n, **loss_kwargs) for n in loss_names}
+        return WeightedLoss(losses=losses, weights=weights, normalize_weights=True)
 
     def _get_grid_params(self) -> GridParams | None:
         for source in self.config.data.input_sources:
@@ -149,63 +146,120 @@ class Trainer:
                 return source.params
         return None
 
+    def _target_out_norm(self, target_name: str) -> str:
+        if self._grid_params is None:
+            return "none"
+        if target_name in self._grid_params.target_out_norms:
+            return self._grid_params.target_out_norms[target_name]
+        if self._is_multitarget:
+            return default_target_norm(target_name)
+        return self._grid_params.out_norm
+
+    def _target_log_stats(self, target_name: str) -> tuple[float | None, float | None]:
+        if self._grid_params is None:
+            return None, None
+        return (
+            self._grid_params.target_log_means.get(target_name, self._grid_params.target_log_mean),
+            self._grid_params.target_log_stds.get(target_name, self._grid_params.target_log_std),
+        )
+
     def _configure_metric_target_transform(self) -> None:
-        self._metric_out_norm = "none"
-        self._metric_target_min = 0.0
-        self._metric_target_max = 1.0
-        self._metric_target_log_mean: float | None = None
-        self._metric_target_log_std: float | None = None
+        self._metric_out_norms: list[str] = []
+        self._metric_target_mins: list[float] = []
+        self._metric_target_maxs: list[float] = []
+        self._metric_target_log_means: list[float | None] = []
+        self._metric_target_log_stds: list[float | None] = []
 
         if self._grid_params is None:
+            self._metric_out_norms = ["none"] * len(self._target_specs)
+            self._metric_target_mins = [0.0] * len(self._target_specs)
+            self._metric_target_maxs = [1.0] * len(self._target_specs)
+            self._metric_target_log_means = [None] * len(self._target_specs)
+            self._metric_target_log_stds = [None] * len(self._target_specs)
             return
 
-        self._metric_out_norm = self._grid_params.out_norm
-        if self._metric_out_norm == "min_max":
-            if self.config.data.raw_data_dir:
-                self._metric_target_max, self._metric_target_min = get_range_output(
-                    root_dir=self.config.data.raw_data_dir,
-                    output_type=self._target_spec.output_type,
-                )
-        elif self._metric_out_norm == "log_standard":
-            self._metric_target_log_mean = self._grid_params.target_log_mean
-            self._metric_target_log_std = self._grid_params.target_log_std
-            if self._metric_target_log_mean is None or self._metric_target_log_std is None:
-                self._metric_target_log_mean, self._metric_target_log_std = get_output_log_stats(
-                    root_dir=self.config.data.raw_data_dir,
-                    output_type=self._target_spec.output_type,
-                )
-            if self._metric_target_log_std <= 0.0:
-                raise ValueError(f"target_log_std must be positive for out_norm='log_standard', got {self._metric_target_log_std}.")
-        elif self._metric_out_norm not in {"log", "none", "total_iters", "season_cause_iters"}:
-            raise ValueError(f"Unsupported output normalization: {self._metric_out_norm!r}")
+        for target in self._target_specs:
+            out_norm = self._target_out_norm(target.name)
+            target_min = 0.0
+            target_max = 1.0
+            target_log_mean, target_log_std = self._target_log_stats(target.name)
+
+            if out_norm == "min_max":
+                if self.config.data.raw_data_dir:
+                    target_max, target_min = get_range_output(root_dir=self.config.data.raw_data_dir, output_type=target.output_type)
+                    target_max, target_min = apply_bp_nodata_zero_range(
+                        target_name=target.name,
+                        max_value=target_max,
+                        min_value=target_min,
+                        bp_nodata_as_zero=self._grid_params.bp_nodata_as_zero,
+                    )
+            elif out_norm == "log_standard":
+                if (target_log_mean is None or target_log_std is None) and self.config.data.root_dir:
+                    target_log_mean, target_log_std = get_output_log_stats_cached(
+                        root_dir=self.config.data.root_dir,
+                        output_type=target.output_type,
+                    )
+                if target_log_mean is None or target_log_std is None:
+                    raise ValueError(f"target_log_mean/std are required for target={target.name!r} with out_norm='log_standard'.")
+                if target_log_std <= 0.0:
+                    raise ValueError(f"target_log_std must be positive for target={target.name!r}, got {target_log_std}.")
+            elif out_norm not in {"log", "none", "total_iters", "season_cause_iters"}:
+                raise ValueError(f"Unsupported output normalization for target={target.name!r}: {out_norm!r}")
+
+            self._metric_out_norms.append(out_norm)
+            self._metric_target_mins.append(target_min)
+            self._metric_target_maxs.append(target_max)
+            self._metric_target_log_means.append(target_log_mean)
+            self._metric_target_log_stds.append(target_log_std)
+
+    def _inverse_model_target_for_metrics(self, data: torch.Tensor) -> torch.Tensor:
+        data = data.float()
+        transformed_channels = []
+        for idx, out_norm in enumerate(self._metric_out_norms):
+            channel = data[:, idx : idx + 1]
+            if out_norm == "min_max":
+                target_min = self._metric_target_mins[idx]
+                target_max = self._metric_target_maxs[idx]
+                transformed_channels.append(channel * (target_max - target_min) + target_min)
+            elif out_norm == "log":
+                transformed_channels.append(torch.expm1(channel * float(np.log1p(1000.0))) / 1000.0)
+            elif out_norm == "log_standard":
+                target_log_mean = self._metric_target_log_means[idx]
+                target_log_std = self._metric_target_log_stds[idx]
+                if target_log_mean is None or target_log_std is None:
+                    raise RuntimeError("log_standard metric transform was not configured.")
+                transformed_channels.append(torch.expm1(channel * target_log_std + target_log_mean).clamp_min(0.0))
+            else:
+                transformed_channels.append(channel)
+        return torch.cat(transformed_channels, dim=1)
 
     def _prepare_metric_tensors(self, predictions: torch.Tensor, targets: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        if self._metric_out_norm == "log_standard" and (self._metric_target_log_mean is None or self._metric_target_log_std is None):
-            raise RuntimeError("log_standard metric transform was not configured.")
+        return self._inverse_model_target_for_metrics(predictions), self._inverse_model_target_for_metrics(targets)
 
-        metric_predictions = cast(
-            torch.Tensor,
-            denormalize_output_target(
-                data=predictions,
-                target_min=self._metric_target_min,
-                target_max=self._metric_target_max,
-                out_norm=self._metric_out_norm,
-                target_log_mean=self._metric_target_log_mean,
-                target_log_std=self._metric_target_log_std,
-            ),
-        )
-        metric_targets = cast(
-            torch.Tensor,
-            denormalize_output_target(
-                data=targets,
-                target_min=self._metric_target_min,
-                target_max=self._metric_target_max,
-                out_norm=self._metric_out_norm,
-                target_log_mean=self._metric_target_log_mean,
-                target_log_std=self._metric_target_log_std,
-            ),
-        )
-        return metric_predictions, metric_targets
+    def _activate_predictions(self, predictions: torch.Tensor) -> torch.Tensor:
+        activated_channels = []
+        for idx, target in enumerate(self._target_specs):
+            channel = predictions[:, idx : idx + 1]
+            activated_channels.append(torch.sigmoid(channel) if target.probability_scale else channel)
+        return torch.cat(activated_channels, dim=1)
+
+    def _metric_result_keys(self) -> list[str]:
+        if not self._is_multitarget:
+            return list(self.metric_functions)
+        return [f"{target.name}_{metric_name}" for target in self._target_specs for metric_name in self.metric_functions]
+
+    def _compute_metric_values(self, predictions: torch.Tensor, targets: torch.Tensor, masks: torch.Tensor) -> dict[str, torch.Tensor]:
+        if not self._is_multitarget:
+            return {name: metric_fn(predictions, targets, masks) for name, metric_fn in self.metric_functions.items()}
+
+        values = {}
+        for idx, target in enumerate(self._target_specs):
+            pred_channel = predictions[:, idx : idx + 1]
+            target_channel = targets[:, idx : idx + 1]
+            mask_channel = masks[:, idx : idx + 1]
+            for metric_name, metric_fn in self.metric_functions.items():
+                values[f"{target.name}_{metric_name}"] = metric_fn(pred_channel, target_channel, mask_channel)
+        return values
 
     def _validate_and_load_metrics(self) -> None:
         """Helper to validate and load metrics to be computed."""
@@ -249,7 +303,7 @@ class Trainer:
             total_loss = cast(torch.Tensor, loss_out)
             loss_parts = None
 
-        metric_predictions = torch.sigmoid(predictions) if self._use_sigmoid_predictions else predictions
+        metric_predictions = self._activate_predictions(predictions)
         return metric_predictions, total_loss, loss_parts, targets, masks
 
     @staticmethod
@@ -280,10 +334,10 @@ class Trainer:
         self.model.train()
         running_loss = 0.0
         running_batch_count = 0
-        running_metrics = {name: 0.0 for name in self.metric_functions}
+        running_metrics = {name: 0.0 for name in self._metric_result_keys()}
         running_loss_parts = None
-        if isinstance(self.config.optimizer.loss, list):
-            running_loss_parts = {name: 0.0 for name in self.config.optimizer.loss}
+        if isinstance(self.loss_fn, (WeightedLoss, MultiTargetLoss)):
+            running_loss_parts = {name: 0.0 for name in self.loss_fn.losses}
 
         training_loop = tqdm(loader, desc="Training", leave=True)
 
@@ -313,8 +367,7 @@ class Trainer:
             # compute the metrics
             with torch.no_grad():
                 metric_predictions, metric_targets = self._prepare_metric_tensors(predictions.detach(), targets)
-                for name, metric_fn in self.metric_functions.items():
-                    value = metric_fn(metric_predictions, metric_targets, masks)
+                for name, value in self._compute_metric_values(metric_predictions, metric_targets, masks).items():
                     running_metrics[name] += value.item() * batch_size
                     if self.logger and self.global_step % self.log_every_n_step == 0:
                         self.logger.log_metrics({f"train_step_{name}": value.item()}, step=self.global_step)
@@ -350,10 +403,10 @@ class Trainer:
         self.model.eval()
         running_loss = 0.0
         running_batch_count = 0
-        running_metrics = {name: 0.0 for name in self.metric_functions}
+        running_metrics = {name: 0.0 for name in self._metric_result_keys()}
         running_loss_parts = None
-        if isinstance(self.config.optimizer.loss, list):
-            running_loss_parts = {name: 0.0 for name in self.config.optimizer.loss}
+        if isinstance(self.loss_fn, (WeightedLoss, MultiTargetLoss)):
+            running_loss_parts = {name: 0.0 for name in self.loss_fn.losses}
 
         preds_list = []
         validation_loop = tqdm(loader, desc="Evaluating", leave=True)
@@ -371,8 +424,7 @@ class Trainer:
             # compute the metrics
             with torch.no_grad():
                 metric_predictions, metric_targets = self._prepare_metric_tensors(predictions.detach(), targets)
-                for name, metric_fn in self.metric_functions.items():
-                    value = metric_fn(metric_predictions, metric_targets, masks)
+                for name, value in self._compute_metric_values(metric_predictions, metric_targets, masks).items():
                     running_metrics[name] += value.item() * batch_size
 
                 if loss_parts is not None and running_loss_parts is not None:
@@ -398,6 +450,39 @@ class Trainer:
     def test(self, loader: DataLoader, return_predictions: bool = False) -> dict[str, float] | tuple[dict[str, float], np.ndarray]:
         return self.validate(loader, return_predictions=return_predictions)
 
+    def _maybe_resume(self, lr_scheduler: LRScheduler | ReduceLROnPlateau | None = None) -> int:
+        """
+        Resume training from ``last.pth`` when it exists so a preempted/requeued SLURM job
+        continues instead of restarting from scratch. Returns the next epoch to run
+        (``1`` when there is no compatible checkpoint to resume from).
+        """
+        if not self.save_dir:
+            return 1
+        last_path = os.path.join(self.save_dir, "last.pth")
+        if not os.path.exists(last_path):
+            return 1
+
+        checkpoint = torch.load(last_path, map_location=self.device)
+        saved_state = checkpoint.get("model_state", {})
+        current_state = self.model.state_dict()
+        compatible = saved_state.keys() == current_state.keys() and all(
+            saved_state[key].shape == current_state[key].shape for key in current_state
+        )
+        if not compatible:
+            print(f"[Resume] {last_path} does not match the current model; starting from scratch.")
+            return 1
+
+        self.model.load_state_dict(saved_state)
+        self.optimizer.load_state_dict(checkpoint["optimizer_state"])
+        if lr_scheduler is not None and checkpoint.get("scheduler_state") is not None:
+            lr_scheduler.load_state_dict(checkpoint["scheduler_state"])
+        if checkpoint.get("best_metric_list"):
+            self._best_metric_list = list(checkpoint["best_metric_list"])
+        self.global_step = int(checkpoint.get("global_step", self.global_step))
+        last_epoch = int(checkpoint.get("epoch", 0))
+        print(f"[Resume] Resuming from {last_path}: completed epoch {last_epoch}, continuing at epoch {last_epoch + 1}.")
+        return last_epoch + 1
+
     def run_training(
         self,
         train_loader: DataLoader,
@@ -409,7 +494,9 @@ class Trainer:
         # get scheduler and its type
         lr_scheduler, lr_scheduler_type = build_lr_scheduler(self.config, self.optimizer, train_loader)
 
-        for epoch in range(1, num_epochs + 1):
+        start_epoch = self._maybe_resume(lr_scheduler)
+
+        for epoch in range(start_epoch, num_epochs + 1):
             start = time.time()
             train_res = self.train_epoch(train_loader, lr_scheduler=lr_scheduler, lr_scheduler_type=lr_scheduler_type)
             elapsed = time.time() - start
@@ -460,9 +547,19 @@ class Trainer:
                             self.logger.experiment.log_model(name="best", file_or_folder=best_path, overwrite=True)
 
                 # save most recent checkpoint
-                self.save_model(epoch=epoch, metric_value={m: v for m, v in zip(self.best_ckpt_metrics, curr_metric_list, strict=False)})
+                self.save_model(
+                    epoch=epoch,
+                    metric_value={m: v for m, v in zip(self.best_ckpt_metrics, curr_metric_list, strict=False)},
+                    lr_scheduler=lr_scheduler,
+                )
 
-    def save_model(self, epoch: int, metric_value: float | dict, filename: str = "last.pth"):
+    def save_model(
+        self,
+        epoch: int,
+        metric_value: float | dict,
+        filename: str = "last.pth",
+        lr_scheduler: LRScheduler | ReduceLROnPlateau | None = None,
+    ):
         if not self.save_dir:
             raise ValueError("save_dir not set")
 
@@ -474,8 +571,14 @@ class Trainer:
             "epoch": epoch,
             "metric_value": metric_value,
             "config": self.config.model_dump(),
+            "global_step": self.global_step,
+            "best_metric_list": self._best_metric_list,
+            "scheduler_state": lr_scheduler.state_dict() if lr_scheduler is not None else None,
         }
-        torch.save(payload, path)
+        # Write atomically so a preemption mid-save cannot leave a corrupt checkpoint.
+        tmp_path = f"{path}.tmp"
+        torch.save(payload, tmp_path)
+        os.replace(tmp_path, path)
         return path
 
     def load_model(self, path: str | None = None, filename: str = "last.pth", map_location: str | None = None):
