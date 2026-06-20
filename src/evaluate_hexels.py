@@ -183,7 +183,9 @@ def main() -> None:
             stitch_mode=args.stitch_mode,
             save_artifacts=not args.metrics_only,
             save_plots=not args.skip_hexel_plots,
-            robust_plot_percentile=args.robust_plot_percentile,
+            robust_plot_percentile=args.robust_plot_percentile
+            if args.robust_plot_percentile is not None
+            else config.evaluation.robust_plot_percentile,
             mask_scope=args.mask_scope,
         )
 
