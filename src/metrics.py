@@ -24,7 +24,22 @@ def _topk_threshold(values: torch.Tensor, percentile: float) -> torch.Tensor:
 
 
 def _topk_thresholds(values: torch.Tensor, percentiles: torch.Tensor) -> torch.Tensor:
-    return torch.stack([_topk_threshold(values, float(percentile.item())) for percentile in percentiles.reshape(-1)])
+    """Vectorized top-k thresholds for many percentiles using a single sort (no torch.quantile size limit)."""
+    flat = values.reshape(-1).float()
+    perc = percentiles.reshape(-1).to(flat.device, dtype=torch.float64).clamp(0.0, 1.0)
+    if flat.numel() == 0:
+        return flat.new_full((perc.numel(),), float("nan"))
+    sorted_desc, _ = torch.sort(flat, descending=True)
+    n = flat.numel()
+    top_fraction = 1.0 - perc
+    raw_count = n * top_fraction
+    nearest = torch.round(raw_count)
+    tol = torch.maximum(torch.maximum(raw_count.abs(), nearest.abs()) * 1e-6, raw_count.new_tensor(1e-6))
+    use_nearest = (raw_count - nearest).abs() <= tol
+    top_count = torch.where(use_nearest, nearest, torch.ceil(raw_count))
+    top_count = torch.where(top_fraction <= 0.0, torch.ones_like(top_count), top_count)
+    k = top_count.clamp(1, n).long()
+    return sorted_desc[k - 1]
 
 
 def compute_mse(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor | None = None, eps: float = 1e-8) -> torch.Tensor:
