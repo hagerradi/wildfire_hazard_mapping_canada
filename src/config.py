@@ -89,7 +89,7 @@ class GridParams(BaseModel):
     include_hex_coords: bool = False
     terrain_derivatives: list[str] = Field(default_factory=list)
     terrain_cell_size_m: float = Field(default=100.0, gt=0.0)
-    bp_nodata_as_zero: bool = False
+    bp_nodata_as_zero: bool = True
     input_mask_policy: str = "input_only"
 
 

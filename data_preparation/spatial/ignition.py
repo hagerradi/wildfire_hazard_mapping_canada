@@ -1,3 +1,4 @@
+import logging
 import os
 from typing import Any
 
@@ -6,6 +7,8 @@ import pandas as pd
 
 from data_preparation.paths import Paths
 from data_preparation.spatial.utils import fire_cause_mapping, load_spatial_raster
+
+logger = logging.getLogger(__name__)
 
 
 def load_ignition_grid(
@@ -159,6 +162,14 @@ def load_ignition_grid_weighted(
 
             weights[(mapped_cause, mapped_season)] += area_frac[zone_id] * rl
     else:
+        logger.warning(
+            "Hex %s: ignition distribution unavailable (table exists=%s, zone map=%s, area fractions=%s); "
+            "falling back to uniform ignition weights.",
+            hex_id,
+            ign_csv.exists(),
+            bool(zone_name_to_id),
+            bool(area_frac),
+        )
         # Fallback: uniform weights across present grids only
         for key in grids:
             weights[key] = 1.0
