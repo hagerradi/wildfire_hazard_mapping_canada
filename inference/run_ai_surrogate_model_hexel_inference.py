@@ -292,6 +292,7 @@ def run_single_hexel_pipeline(
         data_dir=str(processed_data_dir),
         modelling_approach=str(data_prep_config["modelling_approach"]),
         grid_params=grid_params,
+        prediction_support_policy=checkpoint["config"].get("evaluation", {}).get("prediction_support_policy", "input"),
     )
     out_norm = grid_params.get("out_norm", "min_max")
     target_log_mean = grid_params.get("target_log_mean")

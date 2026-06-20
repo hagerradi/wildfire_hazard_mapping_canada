@@ -569,7 +569,10 @@ class MultiTargetLoss(nn.Module):
 
         weight_values = torch.tensor([weights[name] for name in self.target_names], dtype=torch.float32)
         if self.normalize_weights:
-            weight_values = weight_values / weight_values.sum().clamp_min(self.eps)
+            weight_sum = weight_values.sum()
+            if weight_sum <= self.eps:
+                raise ValueError(f"Sum of target loss weights must be positive when normalize_weights=True, got {weights}.")
+            weight_values = weight_values / weight_sum
         self.register_buffer("_weights", weight_values)
 
     def forward(

@@ -179,6 +179,8 @@ def compute_bias(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor 
     targets = targets.float()
     if mask is not None:
         valid = (mask > 0).float()
+    else:
+        valid = torch.ones_like(preds)
 
     denom = valid.sum().clamp_min(1.0)  # avoid divide-by-zero
     return ((preds - targets) * valid).sum() / denom
