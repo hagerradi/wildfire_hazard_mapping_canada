@@ -297,7 +297,7 @@ def run_single_hexel_pipeline(
     target_log_mean = grid_params.get("target_log_mean")
     target_log_std = grid_params.get("target_log_std")
     if out_norm == "log_standard" and (target_log_mean is None or target_log_std is None):
-        target_log_mean, target_log_std = get_output_log_stats_cached(str(processed_data_dir), target.output_type)
+        target_log_mean, target_log_std = get_output_log_stats_cached(str(data_config["root_dir"]), target.output_type)
     reconstructed_hexel_denorm, gt_elevation_grid_profile = get_predicted_hexel(
         base_dir=str(processed_data_dir),
         raw_data_dir=str(data_dir),
