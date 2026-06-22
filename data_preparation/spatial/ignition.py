@@ -6,7 +6,13 @@ import numpy as np
 import pandas as pd
 
 from data_preparation.paths import Paths
-from data_preparation.spatial.utils import fire_cause_mapping, load_spatial_raster
+from data_preparation.spatial.utils import (
+    fire_cause_label_mapping,
+    fire_cause_mapping,
+    ignition_cause_season_specs,
+    ignition_seasons,
+    load_spatial_raster,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -50,13 +56,9 @@ def load_ignition_grid(
     return max_ignition_grid
 
 
-# Maps (cause_letter, season_int) → (grid_key, CSV cause label, season label)
-_CAUSE_SEASON_SPECS = [
-    ("H", 1, "Human", "s1"),
-    ("H", 2, "Human", "s2"),
-    ("N", 1, "Lightning", "s1"),
-    ("N", 2, "Lightning", "s2"),
-]
+# Maps an IgnitionDistribution.csv cause/season label back to our grid keys
+_csv_cause_to_letter = {label: letter for letter, label in fire_cause_label_mapping.items()}
+_season_label_to_int = {f"s{season}": season for season in ignition_seasons}
 
 
 def load_ignition_grid_weighted(
@@ -90,7 +92,7 @@ def load_ignition_grid_weighted(
     # lightning grids). Missing TIFs are skipped; their weight is forced to 0.
     grids: dict[tuple[str, int], np.ma.MaskedArray] = {}
     missing_keys: set[tuple[str, int]] = set()
-    for cause_letter, season_int, _cause_label, _season_label in _CAUSE_SEASON_SPECS:
+    for cause_letter, season_int in ignition_cause_season_specs:
         fname = f"hex{hex_id}_ignGrid_{cause_letter}_s{season_int}.tif"
         tif_path = ign_dir / fname
         if not tif_path.exists():
@@ -135,7 +137,7 @@ def load_ignition_grid_weighted(
 
     # ── 4. Compute hex-level weights from IgnitionDistribution.csv ───────────
     ign_csv = all_paths.ignition_distribution_table(hex_id=hex_id)
-    weights: dict[tuple[str, int], float] = {(c, s): 0.0 for c, s, _, _ in _CAUSE_SEASON_SPECS}
+    weights: dict[tuple[str, int], float] = {(c, s): 0.0 for c, s in ignition_cause_season_specs}
 
     if ign_csv.exists() and zone_name_to_id and area_frac:
         dist_df = pd.read_csv(ign_csv)
@@ -155,8 +157,8 @@ def load_ignition_grid_weighted(
                 continue
 
             # Map CSV cause/season back to our (cause_letter, season_int) key
-            mapped_cause = "H" if cause_csv == "Human" else "N" if cause_csv == "Lightning" else None
-            mapped_season = 1 if season_csv == "s1" else 2 if season_csv == "s2" else None
+            mapped_cause = _csv_cause_to_letter.get(cause_csv)
+            mapped_season = _season_label_to_int.get(season_csv)
             if mapped_cause is None or mapped_season is None:
                 continue
 
