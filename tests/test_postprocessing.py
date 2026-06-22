@@ -1,4 +1,5 @@
 import json
+import shutil
 
 import numpy as np
 import pandas as pd
@@ -202,6 +203,7 @@ def test_evaluate_and_visualize_hexels_hides_support_outline_for_target_policy(t
     pd.DataFrame([{"filename": "patch.npy", "hex_id": 1, "valid_ratio": 1.0, "season": "spring", "cause": "H", "row": 0, "col": 0}]).to_csv(
         tmp_path / "test_indices.csv", index=False
     )
+    shutil.copyfile(tmp_path / "test_indices.csv", tmp_path / "train_indices.csv")
 
     config = Config(
         save_dir=str(tmp_path / "out"),
@@ -270,6 +272,7 @@ def test_evaluate_and_visualize_hexels_stitches_each_multitarget_channel(tmp_pat
     pd.DataFrame([{"filename": "patch.npy", "hex_id": 1, "valid_ratio": 1.0, "season": "spring", "cause": "H", "row": 0, "col": 0}]).to_csv(
         tmp_path / "test_indices.csv", index=False
     )
+    shutil.copyfile(tmp_path / "test_indices.csv", tmp_path / "train_indices.csv")
 
     config = Config(
         save_dir=str(tmp_path / "out"),
@@ -358,6 +361,7 @@ def test_evaluate_and_visualize_hexels_metrics_only_skips_artifacts(tmp_path, mo
     pd.DataFrame([{"filename": "patch.npy", "hex_id": 1, "valid_ratio": 1.0, "season": "spring", "cause": "H", "row": 0, "col": 0}]).to_csv(
         tmp_path / "test_indices.csv", index=False
     )
+    shutil.copyfile(tmp_path / "test_indices.csv", tmp_path / "train_indices.csv")
 
     config = Config(
         save_dir=str(tmp_path / "out"),
@@ -437,6 +441,7 @@ def test_evaluate_and_visualize_hexels_uses_buffer_scope_paths_and_outputs(tmp_p
             }
         ]
     ).to_csv(tmp_path / "test_indices.csv", index=False)
+    shutil.copyfile(tmp_path / "test_indices.csv", tmp_path / "train_indices.csv")
 
     config = Config(
         save_dir=str(tmp_path / "out"),
@@ -509,6 +514,7 @@ def test_buffer_scope_evaluation_reports_actual_and_buffer_only_splits(tmp_path,
             }
         ]
     ).to_csv(tmp_path / "test_indices.csv", index=False)
+    shutil.copyfile(tmp_path / "test_indices.csv", tmp_path / "train_indices.csv")
 
     config = Config(
         save_dir=str(tmp_path / "out"),
@@ -587,6 +593,7 @@ def test_evaluate_and_visualize_hexels_writes_optional_robust_plot(tmp_path, mon
     pd.DataFrame([{"filename": "patch.npy", "hex_id": 1, "valid_ratio": 1.0, "season": "spring", "cause": "H", "row": 0, "col": 0}]).to_csv(
         tmp_path / "test_indices.csv", index=False
     )
+    shutil.copyfile(tmp_path / "test_indices.csv", tmp_path / "train_indices.csv")
 
     config = Config(
         save_dir=str(tmp_path / "out"),

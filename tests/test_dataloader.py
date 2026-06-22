@@ -465,11 +465,11 @@ def test_build_dataset_passes_raw_data_dir_to_grid_source(temp_data_dir, monkeyp
     raw_data_dir = "/network/raw/source"
     seen = {}
 
-    def fake_get_range_output(root_dir, output_type):
+    def fake_get_range_output(root_dir, output_type, allowed_hex_ids=None):
         seen["output"] = (root_dir, output_type)
         return 1.0, 0.0
 
-    def fake_get_range_elevation(root_dir):
+    def fake_get_range_elevation(root_dir, allowed_hex_ids=None):
         seen["elevation"] = root_dir
         return 1000.0, 0.0
 
@@ -506,9 +506,9 @@ def test_grid_source_rejects_invalid_explicit_raw_data_dir(temp_data_dir, monkey
 
     monkeypatch.setattr(
         "src.datasets.sources.grids.get_range_output",
-        lambda root_dir, output_type: (float("-inf"), float("inf")),
+        lambda root_dir, output_type, allowed_hex_ids=None: (float("-inf"), float("inf")),
     )
-    monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation", lambda root_dir: (1000.0, 0.0))
+    monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation", lambda root_dir, allowed_hex_ids=None: (1000.0, 0.0))
 
     grid_params = GridParams(
         feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],

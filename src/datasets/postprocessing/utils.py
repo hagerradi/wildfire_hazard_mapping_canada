@@ -20,6 +20,7 @@ from data_preparation.spatial.utils import (
     get_output_log_stats_cached,
     get_range_output,
     load_spatial_raster,
+    read_split_hex_ids,
 )
 from src.config import Config, GridParams
 from src.datasets.postprocessing.stitch_hexel import stitch_windows
@@ -565,6 +566,11 @@ def evaluate_and_visualize_hexels(
     modelling_approach = config.modelling_approach
     valid_mask_threshold = config.data.valid_mask_threshold
     targets = get_config_target_specs(config)
+    # Denormalization must use the same train-only normalization constants as training,
+    # so the inverse transform is consistent and never derived from held-out hexes.
+    train_hex_ids: set[int] | None = None
+    if data_dir and config.data.train_split:
+        train_hex_ids = read_split_hex_ids(os.path.join(data_dir, config.data.train_split))
     is_multitarget = len(targets) > 1
     grid_params = get_config_grid_params(config)
     prediction_mask_channel_indices = get_prediction_mask_channel_indices(
@@ -584,7 +590,9 @@ def evaluate_and_visualize_hexels(
     target_settings: list[TargetPostprocessingSettings] = []
     for target in targets:
         target_channel_index = get_target_channel_index(data_dir=data_dir, modelling_approach=modelling_approach, target=target)
-        max_target_val, min_target_val = get_range_output(root_dir=raw_data_dir, output_type=target.output_type)
+        max_target_val, min_target_val = get_range_output(
+            root_dir=raw_data_dir, output_type=target.output_type, allowed_hex_ids=train_hex_ids
+        )
         max_target_val, min_target_val = apply_bp_nodata_zero_range(
             target_name=target.name,
             max_value=max_target_val,
@@ -594,7 +602,9 @@ def evaluate_and_visualize_hexels(
         target_log_mean, target_log_std = get_target_log_stats(grid_params=grid_params, target=target)
         target_out_norm = get_target_out_norm(grid_params=grid_params, target=target, fallback_out_norm=out_norm)
         if target_out_norm == "log_standard" and (target_log_mean is None or target_log_std is None):
-            target_log_mean, target_log_std = get_output_log_stats_cached(str(data_dir), target.output_type)
+            target_log_mean, target_log_std = get_output_log_stats_cached(
+                str(data_dir), target.output_type, allowed_hex_ids=train_hex_ids, raw_data_dir=raw_data_dir
+            )
         target_settings.append(
             TargetPostprocessingSettings(
                 target=target,

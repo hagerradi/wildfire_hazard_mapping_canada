@@ -13,6 +13,7 @@ from data_preparation.spatial.utils import (
     get_range_elevation,
     get_range_output,
     load_spatial_raster,
+    read_split_hex_ids,
 )
 from src.config import GridParams
 from src.datasets.sources.base import DataSource
@@ -41,6 +42,7 @@ class GridSource(DataSource):
         modelling_approach: str = "1",
         transform: Callable | None = None,
         raw_data_dir: str | None = None,
+        train_split_csv_name: str | None = None,
     ):
         """
         Args:
@@ -62,6 +64,13 @@ class GridSource(DataSource):
         self.params = params
         self.modelling_approach = modelling_approach
         self.transform = transform
+
+        # Normalization statistics must be derived from the training split only, so held-out
+        # hexes never leak into target/elevation normalization constants. None preserves the
+        # legacy full-scan behaviour (e.g. single-hex inference where no split is provided).
+        self._train_hex_ids: set[int] | None = None
+        if train_split_csv_name is not None:
+            self._train_hex_ids = read_split_hex_ids(os.path.join(self.root_dir, train_split_csv_name))
 
         self.targets = get_target_specs(params.target_name)
         self.feature_names_list = params.feature_names_list
@@ -104,7 +113,7 @@ class GridSource(DataSource):
                 if self._target_out_norm(target.name) != "min_max":
                     continue
                 try:
-                    target_max, target_min = get_range_output(self.raw_data_dir, target.output_type)
+                    target_max, target_min = get_range_output(self.raw_data_dir, target.output_type, self._train_hex_ids)
                 except ValueError:
                     if self._validate_raw_ranges:
                         raise
@@ -130,7 +139,12 @@ class GridSource(DataSource):
                 mean = self.target_log_means.get(target.name, self.target_log_mean)
                 std = self.target_log_stds.get(target.name, self.target_log_std)
                 if mean is None or std is None:
-                    mean, std = get_output_log_stats_cached(self.root_dir, target.output_type)
+                    mean, std = get_output_log_stats_cached(
+                        self.root_dir,
+                        target.output_type,
+                        allowed_hex_ids=self._train_hex_ids,
+                        raw_data_dir=self.raw_data_dir,
+                    )
                     if target.name in self.target_log_stds or target.name in self.target_log_means:
                         self.target_log_means[target.name] = mean
                         self.target_log_stds[target.name] = std
@@ -195,7 +209,7 @@ class GridSource(DataSource):
                 self.elevation_input_channel_index = self.input_channel_indices.index(elev_feat_encoded_index)
         # 3. normalization for elevation grid
         try:
-            self.ELEVATION_MAX, self.ELEVATION_MIN = get_range_elevation(self.raw_data_dir)
+            self.ELEVATION_MAX, self.ELEVATION_MIN = get_range_elevation(self.raw_data_dir, self._train_hex_ids)
         except ValueError:
             if self._validate_raw_ranges:
                 raise

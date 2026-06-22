@@ -9,7 +9,7 @@ from torch.optim.lr_scheduler import LRScheduler, ReduceLROnPlateau
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from data_preparation.spatial.utils import get_output_log_stats_cached, get_range_output
+from data_preparation.spatial.utils import get_output_log_stats_cached, get_range_output, read_split_hex_ids
 from src.config import Config, GridParams
 from src.datasets.targets import get_target_specs
 from src.datasets.utils import apply_bp_nodata_zero_range, default_target_norm
@@ -178,6 +178,12 @@ class Trainer:
             self._metric_target_log_stds = [None] * len(self._target_specs)
             return
 
+        # Normalization stats are train-only: derive the allowed hexes from the train split so
+        # held-out hexes never leak into target normalization constants.
+        train_hex_ids: set[int] | None = None
+        if self.config.data.root_dir and self.config.data.train_split:
+            train_hex_ids = read_split_hex_ids(os.path.join(self.config.data.root_dir, self.config.data.train_split))
+
         for target in self._target_specs:
             out_norm = self._target_out_norm(target.name)
             target_min = 0.0
@@ -186,7 +192,11 @@ class Trainer:
 
             if out_norm == "min_max":
                 if self.config.data.raw_data_dir:
-                    target_max, target_min = get_range_output(root_dir=self.config.data.raw_data_dir, output_type=target.output_type)
+                    target_max, target_min = get_range_output(
+                        root_dir=self.config.data.raw_data_dir,
+                        output_type=target.output_type,
+                        allowed_hex_ids=train_hex_ids,
+                    )
                     target_max, target_min = apply_bp_nodata_zero_range(
                         target_name=target.name,
                         max_value=target_max,
@@ -198,6 +208,8 @@ class Trainer:
                     target_log_mean, target_log_std = get_output_log_stats_cached(
                         root_dir=self.config.data.root_dir,
                         output_type=target.output_type,
+                        allowed_hex_ids=train_hex_ids,
+                        raw_data_dir=self.config.data.raw_data_dir,
                     )
                 if target_log_mean is None or target_log_std is None:
                     raise ValueError(f"target_log_mean/std are required for target={target.name!r} with out_norm='log_standard'.")
