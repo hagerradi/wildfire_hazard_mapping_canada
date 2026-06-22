@@ -25,13 +25,6 @@ fire_cause_mapping = {1: "H", 2: "N"}
 # cause letter to the label used in IgnitionDistribution.csv
 fire_cause_label_mapping = {"H": "Human", "N": "Lightning"}
 
-# seasons present in the ignition grids
-ignition_seasons = (1, 2)
-
-# every (cause_letter, season) ignition-grid combination, derived from the
-# cause mapping so the letters live in exactly one place
-ignition_cause_season_specs = [(cause_letter, season) for cause_letter in fire_cause_mapping.values() for season in ignition_seasons]
-
 # TODO: revisit fuel grouping
 FUEL_GROUP_MAP = {
     # Non-fuel

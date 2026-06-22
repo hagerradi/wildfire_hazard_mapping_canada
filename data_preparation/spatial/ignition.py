@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 from typing import Any
 
 import numpy as np
@@ -9,8 +10,6 @@ from data_preparation.paths import Paths
 from data_preparation.spatial.utils import (
     fire_cause_label_mapping,
     fire_cause_mapping,
-    ignition_cause_season_specs,
-    ignition_seasons,
     load_spatial_raster,
 )
 
@@ -56,9 +55,10 @@ def load_ignition_grid(
     return max_ignition_grid
 
 
-# Maps an IgnitionDistribution.csv cause/season label back to our grid keys
+# IgnitionDistribution.csv cause label -> grid cause letter
 _csv_cause_to_letter = {label: letter for letter, label in fire_cause_label_mapping.items()}
-_season_label_to_int = {f"s{season}": season for season in ignition_seasons}
+# matches e.g. "hex02_ignGrid_H_s3.tif" -> ("H", 3)
+_IGN_GRID_PATTERN = re.compile(r"_ignGrid_([A-Z])_s(\d+)\.tif$")
 
 
 def load_ignition_grid_weighted(
@@ -68,42 +68,43 @@ def load_ignition_grid_weighted(
     reference_profile: dict[str, Any] | None = None,
     mask_scope: str = "actual",
 ) -> np.ma.MaskedArray:
-    """Load ignition grids as two zone-area-weighted channels: Human and Lightning.
+    """Load ignition grids as zone-area-weighted Human and Lightning channels.
 
-    For each hex, the IgnitionDistribution.csv gives a RelativeLikelihood per
-    (Season, Cause, FireZone).  We compute a hex-level weight for each of the
-    4 (cause × season) combinations by averaging RelativeLikelihoods across
-    fire zones using their pixel-area fractions, then normalise all four weights
-    to sum to 1.  The four grids are then blended into two output channels:
+    For each hex, IgnitionDistribution.csv gives a RelativeLikelihood per
+    (Season, Cause, FireZone). We weight every (cause, season) ignition grid
+    present for the hex by averaging its RelativeLikelihoods across fire zones
+    using their pixel-area fractions, normalise the weights to sum to 1, then
+    blend the grids per cause into one channel each:
 
-        human_channel     = w_H_s1 * grid_H_s1 + w_H_s2 * grid_H_s2
-        lightning_channel = w_N_s1 * grid_N_s1 + w_N_s2 * grid_N_s2
+        human_channel     = sum_s w_H_s * grid_H_s
+        lightning_channel = sum_s w_N_s * grid_N_s
 
-    Returns a masked array of shape (H, W, 2) where channel 0 = Human,
-    channel 1 = Lightning.  Falls back to uniform weights (equal weight per
-    present TIF) if the CSV is missing or all weights are zero.
+    The number of seasons varies per hex (some have s1/s2, others s1/s2/s3), so
+    grids are discovered from disk rather than assumed. Returns a masked array
+    of shape (H, W, 2): channel 0 = Human, channel 1 = Lightning. Falls back to
+    uniform weights if the CSV is missing or all weights are zero.
     """
     all_paths = Paths(hex_id=hex_id, root_dir=root_dir)
     ign_dir = all_paths.ignition_prob_dir()
     mask_path = all_paths.mask_grid(hex_id=hex_id, mask_scope=mask_scope)
 
-    # ── 1. Load the four ignition TIFs by explicit name ───────────────────────
-    # Some hexels may be missing certain cause/season TIFs (e.g. hex54 has no
-    # lightning grids). Missing TIFs are skipped; their weight is forced to 0.
+    # ── 1. Discover the (cause, season) ignition grids present for this hex ───
+    # Season count varies per hex, and some hexels lack a whole cause (e.g.
+    # hex54 has no lightning grids), so we read whatever TIFs are on disk.
     grids: dict[tuple[str, int], np.ma.MaskedArray] = {}
-    missing_keys: set[tuple[str, int]] = set()
-    for cause_letter, season_int in ignition_cause_season_specs:
-        fname = f"hex{hex_id}_ignGrid_{cause_letter}_s{season_int}.tif"
-        tif_path = ign_dir / fname
-        if not tif_path.exists():
-            missing_keys.add((cause_letter, season_int))
-            continue
-        raster, _ = load_spatial_raster(
-            path=tif_path,
-            mask_path=mask_path,
-            reference_profile=reference_profile,
-        )
-        grids[(cause_letter, season_int)] = raster
+    known_causes = set(fire_cause_mapping.values())
+    if ign_dir.is_dir():
+        for fname in sorted(os.listdir(ign_dir)):
+            match = _IGN_GRID_PATTERN.search(fname)
+            if match is None or match.group(1) not in known_causes:
+                continue
+            cause_letter, season_int = match.group(1), int(match.group(2))
+            raster, _ = load_spatial_raster(
+                path=ign_dir / fname,
+                mask_path=mask_path,
+                reference_profile=reference_profile,
+            )
+            grids[(cause_letter, season_int)] = raster
 
     if not grids:
         raise FileNotFoundError(f"No ignition TIFs found in {ign_dir} for hex{hex_id}")
@@ -137,7 +138,7 @@ def load_ignition_grid_weighted(
 
     # ── 4. Compute hex-level weights from IgnitionDistribution.csv ───────────
     ign_csv = all_paths.ignition_distribution_table(hex_id=hex_id)
-    weights: dict[tuple[str, int], float] = {(c, s): 0.0 for c, s in ignition_cause_season_specs}
+    weights: dict[tuple[str, int], float] = {key: 0.0 for key in grids}
 
     if ign_csv.exists() and zone_name_to_id and area_frac:
         dist_df = pd.read_csv(ign_csv)
@@ -145,7 +146,7 @@ def load_ignition_grid_weighted(
         dist_df.columns = [col.strip() for col in dist_df.columns]
         for _, row in dist_df.iterrows():
             cause_csv = str(row.get("Cause", "")).strip()  # "Human" or "Lightning"
-            season_csv = str(row.get("Season", "")).strip()  # "s1" or "s2"
+            season_csv = str(row.get("Season", "")).strip()  # "s1", "s2", "s3", ...
             zone_name = str(row.get("FireZone", "")).strip()  # "fru21" etc.
             try:
                 rl = float(row.get("RelativeLikelihood", 0) or 0)
@@ -158,11 +159,14 @@ def load_ignition_grid_weighted(
 
             # Map CSV cause/season back to our (cause_letter, season_int) key
             mapped_cause = _csv_cause_to_letter.get(cause_csv)
-            mapped_season = _season_label_to_int.get(season_csv)
+            mapped_season = int(season_csv[1:]) if season_csv[:1] == "s" and season_csv[1:].isdigit() else None
             if mapped_cause is None or mapped_season is None:
                 continue
 
-            weights[(mapped_cause, mapped_season)] += area_frac[zone_id] * rl
+            key = (mapped_cause, mapped_season)
+            # Only accumulate weight for (cause, season) grids that exist on disk
+            if key in weights:
+                weights[key] += area_frac[zone_id] * rl
     else:
         logger.warning(
             "Hex %s: ignition distribution unavailable (table exists=%s, zone map=%s, area fractions=%s); "
@@ -172,38 +176,30 @@ def load_ignition_grid_weighted(
             bool(zone_name_to_id),
             bool(area_frac),
         )
-        # Fallback: uniform weights across present grids only
+        # Fallback: uniform weights across present grids
         for key in grids:
             weights[key] = 1.0
 
-    # ── 5. Force missing TIFs to zero weight, then normalise ──────────────────
-    for key in missing_keys:
-        weights[key] = 0.0
-
-    present_keys = set(grids.keys())
-    total_w = sum(weights[k] for k in present_keys)
+    # ── 5. Normalise the weights over the grids present for this hex ──────────
+    total_w = sum(weights.values())
     if total_w > 0:
-        weights = {k: (weights[k] / total_w if k in present_keys else 0.0) for k in weights}
+        weights = {k: w / total_w for k, w in weights.items()}
     else:
-        # All weights are zero (e.g. CSV has no matching zones); uniform over present
-        n_present = len(present_keys)
-        weights = {k: (1.0 / n_present if k in present_keys else 0.0) for k in weights}
+        n_present = len(weights)
+        weights = {k: 1.0 / n_present for k in weights}
 
-    # ── 6. Blend into two output channels ────────────────────────────────────
+    # ── 6. Blend the per-season grids into one channel per cause ─────────────
     ref = next(iter(grids.values()))
 
     def _blend(keys: list[tuple[str, int]]) -> np.ma.MaskedArray:
         result = np.ma.zeros_like(ref)
         for k in keys:
-            if k in grids:
-                result = result + weights[k] * grids[k]
+            result = result + weights[k] * grids[k]
         return result
 
-    human_channel = _blend([("H", 1), ("H", 2)])
-    lightning_channel = _blend([("N", 1), ("N", 2)])
+    channels = [_blend([k for k in grids if k[0] == cause_letter]) for cause_letter in fire_cause_mapping.values()]
 
-    # Stack to (H, W, 2)
-    H, W = human_channel.shape
-    out = np.ma.stack([human_channel, lightning_channel], axis=-1)  # (H, W, 2)
-    assert out.shape == (H, W, 2)
+    H, W = ref.shape
+    out = np.ma.stack(channels, axis=-1)  # (H, W, num_causes)
+    assert out.shape == (H, W, len(fire_cause_mapping))
     return out
