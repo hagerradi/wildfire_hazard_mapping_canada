@@ -1,6 +1,10 @@
 from pathlib import Path
 from typing import Literal
 
+# Mask scopes select which pixels are scored at evaluation:
+#   "actual"      - the inner hex only
+#   "buffer"      - the full buffered extent: inner hex + surrounding ring
+#   "buffer_only" - the surrounding ring only, with the inner hex excluded
 MaskScope = Literal["actual", "buffer", "buffer_only"]
 MASK_SCOPE_CHOICES: tuple[MaskScope, ...] = ("actual", "buffer", "buffer_only")
 
@@ -16,6 +20,12 @@ def normalize_mask_scope(mask_scope: str) -> MaskScope:
 
 
 def prepared_mask_scope(mask_scope: str) -> MaskScope:
+    """Return the patch-data scope a requested scope is computed from.
+
+    "buffer_only" is backed by "buffer" patches because the ring only exists in
+    buffer-extent data; the inner hex is excluded later, at evaluation. "actual"
+    and "buffer" are backed by patches of the same scope.
+    """
     scope = normalize_mask_scope(mask_scope)
     if scope == "buffer_only":
         return "buffer"
