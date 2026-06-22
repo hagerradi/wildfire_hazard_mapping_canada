@@ -296,6 +296,61 @@ def test_spatialized_tabular_global_mean_uses_training_zones_only(temp_data_dir)
     np.testing.assert_allclose(sample[1].numpy(), np.ones((4, 4), dtype=np.float32))
 
 
+def test_spatialized_tabular_lut_excludes_nontraining_zones(temp_data_dir):
+    tmpdir, train_csv, _, _, weather_csv, weather_feats, _, _ = temp_data_dir
+
+    params = SpatializedTabularParams(
+        csv_name=weather_csv,
+        feature_names_list=weather_feats[:2],
+        fire_weather_zone_id_col="WeatherZone",
+    )
+    source = SpatializedTabularSource(root_dir=tmpdir, params=params, modelling_approach="1", train_split_csv_name=train_csv)
+
+    # Training patches only contain zone 100, so the held-out zone 200 must not enter the LUT.
+    assert set(source.lut) == {100}
+
+
+def test_spatialized_tabular_requires_train_zone_information(temp_data_dir):
+    tmpdir, _, _, _, weather_csv, weather_feats, _, _ = temp_data_dir
+
+    params = SpatializedTabularParams(
+        csv_name=weather_csv,
+        feature_names_list=weather_feats[:2],
+        fire_weather_zone_id_col="WeatherZone",
+    )
+    with pytest.raises(ValueError, match="train_split_csv_name"):
+        SpatializedTabularSource(root_dir=tmpdir, params=params, modelling_approach="1", train_split_csv_name=None)
+
+
+def test_spatialized_tabular_lut_uses_persisted_train_zone_ids(temp_data_dir):
+    tmpdir, _, _, _, weather_csv, weather_feats, _, _ = temp_data_dir
+
+    stats_name = "weather_imputation_stats.json"
+    fill_values = pd.read_csv(os.path.join(tmpdir, weather_csv)).query("WeatherZone == 100")[weather_feats[:2]].mean(axis=0).to_numpy()
+    with open(os.path.join(tmpdir, stats_name), "w") as handle:
+        json.dump(
+            {
+                "feature_names_list": weather_feats[:2],
+                "train_zone_ids": [100],
+                "global_fill": fill_values.astype(float).tolist(),
+            },
+            handle,
+        )
+
+    params = SpatializedTabularParams(
+        csv_name=weather_csv,
+        feature_names_list=weather_feats[:2],
+        fire_weather_zone_id_col="WeatherZone",
+        missing_value_strategy="global_mean",
+        imputation_stats_path=stats_name,
+    )
+    # No training split is provided: the persisted artifact alone must restrict the LUT to zone 100.
+    source = SpatializedTabularSource(root_dir=tmpdir, params=params, modelling_approach="1", train_split_csv_name=None)
+
+    assert set(source.lut) == {100}
+    np.testing.assert_allclose(source.global_fill, fill_values.astype(np.float32))
+
+
 def test_weather_preprocessing_scalers_fit_train_rows_only():
     weather = pd.DataFrame(
         {

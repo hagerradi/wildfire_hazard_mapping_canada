@@ -127,26 +127,76 @@ class SpatializedTabularSource(DataSource):
         if missing_columns:
             raise ValueError(f"Missing columns in {self.csv_name!r}: {missing_columns}")
 
-        self.lut = self._build_lut(df)
+        self.train_zones = self._resolve_train_zones(
+            train_split_csv_name=train_split_csv_name,
+            filename_col=filename_col,
+            valid_mask_threshold=valid_mask_threshold,
+        )
+
+        self.lut = self._build_lut(df, self.train_zones)
         if not self.lut:
             raise ValueError(
                 f"Spatialized tabular LUT is empty for {self.csv_name!r}. Check zone column {self.zone_id_col!r} and selected features."
             )
 
         self._validate_missing_value_strategy()
-        self.global_fill = self._global_fill(
-            df,
-            train_split_csv_name=train_split_csv_name,
-            filename_col=filename_col,
-            valid_mask_threshold=valid_mask_threshold,
-        )
+        self.global_fill = self._global_fill(df, self.train_zones)
         if self.shuffle_lut:
             self._shuffle_lut_values()
 
     def _integer_zone_ids_from_csv(self, zone_ids: pd.Series) -> pd.Series:
         return _integer_zone_ids_from_series(zone_ids, column_name=self.zone_id_col, source_name=self.csv_name)
 
-    def _build_lut(self, df: pd.DataFrame) -> dict[int, np.ndarray]:
+    def _train_zones_from_stats(self, stats_path: str | Path) -> tuple[int, ...] | None:
+        path = Path(stats_path)
+        if not path.is_absolute():
+            path = Path(self.root_dir) / path
+        if not path.exists():
+            raise FileNotFoundError(f"Configured imputation_stats_path does not exist: {path}")
+        with path.open() as handle:
+            stats = json.load(handle)
+        raw_zones = stats.get("train_zone_ids")
+        if raw_zones is None:
+            return None
+        try:
+            zones = tuple(sorted({int(zone) for zone in raw_zones}))
+        except (TypeError, ValueError) as error:
+            raise ValueError(f"Imputation stats {path} contain invalid train_zone_ids.") from error
+        if not zones:
+            raise ValueError(f"Imputation stats {path} contain an empty train_zone_ids list.")
+        return zones
+
+    def _resolve_train_zones(
+        self,
+        *,
+        train_split_csv_name: str | None,
+        filename_col: str,
+        valid_mask_threshold: float,
+    ) -> tuple[int, ...]:
+        # The LUT and imputation fill must be derived only from training zones so that
+        # held-out rows never leak into the rasterized features.  Prefer a persisted,
+        # train-derived artifact (avoids scanning every training patch); otherwise infer
+        # the training zones from the training split.
+        if self.imputation_stats_path:
+            persisted_zones = self._train_zones_from_stats(self.imputation_stats_path)
+            if persisted_zones is not None:
+                return persisted_zones
+        if train_split_csv_name is not None:
+            return _train_zone_ids(
+                self.root_dir,
+                train_split_csv_name,
+                self.zone_channel_key,
+                self.modelling_approach,
+                filename_col,
+                float(valid_mask_threshold),
+            )
+        raise ValueError(
+            "SpatializedTabularSource requires train_split_csv_name (or imputation_stats_path "
+            "containing 'train_zone_ids') so the LUT and imputation fill are computed only from "
+            "training zones and never from held-out rows."
+        )
+
+    def _build_lut(self, df: pd.DataFrame, train_zones: tuple[int, ...]) -> dict[int, np.ndarray]:
         aggregations = {
             "mean": "mean",
             "median": "median",
@@ -159,6 +209,11 @@ class SpatializedTabularSource(DataSource):
         normalized_df = df.copy()
         zone_id_key = "__spatialized_tabular_zone_id"
         normalized_df[zone_id_key] = self._integer_zone_ids_from_csv(df[self.zone_id_col])
+        normalized_df = normalized_df[normalized_df[zone_id_key].isin(train_zones)]
+        if normalized_df.empty:
+            raise ValueError(
+                f"No rows in {self.csv_name!r} match the training zones {list(train_zones)[:20]}; cannot build a leak-safe LUT."
+            )
         grouped = normalized_df.groupby(zone_id_key, dropna=True)[self.feature_names_list].agg(aggregations[self.aggregation])
         grouped = grouped.dropna(how="any")
         return {int(zone): row.to_numpy(dtype=np.float32) for zone, row in grouped.iterrows()}
@@ -188,37 +243,15 @@ class SpatializedTabularSource(DataSource):
             raise ValueError(f"Imputation stats {path} contain invalid global_fill values.")
         return values
 
-    def _global_fill(
-        self,
-        df: pd.DataFrame,
-        *,
-        train_split_csv_name: str | None,
-        filename_col: str,
-        valid_mask_threshold: float,
-    ) -> np.ndarray:
+    def _global_fill(self, df: pd.DataFrame, train_zones: tuple[int, ...]) -> np.ndarray:
         if self.missing_value_strategy != "global_mean":
             return np.zeros(len(self.feature_names_list), dtype=np.float32)
         if self.imputation_stats_path:
             return self._global_fill_from_stats(self.imputation_stats_path)
-        if train_split_csv_name is None:
-            raise ValueError(
-                "SpatializedTabularSource with missing_value_strategy='global_mean' requires either "
-                "params.imputation_stats_path or train_split_csv_name so imputation stats are not computed from held-out rows."
-            )
-        train_zones = _train_zone_ids(
-            self.root_dir,
-            train_split_csv_name,
-            self.zone_channel_key,
-            self.modelling_approach,
-            filename_col,
-            float(valid_mask_threshold),
-        )
         integer_zone_ids = self._integer_zone_ids_from_csv(df[self.zone_id_col])
         train_rows = integer_zone_ids.isin(train_zones)
         if not train_rows.any():
-            raise ValueError(
-                f"No rows in {self.csv_name!r} match zones from training split {train_split_csv_name!r}: {list(train_zones)[:20]}"
-            )
+            raise ValueError(f"No rows in {self.csv_name!r} match the training zones {list(train_zones)[:20]}.")
         values = df.loc[train_rows, self.feature_names_list].mean(axis=0).to_numpy(dtype=np.float32)
         if not np.isfinite(values).all():
             raise ValueError(f"Training-derived imputation stats for {self.csv_name!r} contain non-finite values.")
