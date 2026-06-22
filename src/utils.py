@@ -97,15 +97,6 @@ def build_single_loss(name: str, huber_beta: float = 1.0) -> torch.nn.Module:
     raise ValueError(f"Unknown loss type: {name}")
 
 
-def default_target_loss_name(target_name: str) -> str:
-    target_name = target_name.lower()
-    if target_name == "bp":
-        return "kl"
-    if target_name in {"fi", "ros"}:
-        return "huber"
-    raise ValueError(f"Unsupported target_name={target_name!r}")
-
-
 def visualize_model_predictions(
     test_loader: DataLoader,
     test_predictions: np.ndarray,

@@ -133,41 +133,36 @@ def main() -> None:
     grid_source = source_map.get("grid") if "grid" in source_map else None
     grid_features = None
     out_norm = "min_max"  # default fallback, prevent mypy crash
-    is_multitarget = False
     if grid_source and isinstance(grid_source.params, GridParams):
         grid_features = grid_source.params.feature_names_list
         out_norm = grid_source.params.out_norm
-        is_multitarget = isinstance(grid_source.params.target_name, list)
 
     preds_start_time = time.time()
     test_metrics, test_predictions = trainer.test(test_loader, return_predictions=True)
     preds_time = time.time() - preds_start_time
 
     if args.visualize_predictions and isinstance(test_predictions, np.ndarray):
-        if is_multitarget:
-            print("[Evaluation] Skipping patch-grid sample visualization for multi-target predictions.")
-        else:
-            # get the channel mapping dict if it exists
-            json_pattern = os.path.join(config.data.root_dir, "feature_channel_map_*.json")
-            json_files = glob.glob(json_pattern)
+        # get the channel mapping dict if it exists
+        json_pattern = os.path.join(config.data.root_dir, "feature_channel_map_*.json")
+        json_files = glob.glob(json_pattern)
 
-            channel_map = None
-            if json_files:
-                with open(json_files[0]) as f:
-                    channel_map = json.load(f)
+        channel_map = None
+        if json_files:
+            with open(json_files[0]) as f:
+                channel_map = json.load(f)
 
-            # save path for visualization figure (if True)
-            viz_save_path = None
-            if args.save_visualizations:
-                viz_save_path = os.path.join(config.save_dir, "inference_samples_examples.png")
+        # save path for visualization figure (if True)
+        viz_save_path = None
+        if args.save_visualizations:
+            viz_save_path = os.path.join(config.save_dir, "inference_samples_examples.png")
 
-            visualize_model_predictions(
-                test_loader=test_loader,
-                test_predictions=test_predictions,
-                save_path=viz_save_path,
-                channel_map=channel_map,
-                feature_names_list=grid_features,
-            )
+        visualize_model_predictions(
+            test_loader=test_loader,
+            test_predictions=test_predictions,
+            save_path=viz_save_path,
+            channel_map=channel_map,
+            feature_names_list=grid_features,
+        )
 
     if not args.no_save_predictions:
         np.save(os.path.join(config.save_dir, "test_predictions.npy"), test_predictions)

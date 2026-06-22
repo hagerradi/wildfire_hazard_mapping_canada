@@ -16,7 +16,6 @@ from src.config import (
     OptimizerConfig,
     TrainingConfig,
 )
-from src.losses import MultiTargetLoss
 from src.trainer import Trainer
 
 SPATIAL_CHANNELS = 1
@@ -65,24 +64,6 @@ class WeatherDataset(GridDataset):
         torch.manual_seed(idx + 1000)
         item["tabular_weather"] = torch.rand(AUX_SAMPLES, WEATHER_FEATS)
         return item
-
-
-class MultiTargetGridDataset(GridDataset):
-    """Spatial dataset with BP/FI/ROS target channels."""
-
-    def __getitem__(self, idx: int) -> dict:
-        torch.manual_seed(idx)
-        inputs = torch.rand(self.channels, self.height, self.width)
-        targets = torch.stack(
-            [
-                torch.rand(self.height, self.width),
-                torch.randn(self.height, self.width),
-                torch.randn(self.height, self.width),
-            ],
-            dim=0,
-        )
-        masks = torch.rand(3, self.height, self.width) > 0.5
-        return {"grid": (inputs, targets, masks)}
 
 
 class MultiAuxDataset(GridDataset):
@@ -268,12 +249,6 @@ def dummy_data_weather():
 
 
 @pytest.fixture
-def dummy_data_multitarget():
-    ds = MultiTargetGridDataset()
-    return DataLoader(ds, batch_size=2)
-
-
-@pytest.fixture
 def dummy_data_multi_aux():
     ds = MultiAuxDataset()
     return DataLoader(ds, batch_size=2)
@@ -345,57 +320,6 @@ def test_metric_tensors_inverse_log_standard(tmp_path):
     expected_targets = torch.expm1(targets * std + mean).clamp_min(0.0)
     assert torch.allclose(metric_predictions, expected_predictions)
     assert torch.allclose(metric_targets, expected_targets)
-
-
-def test_multi_target_trainer_uses_target_specific_loss_and_metrics(tmp_path):
-    config = _make_config(
-        tmp_path,
-        num_classes=3,
-        optimizer_config=OptimizerConfig(
-            loss="multi_target",
-            name="Adam",
-            lr=0.001,
-            target_losses={"bp": "bce", "fi": "huber", "ros": "huber"},
-        ),
-        grid_params=GridParams(
-            feature_names_list=["dummy_feat"],
-            target_name=["bp", "fi", "ros"],
-            target_out_norms={"bp": "none", "fi": "none", "ros": "none"},
-        ),
-    )
-    trainer = Trainer(config, spatial_input_channels=SPATIAL_CHANNELS)
-    assert trainer._is_multitarget is True
-    assert isinstance(trainer.loss_fn, MultiTargetLoss)
-
-    predictions = torch.zeros(1, 3, 2, 2)
-    targets = torch.ones(1, 3, 2, 2)
-    masks = torch.ones_like(targets, dtype=torch.bool)
-    activated = trainer._activate_predictions(predictions)
-    assert torch.allclose(activated[:, 0], torch.full((1, 2, 2), 0.5))
-    assert torch.allclose(activated[:, 1:], torch.zeros(1, 2, 2, 2))
-
-    metric_values = trainer._compute_metric_values(activated, targets, masks)
-    assert {"bp_mse", "bp_spearman", "fi_mse", "fi_spearman", "ros_mse", "ros_spearman"} <= set(metric_values)
-
-
-def test_multi_target_train_epoch_runs(tmp_path, dummy_data_multitarget):
-    config = _make_config(
-        tmp_path,
-        num_classes=3,
-        optimizer_config=OptimizerConfig(loss="multi_target", name="Adam", lr=0.001),
-        grid_params=GridParams(
-            feature_names_list=["dummy_feat"],
-            target_name=["bp", "fi", "ros"],
-            target_out_norms={"bp": "none", "fi": "none", "ros": "none"},
-        ),
-    )
-    trainer = Trainer(config, spatial_input_channels=SPATIAL_CHANNELS)
-    results = trainer.train_epoch(dummy_data_multitarget)
-    assert "loss" in results
-    assert "loss_bp" in results
-    assert "bp_mse" in results
-    assert "fi_mse" in results
-    assert "ros_mse" in results
 
 
 def test_train_epoch_runs(dummy_config, dummy_data):

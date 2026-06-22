@@ -811,24 +811,6 @@ def test_grid_output_channel_from_feature_map(temp_data_dir, target_name, expect
     np.testing.assert_allclose(target_np[mask_np], expected_value, rtol=1e-6, atol=1e-6)
 
 
-def test_grid_multi_target_output_channels(temp_data_dir):
-    tmpdir, *_ = temp_data_dir
-    grid_params = GridParams(
-        feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],
-        target_name=["bp", "fi", "ros"],
-        target_out_norms={"bp": "none", "fi": "none", "ros": "none"},
-        fuel_feats_encoding="ordinal",
-        normalize_fuel_feats_ordinal=True,
-    )
-
-    grid_source = GridSource(root_dir=tmpdir, params=grid_params, modelling_approach="1")
-    _, target, mask = grid_source.get_sample({"file_path": os.path.join(tmpdir, "sample_0.npy")})
-
-    assert target.shape == (3, 32, 32)
-    assert mask.shape == (3, 32, 32)
-    torch.testing.assert_close(target[:, 0, 0], torch.tensor([0.25, 0.50, 0.75]))
-
-
 def test_grid_target_nan_excluded_from_mask(temp_data_dir):
     tmpdir, *_ = temp_data_dir
     sample_path = os.path.join(tmpdir, "sample_0.npy")

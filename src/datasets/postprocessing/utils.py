@@ -32,7 +32,7 @@ from src.datasets.postprocessing.visualize_predictions import (
     visualize_target_grids,
 )
 from src.datasets.targets import TargetSpec, get_target_specs
-from src.datasets.utils import apply_bp_nodata_zero_range, default_target_norm, denormalize_output_target
+from src.datasets.utils import apply_bp_nodata_zero_range, denormalize_output_target
 from src.logger import CometLogger
 
 
@@ -362,7 +362,7 @@ def get_config_target_spec(config: Config) -> TargetSpec:
     targets = get_config_target_specs(config)
     if len(targets) != 1:
         target_names = [target.name for target in targets]
-        raise ValueError(f"Expected a single grid target, got {target_names}. Use get_config_target_specs for multi-target configs.")
+        raise ValueError(f"Expected a single grid target, got {target_names}.")
     return targets[0]
 
 
@@ -439,43 +439,27 @@ def get_prediction_mask_channel_indices(
 def get_target_out_norm(grid_params: GridParams | None, target: TargetSpec, fallback_out_norm: str) -> str:
     if grid_params is None:
         return fallback_out_norm
-    if target.name in grid_params.target_out_norms:
-        return grid_params.target_out_norms[target.name]
-    if isinstance(grid_params.target_name, list) and target.name in {"bp", "fi", "ros"}:
-        return default_target_norm(target.name)
     return grid_params.out_norm
 
 
 def get_target_log_stats(grid_params: GridParams | None, target: TargetSpec) -> tuple[float | None, float | None]:
     if grid_params is None:
         return None, None
-    return (
-        grid_params.target_log_means.get(target.name, grid_params.target_log_mean),
-        grid_params.target_log_stds.get(target.name, grid_params.target_log_std),
-    )
+    return grid_params.target_log_mean, grid_params.target_log_std
 
 
 def select_prediction_target_channel(
     predictions: np.ndarray,
-    target_index: int,
-    target_count: int,
     target_name: str,
 ) -> np.ndarray:
-    if target_count == 1:
-        if predictions.ndim == 3:
-            return predictions
-        if predictions.ndim == 4 and predictions.shape[1] == 1:
-            return predictions[:, 0]
-        raise ValueError(f"Expected single-target predictions with shape (N,H,W) or (N,1,H,W), got {predictions.shape}.")
-
-    if predictions.ndim != 4:
-        raise ValueError(f"Expected multi-target predictions with shape (N,C,H,W), got {predictions.shape}.")
-    if predictions.shape[1] != target_count:
-        raise ValueError(
-            f"Expected {target_count} prediction channels for multi-target output, got {predictions.shape[1]} "
-            f"while selecting target={target_name!r}."
-        )
-    return predictions[:, target_index]
+    if predictions.ndim == 3:
+        return predictions
+    if predictions.ndim == 4 and predictions.shape[1] == 1:
+        return predictions[:, 0]
+    raise ValueError(
+        f"Expected single-target predictions with shape (N,H,W) or (N,1,H,W), got {predictions.shape} "
+        f"while selecting target={target_name!r}."
+    )
 
 
 def calculate_hexel_metrics_pytorch(
@@ -571,7 +555,6 @@ def evaluate_and_visualize_hexels(
     train_hex_ids: set[int] | None = None
     if data_dir and config.data.train_split:
         train_hex_ids = read_split_hex_ids(os.path.join(data_dir, config.data.train_split))
-    is_multitarget = len(targets) > 1
     grid_params = get_config_grid_params(config)
     prediction_mask_channel_indices = get_prediction_mask_channel_indices(
         data_dir=data_dir,
@@ -639,15 +622,13 @@ def evaluate_and_visualize_hexels(
             hex_id = "0" + str(hex_id)
 
         hex_test_predictions = test_predictions[hexel_indices]
-        for target_idx, settings in enumerate(target_settings):
+        for settings in target_settings:
             target = settings.target
             target_predictions = select_prediction_target_channel(
                 predictions=hex_test_predictions,
-                target_index=target_idx,
-                target_count=len(targets),
                 target_name=target.name,
             )
-            target_name_for_artifacts = target.name if is_multitarget else None
+            target_name_for_artifacts = None
             reconstructed_hexel_denorm, gt_elevation_grid_profile = get_predicted_hexel(
                 base_dir=data_dir,
                 raw_data_dir=raw_data_dir,
@@ -765,7 +746,7 @@ def evaluate_and_visualize_hexels(
                     gt_grid=grid_gt, pred_grid=reconstructed_hexel_denorm, device=device, metric_functions=metric_functions
                 )
                 metric_scope: str | None = None if scope == "actual" else scope
-                all_hexel_metrics.append((str(hex_id).zfill(2), target.name if is_multitarget else None, metric_scope, hex_metrics))
+                all_hexel_metrics.append((str(hex_id).zfill(2), None, metric_scope, hex_metrics))
 
                 if scope == "buffer" and actual_support_mask is not None:
                     actual_gt, actual_pred = mask_grids_by_support(
@@ -790,10 +771,8 @@ def evaluate_and_visualize_hexels(
                         device=device,
                         metric_functions=metric_functions,
                     )
-                    all_hexel_metrics.append((str(hex_id).zfill(2), target.name if is_multitarget else None, "actual", actual_metrics))
-                    all_hexel_metrics.append(
-                        (str(hex_id).zfill(2), target.name if is_multitarget else None, "buffer_only", buffer_only_metrics)
-                    )
+                    all_hexel_metrics.append((str(hex_id).zfill(2), None, "actual", actual_metrics))
+                    all_hexel_metrics.append((str(hex_id).zfill(2), None, "buffer_only", buffer_only_metrics))
 
                 # get top k perc. values dynamically
                 percentiles_to_plot = [

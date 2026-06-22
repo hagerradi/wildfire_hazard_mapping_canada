@@ -41,8 +41,6 @@ class OptimizerConfig(BaseModel):
     loss: str | list[str]
     loss_weights: dict[str, float] = {}
     huber_beta: float = Field(default=1.0, gt=0.0)
-    target_losses: dict[str, str] = {}
-    target_loss_weights: dict[str, float] = {}
 
 
 class SchedulerConfig(BaseModel):
@@ -74,14 +72,11 @@ class GridParams(BaseModel):
     """Specific parameters for the GridSource."""
 
     feature_names_list: list[str]
-    target_name: str | list[str] = "bp"
+    target_name: str = "bp"
     # TODO: move out_norm outside of grid source config since it's for GT
     out_norm: str = "min_max"
-    target_out_norms: dict[str, str] = {}
     target_log_mean: float | None = None
     target_log_std: float | None = None
-    target_log_means: dict[str, float] = {}
-    target_log_stds: dict[str, float] = {}
     fuel_feats_encoding: str = "one_hot"
     normalize_fuel_feats_ordinal: bool = True
     transforms_list: list[str] = Field(default_factory=list)

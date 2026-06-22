@@ -18,7 +18,6 @@ from src.datasets.sources.base import DataSource
 from src.datasets.targets import get_target_specs
 from src.datasets.utils import (
     apply_bp_nodata_zero_range,
-    default_target_norm,
     fill_nan_channel_mean_numpy,
     one_hot_encode,
     output_burn_prob_norm,
@@ -75,11 +74,8 @@ class GridSource(DataSource):
         self.targets = get_target_specs(params.target_name)
         self.feature_names_list = params.feature_names_list
         self.out_norm = params.out_norm
-        self.target_out_norms = params.target_out_norms
         self.target_log_mean = params.target_log_mean
         self.target_log_std = params.target_log_std
-        self.target_log_means = params.target_log_means
-        self.target_log_stds = params.target_log_stds
         self.fuel_feats_encoding = params.fuel_feats_encoding
         self.normalize_fuel_feats_ordinal = params.normalize_fuel_feats_ordinal
         self.terrain_derivatives = params.terrain_derivatives
@@ -134,8 +130,8 @@ class GridSource(DataSource):
             for target in self.targets:
                 if self._target_out_norm(target.name) != "log_standard":
                     continue
-                mean = self.target_log_means.get(target.name, self.target_log_mean)
-                std = self.target_log_stds.get(target.name, self.target_log_std)
+                mean = self.target_log_mean
+                std = self.target_log_std
                 if mean is None or std is None:
                     mean, std = get_output_log_stats_cached(
                         self.root_dir,
@@ -143,12 +139,8 @@ class GridSource(DataSource):
                         allowed_hex_ids=self._train_hex_ids,
                         raw_data_dir=self.raw_data_dir,
                     )
-                    if target.name in self.target_log_stds or target.name in self.target_log_means:
-                        self.target_log_means[target.name] = mean
-                        self.target_log_stds[target.name] = std
-                    else:
-                        self.target_log_mean = mean
-                        self.target_log_std = std
+                    self.target_log_mean = mean
+                    self.target_log_std = std
 
         # 2. Update indices
         with open(os.path.join(self.root_dir, f"feature_channel_map_{self.modelling_approach}.json")) as f:
@@ -225,16 +217,10 @@ class GridSource(DataSource):
             )
 
     def _target_out_norm(self, target_name: str) -> str:
-        if target_name in self.target_out_norms:
-            return self.target_out_norms[target_name]
-        if len(self.targets) > 1:
-            return default_target_norm(target_name)
         return self.out_norm
 
     def _target_log_stats(self, target_name: str) -> tuple[float | None, float | None]:
-        mean = self.target_log_means.get(target_name, self.target_log_mean)
-        std = self.target_log_stds.get(target_name, self.target_log_std)
-        return mean, std
+        return self.target_log_mean, self.target_log_std
 
     @staticmethod
     def _finite_difference(values: torch.Tensor, dim: int, spacing: float) -> torch.Tensor:
@@ -351,7 +337,7 @@ class GridSource(DataSource):
             input_arr, output_arr, mask = self.transform(input_arr, output_arr, mask)
         input_arr = self._append_terrain_derivative_channels(input_arr)
 
-        return (input_arr, output_arr, mask)  # (C, H, W), (num_targets, H, W), (num_targets, H, W)
+        return (input_arr, output_arr, mask)  # (C, H, W), (1, H, W), (1, H, W)
 
     def input_dim(self):
         """

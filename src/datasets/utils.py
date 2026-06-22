@@ -296,11 +296,3 @@ def apply_bp_nodata_zero_range(
     if target_name == "bp" and bp_nodata_as_zero:
         return max_value, 0.0
     return max_value, min_value
-
-
-def default_target_norm(target_name: str) -> str:
-    if target_name == "bp":
-        return "min_max"
-    if target_name in {"fi", "ros"}:
-        return "log_standard"
-    raise ValueError(f"Unsupported target_name={target_name!r}")

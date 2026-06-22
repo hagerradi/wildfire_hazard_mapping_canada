@@ -12,13 +12,13 @@ from tqdm import tqdm
 from data_preparation.spatial.utils import get_output_log_stats_cached, get_range_output, read_split_hex_ids
 from src.config import Config, GridParams
 from src.datasets.targets import get_target_specs
-from src.datasets.utils import apply_bp_nodata_zero_range, default_target_norm
+from src.datasets.utils import apply_bp_nodata_zero_range
 from src.logger import CometLogger
-from src.losses import MultiTargetLoss, WeightedLoss
+from src.losses import WeightedLoss
 from src.models.factory import build_model, resolve_model_architecture
 from src.models.utils import get_nbr_model_parameters
 from src.schedulers import build_lr_scheduler
-from src.utils import AVAILABLE_METRICS, build_single_loss, default_target_loss_name, set_device
+from src.utils import AVAILABLE_METRICS, build_single_loss, set_device
 
 
 class Trainer:
@@ -65,7 +65,6 @@ class Trainer:
         self._grid_params = self._get_grid_params()
         self._target_specs = get_target_specs(self._grid_params.target_name) if self._grid_params is not None else get_target_specs("bp")
         self._target_names = [target.name for target in self._target_specs]
-        self._is_multitarget = len(self._target_specs) > 1
         if self.config.model.num_classes != len(self._target_specs):
             raise ValueError(
                 f"model.num_classes={self.config.model.num_classes} must match number of configured targets "
@@ -117,21 +116,6 @@ class Trainer:
         huber_beta = self.config.optimizer.huber_beta
         loss_kwargs = {"huber_beta": huber_beta}
 
-        if self._is_multitarget:
-            if not isinstance(loss_config, str) or loss_config.lower() not in {"multi_target", "multitarget"}:
-                raise ValueError("Multi-target training requires optimizer.loss: 'multi_target'.")
-            target_losses = {
-                target_name: self.config.optimizer.target_losses.get(target_name, default_target_loss_name(target_name))
-                for target_name in self._target_names
-            }
-            losses = {name: build_single_loss(loss_name, **loss_kwargs) for name, loss_name in target_losses.items()}
-            return MultiTargetLoss(
-                target_names=self._target_names,
-                losses=losses,
-                weights=self.config.optimizer.target_loss_weights or None,
-                normalize_weights=True,
-            )
-
         if isinstance(loss_config, str):  # loss is a string
             return build_single_loss(loss_config, **loss_kwargs)
 
@@ -149,19 +133,12 @@ class Trainer:
     def _target_out_norm(self, target_name: str) -> str:
         if self._grid_params is None:
             return "none"
-        if target_name in self._grid_params.target_out_norms:
-            return self._grid_params.target_out_norms[target_name]
-        if self._is_multitarget:
-            return default_target_norm(target_name)
         return self._grid_params.out_norm
 
     def _target_log_stats(self, target_name: str) -> tuple[float | None, float | None]:
         if self._grid_params is None:
             return None, None
-        return (
-            self._grid_params.target_log_means.get(target_name, self._grid_params.target_log_mean),
-            self._grid_params.target_log_stds.get(target_name, self._grid_params.target_log_std),
-        )
+        return self._grid_params.target_log_mean, self._grid_params.target_log_std
 
     def _configure_metric_target_transform(self) -> None:
         self._metric_out_norms: list[str] = []
@@ -256,22 +233,10 @@ class Trainer:
         return torch.cat(activated_channels, dim=1)
 
     def _metric_result_keys(self) -> list[str]:
-        if not self._is_multitarget:
-            return list(self.metric_functions)
-        return [f"{target.name}_{metric_name}" for target in self._target_specs for metric_name in self.metric_functions]
+        return list(self.metric_functions)
 
     def _compute_metric_values(self, predictions: torch.Tensor, targets: torch.Tensor, masks: torch.Tensor) -> dict[str, torch.Tensor]:
-        if not self._is_multitarget:
-            return {name: metric_fn(predictions, targets, masks) for name, metric_fn in self.metric_functions.items()}
-
-        values = {}
-        for idx, target in enumerate(self._target_specs):
-            pred_channel = predictions[:, idx : idx + 1]
-            target_channel = targets[:, idx : idx + 1]
-            mask_channel = masks[:, idx : idx + 1]
-            for metric_name, metric_fn in self.metric_functions.items():
-                values[f"{target.name}_{metric_name}"] = metric_fn(pred_channel, target_channel, mask_channel)
-        return values
+        return {name: metric_fn(predictions, targets, masks) for name, metric_fn in self.metric_functions.items()}
 
     def _validate_and_load_metrics(self) -> None:
         """Helper to validate and load metrics to be computed."""
@@ -348,7 +313,7 @@ class Trainer:
         running_batch_count = 0
         running_metrics = {name: 0.0 for name in self._metric_result_keys()}
         running_loss_parts = None
-        if isinstance(self.loss_fn, (WeightedLoss, MultiTargetLoss)):
+        if isinstance(self.loss_fn, WeightedLoss):
             running_loss_parts = {name: 0.0 for name in self.loss_fn.losses}
 
         training_loop = tqdm(loader, desc="Training", leave=True)
@@ -417,7 +382,7 @@ class Trainer:
         running_batch_count = 0
         running_metrics = {name: 0.0 for name in self._metric_result_keys()}
         running_loss_parts = None
-        if isinstance(self.loss_fn, (WeightedLoss, MultiTargetLoss)):
+        if isinstance(self.loss_fn, WeightedLoss):
             running_loss_parts = {name: 0.0 for name in self.loss_fn.losses}
 
         preds_list = []

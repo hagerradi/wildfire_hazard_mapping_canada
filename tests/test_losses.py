@@ -12,7 +12,6 @@ from src.losses import (
     HuberLoss,
     MAELoss,
     MSELoss,
-    MultiTargetLoss,
     RegressionPearsonLoss,
     WeightedLoss,
 )
@@ -475,27 +474,3 @@ def test_weighted_loss_passes_patch_metadata_to_hex_summary_loss():
     assert loss_fn.requires_patch_metadata is True
     assert set(parts) == {"kl", "hex_mean_pearson"}
     assert torch.isfinite(total)
-
-
-def test_multi_target_loss_slices_channels():
-    logits = torch.tensor([[[[0.0]], [[1.0]], [[2.0]]]])
-    targets = torch.tensor([[[[0.2]], [[0.5]], [[1.5]]]])
-    masks = torch.ones_like(targets, dtype=torch.bool)
-    loss_fn = MultiTargetLoss(
-        target_names=["bp", "fi", "ros"],
-        losses={"bp": BCELoss(), "fi": HuberLoss(beta=1.0), "ros": HuberLoss(beta=1.0)},
-        weights={"bp": 1.0, "fi": 1.0, "ros": 1.0},
-    )
-
-    total, parts = loss_fn(logits, targets, masks)
-    expected_parts = {
-        "bp": BCELoss()(logits[:, 0:1], targets[:, 0:1], masks[:, 0:1]),
-        "fi": HuberLoss(beta=1.0)(logits[:, 1:2], targets[:, 1:2], masks[:, 1:2]),
-        "ros": HuberLoss(beta=1.0)(logits[:, 2:3], targets[:, 2:3], masks[:, 2:3]),
-    }
-    expected_total = torch.stack(list(expected_parts.values())).mean()
-
-    assert set(parts) == {"bp", "fi", "ros"}
-    for name, expected in expected_parts.items():
-        assert torch.allclose(parts[name], expected)
-    assert torch.allclose(total, expected_total)
