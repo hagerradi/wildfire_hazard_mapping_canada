@@ -380,7 +380,7 @@ def test_weather_preprocessing_scalers_fit_train_rows_only():
 def test_fire_size_processing_normalizes_with_train_gridcodes_only():
     fire_size = pd.DataFrame({"GRIDCODE": [1, 2, 3], "SIZE_HA": [9.0, 99.0, 999.0]})
 
-    processed = process_fire_size_df(fire_size, fit_gridcodes={1, 2})
+    processed = process_fire_size_df(fire_size, train_firezone_ids={1, 2})
 
     assert processed.loc[processed["GRIDCODE"].eq(1), "NORM_LOG_SIZE_HA"].item() == pytest.approx(0.0)
     assert processed.loc[processed["GRIDCODE"].eq(2), "NORM_LOG_SIZE_HA"].item() == pytest.approx(1.0, abs=2e-5)

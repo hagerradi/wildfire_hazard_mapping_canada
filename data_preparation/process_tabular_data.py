@@ -122,15 +122,17 @@ def build_weather_table(
     logger.info(f"Aggregated weather data saved to {save_path} with shape {df_weather.shape} and columns: {df_weather.columns.tolist()}")
 
 
-def process_fire_size_distribution_table(input_path: Path, output_path: Path, fit_gridcodes: set[int] | None = None):
+def process_fire_size_distribution_table(input_path: Path, output_path: Path, train_firezone_ids: set[int] | None = None):
     """
     Processes the fire size distribution table.
     Args:
         input_path (Path): Path to the existing fire size distribution CSV file.
         output_path (Path): Path to save the processed fire size distribution CSV file.
+        train_firezone_ids (set[int] | None): GRIDCODE (fire-zone) values of the training split;
+            the normalization is fit only on these zones to avoid leakage. None fits on all rows.
     """
     df_fire_size = pd.read_csv(input_path)
-    df_fire_size_processed = process_fire_size_df(df_fire_size, fit_gridcodes=fit_gridcodes)
+    df_fire_size_processed = process_fire_size_df(df_fire_size, train_firezone_ids=train_firezone_ids)
     df_fire_size_processed.to_csv(output_path, index=False)
     logger.info(
         f"Processed fire size distribution data saved to {output_path} with shape {df_fire_size_processed.shape} and columns: {df_fire_size_processed.columns.tolist()}"
@@ -188,7 +190,9 @@ def main():
         train_split_path=train_split_path,
         modelling_approach=str(args.modelling_approach),
     )
-    process_fire_size_distribution_table(input_path=fire_size_read_path, output_path=fire_size_save_path, fit_gridcodes=train_firezone_ids)
+    process_fire_size_distribution_table(
+        input_path=fire_size_read_path, output_path=fire_size_save_path, train_firezone_ids=train_firezone_ids
+    )
 
 
 if __name__ == "__main__":
