@@ -52,6 +52,7 @@ python -m data_preparation.process_hexels_into_grids \
     --win_w=256 \
     --overlap_ratio=0.2 \
     --ignition_weighting=distribution \
+    --overwrite \
     --is_array_job \
     --task_id=$TASK_ID \
     --num_tasks=$NUM_TASKS

@@ -121,6 +121,7 @@ def generate_data_samples(
     num_tasks: int = 1,
     mask_scope: str = "actual",
     ignition_weighting: str = "max",
+    overwrite: bool = False,
 ):
     scope = prepared_mask_scope(mask_scope)
     if save_dir:
@@ -130,7 +131,7 @@ def generate_data_samples(
         out_dir = os.path.join(root_dir, f"data_samples_approach_{modelling_approach}{suffix}")
     os.makedirs(out_dir, exist_ok=True)
     os.makedirs(os.path.join(out_dir, "numpy_files"), exist_ok=True)
-    completed_hex_ids = get_processed_hex_ids(out_dir)
+    completed_hex_ids = [] if overwrite else get_processed_hex_ids(out_dir)
 
     if is_array_job:
         # 1. Get all Hex IDs
@@ -197,6 +198,11 @@ def main():
         default="max",
         help="'max' for original max-aggregation (1 channel) or 'distribution' for zone-area-weighted 2-channel ignition.",
     )
+    parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Reprocess every hex even if its meta_hex_*.csv already exists (overwrites patches in place).",
+    )
     args = parser.parse_args()
 
     generate_data_samples(
@@ -211,6 +217,7 @@ def main():
         num_tasks=args.num_tasks,
         mask_scope=args.mask_scope,
         ignition_weighting=args.ignition_weighting,
+        overwrite=args.overwrite,
     )
 
 
