@@ -39,15 +39,15 @@ def load_spatial_features_per_hexel(
     feature_channel_map_path: str,
     modelling_approach: int = 1,
     mask_scope: str = "actual",
-    ignition_weighting: str = "max",
+    ignition_weighting: str = "distribution",
 ) -> tuple[np.ndarray | None, np.ndarray | None, dict[int, tuple[int, int]] | None]:
     """
     Load all data (features and output) per hexel
     root_dir: Root directory containing all hexels.
     hex_id: Hexel id to load.
     modelling_approach: 1 for joint season-cause modelling, 2 for separate season-cause modelling.
-    ignition_weighting: "max" for original max-aggregation (1 channel), or "distribution" for
-        zone-area-weighted blending (2 channels: human + lightning).
+    ignition_weighting: "distribution" (default) for zone-area-weighted blending (2 channels:
+        human + lightning), or "max" for the original max-aggregation (1 channel).
     Returns:
         all_features: np.ndarray of shape (N, H, W, num_features)
         all_masks: np.ndarray of shape (N, H, W)

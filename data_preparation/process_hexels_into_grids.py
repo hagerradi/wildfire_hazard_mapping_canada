@@ -120,7 +120,7 @@ def generate_data_samples(
     task_id: int = 0,
     num_tasks: int = 1,
     mask_scope: str = "actual",
-    ignition_weighting: str = "max",
+    ignition_weighting: str = "distribution",
     overwrite: bool = False,
 ):
     scope = prepared_mask_scope(mask_scope)
@@ -195,8 +195,8 @@ def main():
     parser.add_argument(
         "--ignition_weighting",
         choices=IGNITION_WEIGHTING_CHOICES,
-        default="max",
-        help="'max' for original max-aggregation (1 channel) or 'distribution' for zone-area-weighted 2-channel ignition.",
+        default="distribution",
+        help="'distribution' (default) for zone-area-weighted 2-channel ignition or 'max' for the original max-aggregation (1 channel).",
     )
     parser.add_argument(
         "--overwrite",
