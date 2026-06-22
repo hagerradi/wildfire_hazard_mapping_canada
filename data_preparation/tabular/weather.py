@@ -7,12 +7,6 @@ from sklearn.preprocessing import MinMaxScaler, StandardScaler
 from data_preparation.tabular.utils import check_weather_list
 
 
-def wind_direction_to_sincos(wd: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Convert wind direction (degrees) to sin/cos components."""
-    wd_rad = np.deg2rad(wd.reshape(-1))
-    return np.sin(wd_rad), np.cos(wd_rad)
-
-
 def wind_to_components(ws: np.ndarray, wd: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Convert wind speed and direction to Cartesian vector components.
 
@@ -75,9 +69,6 @@ def preprocess_weather_list(weather_list: pd.DataFrame, fit_mask: pd.Series | np
     scaler_z = StandardScaler()
     scaler_z.fit(weather_list.loc[fit_mask_arr, z_score_cols])
     weather_list[z_score_cols] = scaler_z.transform(weather_list[z_score_cols])
-
-    wd_sin, wd_cos = wind_direction_to_sincos(np.array(weather_list["WindDirection"]))
-    weather_list["wd_sin"], weather_list["wd_cos"] = wd_sin, wd_cos
     return weather_list
 
 

@@ -71,7 +71,7 @@ data:
       params:
         csv_name: "weather_table_processed.csv"
         feature_names_list: ["Temperature", "RelativeHumidity", "Precipitation", "FineFuelMoistureCode", "DuffMoistureCode", "DroughtCode",
-                              "InitialSpreadIndex", "BuildupIndex", "FireWeatherIndex", "WindSpeed", "wd_sin", "wd_cos"]
+                              "InitialSpreadIndex", "BuildupIndex", "FireWeatherIndex", "WindSpeed", "wind_x", "wind_y"]
         fire_weather_zone_id_col: "WeatherZone"
         fire_weather_zone_selection_approach: "mode" # "mode" or "weighted"
         num_samples_per_patch: 256

@@ -52,7 +52,7 @@ def visualize_weather_params(weather_cube: np.ndarray, sampling: str = "dist", c
             "bui_std",
         ]
     else:
-        param_names = ["temp", "rh", "ws", "wd_sin", "wd_cos", "wind_x", "wind_y", "prec", "ffmc", "dmc", "dc", "isi", "bui"]
+        param_names = ["temp", "rh", "ws", "wind_x", "wind_y", "prec", "ffmc", "dmc", "dc", "isi", "bui"]
     num_params = len(param_names)
 
     # 1. Calculate Grid Size
