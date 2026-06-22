@@ -215,31 +215,6 @@ def test_grid_source_bp_nodata_as_zero_sets_minmax_range_to_zero(temp_data_dir, 
     assert source.target_ranges["bp"] == pytest.approx((0.5, 0.0))
 
 
-def test_grid_source_input_and_all_targets_policy_clips_legacy_context(temp_data_dir, monkeypatch):
-    tmpdir, *_ = temp_data_dir
-    monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation", lambda *_args, **_kwargs: (1.0, 0.0))
-
-    sample_path = os.path.join(tmpdir, "sample_0.npy")
-    arr = np.load(sample_path)
-    arr[0, 2, 4] = 0.25
-    arr[0, 2, 5] = np.nan
-    arr[0, 2, 6] = 0.75
-    np.save(sample_path, arr)
-
-    params = GridParams(
-        feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],
-        target_name="bp",
-        out_norm="none",
-        fuel_feats_encoding="ordinal",
-        input_mask_policy="input_and_all_targets",
-    )
-    source = GridSource(root_dir=tmpdir, params=params, modelling_approach="1")
-
-    _, _, mask = source.get_sample({"file_path": sample_path})
-
-    assert not mask[0, 0, 2]
-
-
 def test_spatialized_tabular_source_rasterizes_zone_summaries(temp_data_dir):
     tmpdir, train_csv, _, _, weather_csv, weather_feats, _, _ = temp_data_dir
 

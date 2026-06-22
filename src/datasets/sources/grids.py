@@ -17,7 +17,7 @@ from data_preparation.spatial.utils import (
 )
 from src.config import GridParams
 from src.datasets.sources.base import DataSource
-from src.datasets.targets import TARGET_SPECS, get_target_specs
+from src.datasets.targets import get_target_specs
 from src.datasets.utils import (
     apply_bp_nodata_zero_range,
     default_target_norm,
@@ -33,7 +33,9 @@ class GridSource(DataSource):
     """
 
     _ALLOWED_TERRAIN_DERIVATIVES = {"slope", "aspect_sin", "aspect_cos"}
-    _ALLOWED_INPUT_MASK_POLICIES = {"input_only", "input_and_selected_targets", "input_and_all_targets"}
+    # Input validity is determined solely by the input channels' own finiteness; target coverage never
+    # restricts which pixels count as valid model inputs. "input_only" is the only supported policy.
+    _ALLOWED_INPUT_MASK_POLICIES = {"input_only"}
 
     def __init__(
         self,
@@ -174,11 +176,6 @@ class GridSource(DataSource):
                         f"found keys: {list(self.channel_feature_map.keys())}"
                     )
                 self.output_channel_indices.append(output_channel_indices[0])
-            self.all_target_channel_indices = [
-                int(channel_indices[0])
-                for target in TARGET_SPECS.values()
-                if (channel_indices := self.channel_feature_map.get(target.channel_key))
-            ]
             if "fuel_grid" in self.feature_names_list:
                 self.fuel_feat_index = self.channel_feature_map["fuel_grid"][0]
                 self.fuel_feat_local_index = self.channel_index_to_local_index[self.fuel_feat_index]
@@ -358,20 +355,6 @@ class GridSource(DataSource):
         assert np.all(np.isnan(input_arr_for_mask) == np.isnan(input_arr_for_mask[..., :1])), "NaN mask differs across channels!"
         raw_target_mask = np.isfinite(output_arr)
         target_mask = raw_target_mask.copy()
-
-        if self.input_mask_policy != "input_only":
-            if self.input_mask_policy == "input_and_selected_targets":
-                input_target_support = np.logical_and.reduce(raw_target_mask, axis=-1)
-            elif self.input_mask_policy == "input_and_all_targets":
-                if not self.all_target_channel_indices:
-                    raise ValueError("input_mask_policy='input_and_all_targets' requires target channels in the feature map.")
-                input_target_support = np.logical_and.reduce(
-                    [np.isfinite(data[:, :, channel_index]) for channel_index in self.all_target_channel_indices]
-                )
-            else:
-                raise ValueError(f"Unsupported input_mask_policy={self.input_mask_policy!r}.")
-            input_arr = np.where(input_target_support[:, :, np.newaxis], input_arr, np.nan)
-            input_arr_for_mask = np.where(input_target_support[:, :, np.newaxis], input_arr_for_mask, np.nan)
 
         if self.bp_nodata_as_zero:
             for channel_idx, target in enumerate(self.targets):
