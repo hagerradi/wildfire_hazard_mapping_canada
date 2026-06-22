@@ -86,7 +86,6 @@ class GridParams(BaseModel):
     normalize_fuel_feats_ordinal: bool = True
     transforms_list: list[str] = Field(default_factory=list)
     augmentation_prob: float = 0.0
-    include_hex_coords: bool = False
     terrain_derivatives: list[str] = Field(default_factory=list)
     terrain_cell_size_m: float = Field(default=100.0, gt=0.0)
     bp_nodata_as_zero: bool = True

@@ -531,41 +531,6 @@ def test_grid_feature_names_list(temp_data_dir):
     assert x.shape[0] == 1
 
 
-def test_grid_source_can_append_full_hex_coordinate_channels(temp_data_dir):
-    tmpdir, *_ = temp_data_dir
-    grid_params = GridParams(
-        feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],
-        target_name="bp",
-        out_norm="none",
-        fuel_feats_encoding="ordinal",
-        normalize_fuel_feats_ordinal=True,
-        include_hex_coords=True,
-    )
-    grid_source = GridSource(root_dir=tmpdir, params=grid_params, modelling_approach="1")
-
-    inputs, _, _ = grid_source.get_sample(
-        {
-            "file_path": os.path.join(tmpdir, "sample_0.npy"),
-            "hex_id": 1,
-            "row": 4,
-            "col": 8,
-            "full_height": 64,
-            "full_width": 128,
-        }
-    )
-
-    assert grid_source.input_dim() == 5
-    assert inputs.shape == (5, 32, 32)
-    expected_y0 = 2.0 * 4 / 63.0 - 1.0
-    expected_x0 = 2.0 * 8 / 127.0 - 1.0
-    expected_y_last = 2.0 * (4 + 31) / 63.0 - 1.0
-    expected_x_last = 2.0 * (8 + 31) / 127.0 - 1.0
-    assert inputs[-2, 0, 0].item() == pytest.approx(expected_y0)
-    assert inputs[-1, 0, 0].item() == pytest.approx(expected_x0)
-    assert inputs[-2, -1, -1].item() == pytest.approx(expected_y_last)
-    assert inputs[-1, -1, -1].item() == pytest.approx(expected_x_last)
-
-
 def test_grid_source_appends_terrain_derivatives_from_elevation(temp_data_dir, monkeypatch):
     tmpdir, *_ = temp_data_dir
     monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation", lambda *_args, **_kwargs: (3100.0, 0.0))

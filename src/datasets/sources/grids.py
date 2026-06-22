@@ -6,13 +6,11 @@ from collections.abc import Callable
 import numpy as np
 import torch
 
-from data_preparation.paths import Paths, normalize_mask_scope
 from data_preparation.spatial.utils import (
     FUEL_GROUP_MAP,
     get_output_log_stats_cached,
     get_range_elevation,
     get_range_output,
-    load_spatial_raster,
     read_split_hex_ids,
 )
 from src.config import GridParams
@@ -84,13 +82,11 @@ class GridSource(DataSource):
         self.target_log_stds = params.target_log_stds
         self.fuel_feats_encoding = params.fuel_feats_encoding
         self.normalize_fuel_feats_ordinal = params.normalize_fuel_feats_ordinal
-        self.include_hex_coords = params.include_hex_coords
         self.terrain_derivatives = params.terrain_derivatives
         self.terrain_cell_size_m = params.terrain_cell_size_m
         self.bp_nodata_as_zero = params.bp_nodata_as_zero
         self.input_mask_policy = params.input_mask_policy
         self.num_fuel_classes = int(max(FUEL_GROUP_MAP.values()) + 1)
-        self._hex_shape_cache: dict[tuple[str, str], tuple[int, int]] = {}
         self.elevation_input_channel_index: int | None = None
 
         if self.input_mask_policy not in self._ALLOWED_INPUT_MASK_POLICIES:
@@ -241,61 +237,6 @@ class GridSource(DataSource):
         return mean, std
 
     @staticmethod
-    def _hex_id_to_key(hex_id: object) -> str:
-        return str(int(float(str(hex_id)))).zfill(2)
-
-    def _get_full_hex_shape(self, patch_info: dict, patch_height: int, patch_width: int) -> tuple[int, int]:
-        if "full_height" in patch_info and "full_width" in patch_info:
-            return int(patch_info["full_height"]), int(patch_info["full_width"])
-
-        if "hex_id" not in patch_info:
-            raise KeyError("include_hex_coords=True requires patch metadata with 'hex_id'.")
-
-        hex_id = self._hex_id_to_key(patch_info["hex_id"])
-        mask_scope = normalize_mask_scope(str(patch_info.get("mask_scope", "actual")))
-        cache_key = (hex_id, mask_scope)
-        if cache_key in self._hex_shape_cache:
-            return self._hex_shape_cache[cache_key]
-
-        paths = Paths(hex_id=hex_id, root_dir=self.raw_data_dir)
-        elevation_grid, _ = load_spatial_raster(
-            path=paths.elevation_grid(hex_id=hex_id),
-            mask_path=paths.mask_grid(hex_id=hex_id, mask_scope=mask_scope),
-        )
-        full_shape = tuple(int(dim) for dim in elevation_grid.shape)
-        if len(full_shape) != 2 or full_shape[0] < patch_height or full_shape[1] < patch_width:
-            raise ValueError(
-                f"Invalid full hex shape {full_shape} for hex {hex_id}; expected at least patch shape {(patch_height, patch_width)}."
-            )
-        self._hex_shape_cache[cache_key] = full_shape
-        return full_shape
-
-    def _append_hex_coord_channels(self, input_arr: np.ndarray, patch_info: dict) -> np.ndarray:
-        missing = [key for key in ("row", "col") if key not in patch_info]
-        if missing:
-            raise KeyError(f"include_hex_coords=True requires patch metadata columns: {missing}.")
-
-        patch_height, patch_width = input_arr.shape[:2]
-        full_height, full_width = self._get_full_hex_shape(patch_info, patch_height, patch_width)
-        row = int(patch_info["row"])
-        col = int(patch_info["col"])
-
-        denom_y = max(full_height - 1, 1)
-        denom_x = max(full_width - 1, 1)
-        y_coords = 2.0 * (row + np.arange(patch_height, dtype=np.float32)) / denom_y - 1.0
-        x_coords = 2.0 * (col + np.arange(patch_width, dtype=np.float32)) / denom_x - 1.0
-        y_grid = np.clip(y_coords[:, None], -1.0, 1.0)
-        x_grid = np.clip(x_coords[None, :], -1.0, 1.0)
-        coord_arr = np.stack(
-            [
-                np.broadcast_to(y_grid, (patch_height, patch_width)),
-                np.broadcast_to(x_grid, (patch_height, patch_width)),
-            ],
-            axis=-1,
-        ).astype(np.float32)
-        return np.concatenate([input_arr, coord_arr], axis=-1)
-
-    @staticmethod
     def _finite_difference(values: torch.Tensor, dim: int, spacing: float) -> torch.Tensor:
         grad = torch.zeros_like(values)
         size = values.shape[dim]
@@ -381,8 +322,6 @@ class GridSource(DataSource):
         # 6. Filter to just chosen input channel indices or if no features selected just return None
         if self.input_channel_indices is not None:
             input_arr = input_arr[:, :, self.input_channel_indices]
-        if self.include_hex_coords:
-            input_arr = self._append_hex_coord_channels(input_arr, patch_info)
 
         # 7. Perform output normalizations
         if self.modelling_approach == "1":
@@ -421,7 +360,5 @@ class GridSource(DataSource):
         """
         terrain_dim = len(self.terrain_derivatives)
         if self.input_channel_indices:
-            return len(self.input_channel_indices) + (2 if self.include_hex_coords else 0) + terrain_dim
-        if self.include_hex_coords:
-            return 2 + terrain_dim
+            return len(self.input_channel_indices) + terrain_dim
         return 0
