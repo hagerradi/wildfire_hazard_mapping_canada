@@ -47,3 +47,15 @@ python -m data_preparation.process_tabular_data \
 ```
 
 Notes: If you used modelling approach 2, set `--save_dir` to `data_samples_approach_2`. The `process_tabular_data` script will look for the fire-size file in `--root_dir` first, then in `--save_dir`; ensure `df_fire_fru.csv` is present in one of those places.
+
+Step 4 (optional): Precompute target log-stats for `log_standard` normalization (fire intensity / ROS)
+
+The `log_standard` target normalization needs train-only log1p mean/std constants. These are otherwise recomputed by scanning the raw rasters on every run; computing them once offline writes a `target_log_stats.json` into the `save_dir` so training/eval/inference just read the cached values.
+
+```bash
+python -m data_preparation.compute_target_log_stats \
+	--raw_data_dir="/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA" \
+	--save_dir="/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA/data_samples_v1" \
+	--train_split="train_indices.csv" \
+	--output_types fire_intensity fire_ros
+```
