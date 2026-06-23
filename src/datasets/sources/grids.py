@@ -20,7 +20,7 @@ from src.datasets.utils import (
     apply_bp_nodata_zero_range,
     fill_nan_channel_mean_numpy,
     one_hot_encode,
-    output_burn_prob_norm,
+    output_target_norm,
 )
 
 
@@ -306,10 +306,10 @@ class GridSource(DataSource):
                 target_max, target_min = self.target_ranges[target.name]
                 target_log_mean, target_log_std = self._target_log_stats(target.name)
                 normalized_outputs.append(
-                    output_burn_prob_norm(
+                    output_target_norm(
                         output_arr=output_arr[:, :, channel_idx],
-                        burn_prob_max=target_max,
-                        burn_prob_min=target_min,
+                        target_max=target_max,
+                        target_min=target_min,
                         out_norm=self._target_out_norm(target.name),
                         target_log_mean=target_log_mean,
                         target_log_std=target_log_std,

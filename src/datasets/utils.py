@@ -198,24 +198,6 @@ def output_target_norm(
     return output_arr
 
 
-def output_burn_prob_norm(
-    output_arr: np.ndarray,
-    burn_prob_max: float,
-    burn_prob_min: float,
-    out_norm: str,
-    target_log_mean: float | None = None,
-    target_log_std: float | None = None,
-) -> np.ndarray:
-    return output_target_norm(
-        output_arr=output_arr,
-        target_max=burn_prob_max,
-        target_min=burn_prob_min,
-        out_norm=out_norm,
-        target_log_mean=target_log_mean,
-        target_log_std=target_log_std,
-    )
-
-
 @overload
 def denormalize_output_target(
     data: torch.Tensor,
