@@ -50,8 +50,8 @@ def test_common_input_pipeline_configs_share_unified_input_pipeline():
         # Spatialized weather + fire-size, each with a missing mask.
         assert isinstance(sources["spatialized_weather"], SpatializedTabularParams)
         assert isinstance(sources["spatialized_fire_size"], SpatializedTabularParams)
-        assert sources["spatialized_weather"].include_missing_mask is True
-        assert sources["spatialized_fire_size"].include_missing_mask is True
+        assert sources["spatialized_weather"].include_missing_firezone_mask is True
+        assert sources["spatialized_fire_size"].include_missing_firezone_mask is True
 
         # Wind is expressed as Cartesian components only; WindSpeed is dropped.
         weather_features = set(sources["spatialized_weather"].feature_names_list)

@@ -113,7 +113,7 @@ class SpatializedTabularSource(DataSource):
         self.zone_id_col = params.fire_weather_zone_id_col
         self.zone_channel_key = params.zone_channel_key
         self.aggregation = params.aggregation.lower()
-        self.include_missing_mask = params.include_missing_mask
+        self.include_missing_firezone_mask = params.include_missing_firezone_mask
         self.missing_value_strategy = params.missing_value_strategy.lower()
         self.imputation_stats_path = params.imputation_stats_path
         self.shuffle_lut = params.shuffle_lut
@@ -322,15 +322,15 @@ class SpatializedTabularSource(DataSource):
             features[pixel_mask] = zone_features
             matched_mask[pixel_mask] = True
 
-        missing_mask = ~matched_mask
-        if self.missing_value_strategy == "raise" and missing_mask.any():
-            missing_zones = sorted({int(z) for z in zone_int_grid[finite_zone_mask & missing_mask]})
+        missing_firezone_mask = ~matched_mask
+        if self.missing_value_strategy == "raise" and missing_firezone_mask.any():
+            missing_zones = sorted({int(z) for z in zone_int_grid[finite_zone_mask & missing_firezone_mask]})
             raise ValueError(f"Spatialized tabular source {self.csv_name!r} has missing LUT zones: {missing_zones[:20]}")
 
-        if self.include_missing_mask:
-            features = np.concatenate([features, missing_mask[:, :, None].astype(np.float32)], axis=-1)
+        if self.include_missing_firezone_mask:
+            features = np.concatenate([features, missing_firezone_mask[:, :, None].astype(np.float32)], axis=-1)
 
         return torch.from_numpy(features.astype(np.float32)).permute(2, 0, 1)
 
     def input_dim(self):
-        return len(self.feature_names_list) + int(self.include_missing_mask)
+        return len(self.feature_names_list) + int(self.include_missing_firezone_mask)

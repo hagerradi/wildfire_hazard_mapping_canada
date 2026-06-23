@@ -222,7 +222,7 @@ def test_spatialized_tabular_source_rasterizes_zone_summaries(temp_data_dir):
         csv_name=weather_csv,
         feature_names_list=weather_feats[:2],
         fire_weather_zone_id_col="WeatherZone",
-        include_missing_mask=True,
+        include_missing_firezone_mask=True,
     )
     source = SpatializedTabularSource(root_dir=tmpdir, params=params, modelling_approach="1", train_split_csv_name=train_csv)
 
@@ -259,7 +259,7 @@ def test_spatialized_tabular_global_mean_uses_training_zones_only(temp_data_dir)
         csv_name=weather_csv,
         feature_names_list=["Temperature"],
         fire_weather_zone_id_col="WeatherZone",
-        include_missing_mask=True,
+        include_missing_firezone_mask=True,
         missing_value_strategy="global_mean",
     )
     source = SpatializedTabularSource(root_dir=tmpdir, params=params, modelling_approach="1", train_split_csv_name=train_csv)
