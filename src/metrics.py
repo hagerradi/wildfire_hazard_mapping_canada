@@ -1,7 +1,45 @@
 # Definitions of metrics for model evaluation
+import math
+
 import torch
 import torch.nn.functional as F
 from torchmetrics.functional.image import structural_similarity_index_measure
+
+
+def _topk_threshold(values: torch.Tensor, percentile: float) -> torch.Tensor:
+    """Return a top-k threshold without torch.quantile's large-tensor limit."""
+    flat = values.reshape(-1).float()
+    if flat.numel() == 0:
+        return flat.new_tensor(float("nan"))
+    percentile = min(max(float(percentile), 0.0), 1.0)
+    top_fraction = 1.0 - percentile
+    if top_fraction <= 0.0:
+        top_count = 1
+    else:
+        raw_count = flat.numel() * top_fraction
+        nearest_count = round(raw_count)
+        top_count = int(nearest_count if math.isclose(raw_count, nearest_count, rel_tol=1e-6, abs_tol=1e-6) else math.ceil(raw_count))
+    k = max(1, min(flat.numel(), top_count))
+    return torch.topk(flat, k=k, largest=True, sorted=False).values.min()
+
+
+def _topk_thresholds(values: torch.Tensor, percentiles: torch.Tensor) -> torch.Tensor:
+    """Vectorized top-k thresholds for many percentiles using a single sort (no torch.quantile size limit)."""
+    flat = values.reshape(-1).float()
+    perc = percentiles.reshape(-1).to(flat.device, dtype=torch.float64).clamp(0.0, 1.0)
+    if flat.numel() == 0:
+        return flat.new_full((perc.numel(),), float("nan"))
+    sorted_desc, _ = torch.sort(flat, descending=True)
+    n = flat.numel()
+    top_fraction = 1.0 - perc
+    raw_count = n * top_fraction
+    nearest = torch.round(raw_count)
+    tol = torch.maximum(torch.maximum(raw_count.abs(), nearest.abs()) * 1e-6, raw_count.new_tensor(1e-6))
+    use_nearest = (raw_count - nearest).abs() <= tol
+    top_count = torch.where(use_nearest, nearest, torch.ceil(raw_count))
+    top_count = torch.where(top_fraction <= 0.0, torch.ones_like(top_count), top_count)
+    k = top_count.clamp(1, n).long()
+    return sorted_desc[k - 1]
 
 
 def compute_mse(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor | None = None, eps: float = 1e-8) -> torch.Tensor:
@@ -141,6 +179,8 @@ def compute_bias(preds: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor 
     targets = targets.float()
     if mask is not None:
         valid = (mask > 0).float()
+    else:
+        valid = torch.ones_like(preds)
 
     denom = valid.sum().clamp_min(1.0)  # avoid divide-by-zero
     return ((preds - targets) * valid).sum() / denom
@@ -163,8 +203,8 @@ def compute_topK_iou(
             p = flat_preds[i]
             t = flat_targets[i]
 
-            p_thresh = torch.quantile(p.float(), percentile)
-            t_thresh = torch.quantile(t.float(), percentile)
+            p_thresh = _topk_threshold(p, percentile)
+            t_thresh = _topk_threshold(t, percentile)
 
             # binarization
             p_bin = p >= p_thresh
@@ -186,8 +226,8 @@ def compute_topK_iou(
             p_valid = flat_preds[i][sample_valid_mask]
             t_valid = flat_targets[i][sample_valid_mask]
 
-            p_thresh = torch.quantile(p_valid.float(), percentile)
-            t_thresh = torch.quantile(t_valid.float(), percentile)
+            p_thresh = _topk_threshold(p_valid, percentile)
+            t_thresh = _topk_threshold(t_valid, percentile)
 
             p_bin = p_valid >= p_thresh
             t_bin = t_valid >= t_thresh
@@ -242,8 +282,8 @@ def compute_auc_iou(
             p = flat_preds[i]
             t = flat_targets[i]
 
-            p_thresh = torch.quantile(p.float(), percentiles)
-            t_thresh = torch.quantile(t.float(), percentiles)
+            p_thresh = _topk_thresholds(p, percentiles)
+            t_thresh = _topk_thresholds(t, percentiles)
 
             p_bin = p.unsqueeze(0) >= p_thresh.unsqueeze(1)
             t_bin = t.unsqueeze(0) >= t_thresh.unsqueeze(1)
@@ -269,8 +309,8 @@ def compute_auc_iou(
             p_valid = flat_preds[i][sample_valid_mask]
             t_valid = flat_targets[i][sample_valid_mask]
 
-            p_thresh = torch.quantile(p_valid.float(), percentiles)
-            t_thresh = torch.quantile(t_valid.float(), percentiles)
+            p_thresh = _topk_thresholds(p_valid, percentiles)
+            t_thresh = _topk_thresholds(t_valid, percentiles)
 
             p_bin = p_valid.unsqueeze(0) >= p_thresh.unsqueeze(1)
             t_bin = t_valid.unsqueeze(0) >= t_thresh.unsqueeze(1)
@@ -392,8 +432,8 @@ def compute_topK_mae(
             p = flat_preds[i]
             t = flat_targets[i]
 
-            p_thresh = torch.quantile(p.float(), percentile)
-            t_thresh = torch.quantile(t.float(), percentile)
+            p_thresh = _topk_threshold(p, percentile)
+            t_thresh = _topk_threshold(t, percentile)
 
             topK_mask = (p >= p_thresh) | (t >= t_thresh)
 
@@ -418,8 +458,8 @@ def compute_topK_mae(
             p_valid = flat_preds[i][sample_valid_mask]
             t_valid = flat_targets[i][sample_valid_mask]
 
-            p_thresh = torch.quantile(p_valid.float(), percentile)
-            t_thresh = torch.quantile(t_valid.float(), percentile)
+            p_thresh = _topk_threshold(p_valid, percentile)
+            t_thresh = _topk_threshold(t_valid, percentile)
 
             topK_mask = (p_valid >= p_thresh) | (t_valid >= t_thresh)
 

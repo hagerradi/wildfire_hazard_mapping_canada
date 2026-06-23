@@ -1,5 +1,10 @@
-# FI best-model config: spatialized weather/fire-size + missing masks + terrain derivatives.
-save_dir: "experiments/fi_full_config_v3_coordconv_spatialized_weather_fire_size_missing_mask_terrain"
+# ROS model on the common input pipeline.
+# Common input pipeline (shared by BP/FI/ROS):
+#   - dataset: data_samples_v2 (aggregated 2-channel ignition: human + lightning)
+#   - grid: fuel (one-hot) + elevation + terrain derivatives (slope, aspect_sin, aspect_cos)
+#   - spatialized weather + fire-size with per-source missing masks
+#   - wind as Cartesian components only (wind_x, wind_y); WindSpeed dropped (redundant with the norm)
+save_dir: "experiments/ros_common_input_pipeline"
 
 modelling_approach: "1"
 
@@ -35,7 +40,7 @@ evaluation:
   robust_plot_percentile: 99.0
 
 data:
-  root_dir: "/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA/data_samples_v3"
+  root_dir: "/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA/data_samples_v2"
   raw_data_dir: "/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA"
 
   train_split: "train_indices.csv"
@@ -49,8 +54,8 @@ data:
   input_sources:
     - name: "grid"
       params:
-        feature_names_list: ["ignition_grid", "fuel_grid", "elevation_grid"]
-        target_name: "fi"
+        feature_names_list: ["ignition_grid_human", "ignition_grid_lightning", "fuel_grid", "elevation_grid"]
+        target_name: "ros"
         out_norm: "log_standard"
         fuel_feats_encoding: "one_hot"
         normalize_fuel_feats_ordinal: true
@@ -71,7 +76,6 @@ data:
           - "InitialSpreadIndex"
           - "BuildupIndex"
           - "FireWeatherIndex"
-          - "WindSpeed"
           - "wind_x"
           - "wind_y"
         fire_weather_zone_id_col: "WeatherZone"
@@ -104,13 +108,14 @@ logger:
   enabled: true
   project_name: "nrcan05-wildfireriskmapping"
   workspace: "mila-amlrt"
-  experiment_name: "fi_full_config_v3_coordconv_spatialized_weather_fire_size_missing_mask_terrain"
+  experiment_name: "ros_common_input_pipeline"
   tags:
     - "full_data"
     - "modelling_approach=1"
-    - "target=fi"
+    - "target=ros"
     - "coordconv=patch_local"
-    - "data_samples_v3"
+    - "data_samples_v2"
+    - "ignition=aggregated_human_lightning"
     - "fuel_one_hot_encoding"
     - "best_ckpt=ccc"
     - "loss=huber_raw_pearson"
@@ -119,6 +124,7 @@ logger:
     - "spatialized_sources=weather_fire_size"
     - "missing_masks=weather_fire_size"
     - "terrain_derivatives=slope_aspect"
+    - "wind=vector_components"
   log_every_n_step: 10
 
 metrics:

@@ -1,4 +1,5 @@
 import os
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -122,7 +123,7 @@ def build_dataset(config: DataConfig, csv_name: str, modelling_approach: str = "
 
         # Instantiate each data source class
         source_class = get_data_source_class(source_conf.name)
-        source_kwargs = {
+        source_kwargs: dict[str, Any] = {
             "root_dir": config.root_dir,
             "params": source_conf.params,
             "modelling_approach": modelling_approach,
@@ -130,6 +131,11 @@ def build_dataset(config: DataConfig, csv_name: str, modelling_approach: str = "
         }
         if source_conf.name == "grid":
             source_kwargs["raw_data_dir"] = config.raw_data_dir
+            source_kwargs["train_split_csv_name"] = config.train_split
+        if source_conf.name in SPATIALIZED_TABULAR_SOURCE_NAMES:
+            source_kwargs["train_split_csv_name"] = config.train_split
+            source_kwargs["filename_col"] = config.filename_col
+            source_kwargs["valid_mask_threshold"] = config.valid_mask_threshold
         sources[source_conf.name] = source_class(**source_kwargs)
 
     dataset = MultiSourceDataset(

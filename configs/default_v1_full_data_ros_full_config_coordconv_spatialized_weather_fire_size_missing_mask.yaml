@@ -71,14 +71,14 @@ data:
           - "BuildupIndex"
           - "FireWeatherIndex"
           - "WindSpeed"
-          - "wd_sin"
-          - "wd_cos"
+          - "wind_x"
+          - "wind_y"
         fire_weather_zone_id_col: "WeatherZone"
         fire_weather_zone_selection_approach: "mode"
         aggregation: "mean"
         zone_channel_key: "firezones_grid"
         missing_value_strategy: "global_mean"
-        include_missing_mask: true
+        include_missing_firezone_mask: true
         shuffle_lut: false
         shuffle_seed: 42
         transforms_list: []
@@ -93,7 +93,7 @@ data:
         aggregation: "mean"
         zone_channel_key: "firezones_grid"
         missing_value_strategy: "global_mean"
-        include_missing_mask: true
+        include_missing_firezone_mask: true
         shuffle_lut: false
         shuffle_seed: 42
         transforms_list: []

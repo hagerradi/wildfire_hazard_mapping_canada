@@ -152,6 +152,15 @@ def test_topK_iou_completely_disjoint():
     assert torch.isclose(iou, torch.tensor(0.0))
 
 
+def test_topK_iou_handles_large_flat_tensors():
+    targets = torch.linspace(0.0, 1.0, steps=200_000).reshape(1, 1, -1)
+    preds = targets.clone()
+
+    iou = compute_topK_iou(preds, targets, percentile=0.99)
+
+    assert torch.isclose(iou, torch.tensor(1.0))
+
+
 def test_bias_zero_when_perfect_match(dummy_data, dummy_mask):
     _, targets = dummy_data
     bias = compute_bias(targets, targets, mask=dummy_mask)
@@ -225,6 +234,15 @@ def test_auc_iou_completely_disjoint():
 
     auc = compute_auc_iou(preds, targets, k_values=(0.01, 0.10), steps=10)
     assert torch.isclose(auc, torch.tensor(0.0))
+
+
+def test_auc_iou_handles_large_flat_tensors():
+    targets = torch.linspace(0.0, 1.0, steps=200_000).reshape(1, 1, -1)
+    preds = targets.clone()
+
+    auc = compute_auc_iou(preds, targets, k_values=(0.01, 0.10), steps=10)
+
+    assert torch.isclose(auc, torch.tensor(1.0))
 
 
 def test_auc_iou_invalid_k_values(dummy_data):
@@ -419,3 +437,12 @@ def test_topK_mae_disjoint_topK_zones():
 
     mae = compute_topK_mae(preds, targets, percentile=0.50)
     assert torch.isclose(mae, torch.tensor(1.0), atol=1e-5)
+
+
+def test_topK_mae_handles_large_flat_tensors():
+    targets = torch.linspace(0.0, 1.0, steps=200_000).reshape(1, 1, -1)
+    preds = targets.clone()
+
+    mae = compute_topK_mae(preds, targets, percentile=0.99)
+
+    assert torch.isclose(mae, torch.tensor(0.0))

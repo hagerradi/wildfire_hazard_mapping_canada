@@ -11,6 +11,7 @@ import time
 import numpy as np
 import yaml
 
+from data_preparation.paths import MASK_SCOPE_CHOICES
 from src.config import Config, GridParams
 from src.datasets.dataset import get_test_dataloader
 from src.datasets.postprocessing.utils import evaluate_and_visualize_hexels, print_and_log_eval_metrics
@@ -42,15 +43,38 @@ def parse_args() -> argparse.Namespace:
         help="Boolean flag to save the visualization figure.",
     )
     parser.add_argument(
+        "--metrics_only",
+        action="store_true",
+        help="Compute stitched hexel metrics without writing predicted hexels or plots.",
+    )
+    parser.add_argument(
+        "--skip_hexel_plots",
+        action="store_true",
+        help="Write stitched predicted hexel rasters and metrics, but skip per-hexel PNG diagnostics.",
+    )
+    parser.add_argument(
+        "--no_save_predictions",
+        action="store_true",
+        help="Do not save patch-level test_predictions.npy.",
+    )
+    parser.add_argument(
         "--robust_plot_percentile",
         type=float,
         default=None,
-        help="Override evaluation.robust_plot_percentile for hexel difference plots, e.g. 99 clips the diff scale at p99.",
+        help="Also save target/prediction/diff plots clipped to this percentile, e.g. 99 writes *_p99.png.",
     )
     parser.add_argument(
-        "--disable_robust_plot_percentile",
-        action="store_true",
-        help="Use the full max-absolute-difference scale even if the config sets evaluation.robust_plot_percentile.",
+        "--stitch_mode",
+        type=str,
+        default="mean",
+        choices=["mean", "max"],
+        help="How to combine overlapping patch predictions when reconstructing hexels.",
+    )
+    parser.add_argument(
+        "--mask_scope",
+        choices=MASK_SCOPE_CHOICES,
+        default="actual",
+        help="Mask scope for stitched evaluation/inference artifacts. Non-actual scopes require matching patch metadata.",
     )
     return parser.parse_args()
 
@@ -140,15 +164,10 @@ def main() -> None:
             feature_names_list=grid_features,
         )
 
-    # Save predictions
-    np.save(os.path.join(config.save_dir, "test_predictions.npy"), test_predictions)
+    if not args.no_save_predictions:
+        np.save(os.path.join(config.save_dir, "test_predictions.npy"), test_predictions)
 
     if isinstance(test_predictions, np.ndarray):
-        robust_plot_percentile = config.evaluation.robust_plot_percentile
-        if args.robust_plot_percentile is not None:
-            robust_plot_percentile = args.robust_plot_percentile
-        if args.disable_robust_plot_percentile:
-            robust_plot_percentile = None
         hexel_metrics = evaluate_and_visualize_hexels(
             test_predictions=test_predictions,
             config=config,
@@ -156,7 +175,13 @@ def main() -> None:
             device=trainer.device,
             experiment_logger=None,
             metric_functions=trainer.metric_functions,
-            robust_plot_percentile=robust_plot_percentile,
+            stitch_mode=args.stitch_mode,
+            save_artifacts=not args.metrics_only,
+            save_plots=not args.skip_hexel_plots,
+            robust_plot_percentile=args.robust_plot_percentile
+            if args.robust_plot_percentile is not None
+            else config.evaluation.robust_plot_percentile,
+            mask_scope=args.mask_scope,
         )
 
         # print metrics in terminal and log into comet

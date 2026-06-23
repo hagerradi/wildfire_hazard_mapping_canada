@@ -2,6 +2,7 @@ import json
 import os
 import shutil
 import tempfile
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -11,12 +12,19 @@ import torch
 import torchvision.transforms.functional as F
 from rasterio.transform import from_origin
 
-from data_preparation.spatial import utils as spatial_utils
-from src.config import DataConfig, DataSourceConfig, GridParams, SpatializedTabularParams, TabularParams
+from data_preparation.tabular.weather import preprocess_weather_list
+from data_preparation.utils import process_fire_size_df
+from src.config import (
+    DataConfig,
+    DataSourceConfig,
+    GridParams,
+    SpatializedTabularParams,
+    TabularParams,
+)
 from src.datasets.dataset import MultiSourceDataset, build_dataset
 from src.datasets.sources import GridSource, SpatializedTabularSource, TabularSource
-from src.datasets.transforms import setup_augmentations
-from src.datasets.utils import finite_difference, get_dataset_dimensions
+from src.datasets.transforms import get_transforms, setup_augmentations
+from src.datasets.utils import get_dataset_dimensions
 
 
 @pytest.fixture
@@ -47,7 +55,9 @@ def temp_data_dir():
             {
                 "filename": filenames,
                 "valid_ratio": valid_ratios,
-                "hex_id": [1, 2, 3],
+                "hex_id": [1, 1, 2],
+                "row": [0, 0, 16],
+                "col": [0, 16, 0],
             }
         )
         train_csv = "train.csv"
@@ -98,55 +108,6 @@ def temp_data_dir():
 
     finally:
         shutil.rmtree(tmpdir)
-
-
-@pytest.fixture(autouse=True)
-def stable_grid_ranges(monkeypatch):
-    monkeypatch.setattr("src.datasets.sources.grids.get_range_output", lambda root_dir, output_type: (1.0, 0.0))
-    monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation", lambda root_dir: (1000.0, 0.0))
-
-
-def write_test_elevation_raster(root_dir: str, hex_id: str = "01", cell_size: float = 100.0) -> None:
-    spatial_dir = os.path.join(root_dir, f"hex{hex_id}", "spatial")
-    os.makedirs(spatial_dir, exist_ok=True)
-    path = os.path.join(spatial_dir, f"hex{hex_id}_dem.tif")
-    with rasterio.open(
-        path,
-        "w",
-        driver="GTiff",
-        height=2,
-        width=2,
-        count=1,
-        dtype="float32",
-        crs="EPSG:3857",
-        transform=from_origin(0.0, 0.0, cell_size, cell_size),
-    ) as dst:
-        dst.write(np.zeros((1, 2, 2), dtype=np.float32))
-
-
-def test_finite_difference_uses_centered_interior_and_one_sided_edges():
-    values = torch.tensor(
-        [
-            [0.0, 2.0, 4.0],
-            [10.0, 12.0, 14.0],
-            [30.0, 32.0, 34.0],
-        ]
-    )
-
-    row_gradient = finite_difference(values, dim=0, spacing=2.0)
-    col_gradient = finite_difference(values, dim=1, spacing=2.0)
-
-    assert torch.allclose(
-        row_gradient,
-        torch.tensor(
-            [
-                [5.0, 5.0, 5.0],
-                [7.5, 7.5, 7.5],
-                [10.0, 10.0, 10.0],
-            ]
-        ),
-    )
-    assert torch.allclose(col_gradient, torch.ones_like(values))
 
 
 def test_multi_source_integration(temp_data_dir):
@@ -213,16 +174,57 @@ def test_multi_source_integration(temp_data_dir):
     assert fire_size.shape == (2, len(fire_size_feats))
 
 
+def test_grid_source_bp_nodata_as_zero_extends_bp_mask(temp_data_dir, monkeypatch):
+    tmpdir, *_ = temp_data_dir
+    monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation", lambda *_args, **_kwargs: (1.0, 0.0))
+
+    sample_path = os.path.join(tmpdir, "sample_0.npy")
+    arr = np.load(sample_path)
+    arr[0, 1, 4] = np.nan
+    np.save(sample_path, arr)
+
+    params = GridParams(
+        feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],
+        target_name="bp",
+        out_norm="none",
+        fuel_feats_encoding="ordinal",
+        bp_nodata_as_zero=True,
+    )
+    source = GridSource(root_dir=tmpdir, params=params, modelling_approach="1")
+
+    _, target, mask = source.get_sample({"file_path": sample_path})
+
+    assert mask[0, 0, 1]
+    assert target[0, 0, 1].item() == pytest.approx(0.0)
+
+
+def test_grid_source_bp_nodata_as_zero_sets_minmax_range_to_zero(temp_data_dir, monkeypatch):
+    tmpdir, *_ = temp_data_dir
+    monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation", lambda *_args, **_kwargs: (1.0, 0.0))
+    monkeypatch.setattr("src.datasets.sources.grids.get_range_output", lambda *_args, **_kwargs: (0.5, 1.0 / 30000.0))
+
+    params = GridParams(
+        feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],
+        target_name="bp",
+        out_norm="min_max",
+        fuel_feats_encoding="ordinal",
+        bp_nodata_as_zero=True,
+    )
+    source = GridSource(root_dir=tmpdir, params=params, modelling_approach="1")
+
+    assert source.target_ranges["bp"] == pytest.approx((0.5, 0.0))
+
+
 def test_spatialized_tabular_source_rasterizes_zone_summaries(temp_data_dir):
-    tmpdir, _, _, _, weather_csv, weather_feats, _, _ = temp_data_dir
+    tmpdir, train_csv, _, _, weather_csv, weather_feats, _, _ = temp_data_dir
 
     params = SpatializedTabularParams(
         csv_name=weather_csv,
         feature_names_list=weather_feats[:2],
         fire_weather_zone_id_col="WeatherZone",
-        include_missing_mask=True,
+        include_missing_firezone_mask=True,
     )
-    source = SpatializedTabularSource(root_dir=tmpdir, params=params, modelling_approach="1")
+    source = SpatializedTabularSource(root_dir=tmpdir, params=params, modelling_approach="1", train_split_csv_name=train_csv)
 
     sample = source.get_sample({"file_path": os.path.join(tmpdir, "sample_0.npy")})
     expected_zone_100 = (
@@ -238,42 +240,132 @@ def test_spatialized_tabular_source_rasterizes_zone_summaries(temp_data_dir):
     assert sample[-1, 1, 1].item() == 1.0
 
 
-def test_spatialized_tabular_source_rejects_fractional_zone_ids(temp_data_dir):
-    tmpdir, _, _, _, weather_csv, weather_feats, _, _ = temp_data_dir
-    data = np.load(os.path.join(tmpdir, "sample_0.npy"))
-    data[0, 0, 3] = 100.5
+def test_spatialized_tabular_global_mean_uses_training_zones_only(temp_data_dir):
+    tmpdir, train_csv, _, _, _, _, _, _ = temp_data_dir
+
+    weather_csv = "weather_leakage.csv"
+    pd.DataFrame(
+        {
+            "WeatherZone": [100, 100, 200],
+            "Temperature": [1.0, 3.0, 1000.0],
+        }
+    ).to_csv(os.path.join(tmpdir, weather_csv), index=False)
+    missing_patch = np.zeros((4, 4, 7), dtype=np.float32)
+    missing_patch[:, :, 3] = np.nan
+    missing_patch_path = os.path.join(tmpdir, "missing_zone.npy")
+    np.save(missing_patch_path, missing_patch)
+
+    params = SpatializedTabularParams(
+        csv_name=weather_csv,
+        feature_names_list=["Temperature"],
+        fire_weather_zone_id_col="WeatherZone",
+        include_missing_firezone_mask=True,
+        missing_value_strategy="global_mean",
+    )
+    source = SpatializedTabularSource(root_dir=tmpdir, params=params, modelling_approach="1", train_split_csv_name=train_csv)
+
+    sample = source.get_sample({"file_path": missing_patch_path})
+
+    assert sample.shape == (2, 4, 4)
+    np.testing.assert_allclose(sample[0].numpy(), np.full((4, 4), 2.0, dtype=np.float32))
+    np.testing.assert_allclose(sample[1].numpy(), np.ones((4, 4), dtype=np.float32))
+
+
+def test_spatialized_tabular_lut_excludes_nontraining_zones(temp_data_dir):
+    tmpdir, train_csv, _, _, weather_csv, weather_feats, _, _ = temp_data_dir
 
     params = SpatializedTabularParams(
         csv_name=weather_csv,
         feature_names_list=weather_feats[:2],
         fire_weather_zone_id_col="WeatherZone",
     )
-    source = SpatializedTabularSource(root_dir=tmpdir, params=params, modelling_approach="1")
+    source = SpatializedTabularSource(root_dir=tmpdir, params=params, modelling_approach="1", train_split_csv_name=train_csv)
 
-    with pytest.raises(ValueError, match="non-integer zone id"):
-        source.get_sample({"data": data})
+    # Training patches only contain zone 100, so the held-out zone 200 must not enter the LUT.
+    assert set(source.lut) == {100}
 
 
-def test_spatialized_tabular_source_rejects_fractional_csv_zone_ids(temp_data_dir):
+def test_spatialized_tabular_requires_train_zone_information(temp_data_dir):
     tmpdir, _, _, _, weather_csv, weather_feats, _, _ = temp_data_dir
-    weather_df = pd.read_csv(os.path.join(tmpdir, weather_csv))
-    weather_df["WeatherZone"] = weather_df["WeatherZone"].astype(float)
-    weather_df.loc[0, "WeatherZone"] = 100.5
-    bad_weather_csv = "weather_table_fractional_zone.csv"
-    weather_df.to_csv(os.path.join(tmpdir, bad_weather_csv), index=False)
 
     params = SpatializedTabularParams(
-        csv_name=bad_weather_csv,
+        csv_name=weather_csv,
         feature_names_list=weather_feats[:2],
         fire_weather_zone_id_col="WeatherZone",
     )
+    with pytest.raises(ValueError, match="train_split_csv_name"):
+        SpatializedTabularSource(root_dir=tmpdir, params=params, modelling_approach="1", train_split_csv_name=None)
 
-    with pytest.raises(ValueError, match="non-integer zone id"):
-        SpatializedTabularSource(root_dir=tmpdir, params=params, modelling_approach="1")
+
+def test_spatialized_tabular_lut_uses_persisted_train_zone_ids(temp_data_dir):
+    tmpdir, _, _, _, weather_csv, weather_feats, _, _ = temp_data_dir
+
+    stats_name = "weather_imputation_stats.json"
+    fill_values = pd.read_csv(os.path.join(tmpdir, weather_csv)).query("WeatherZone == 100")[weather_feats[:2]].mean(axis=0).to_numpy()
+    with open(os.path.join(tmpdir, stats_name), "w") as handle:
+        json.dump(
+            {
+                "feature_names_list": weather_feats[:2],
+                "train_zone_ids": [100],
+                "global_fill": fill_values.astype(float).tolist(),
+            },
+            handle,
+        )
+
+    params = SpatializedTabularParams(
+        csv_name=weather_csv,
+        feature_names_list=weather_feats[:2],
+        fire_weather_zone_id_col="WeatherZone",
+        missing_value_strategy="global_mean",
+        imputation_stats_path=stats_name,
+    )
+    # No training split is provided: the persisted artifact alone must restrict the LUT to zone 100.
+    source = SpatializedTabularSource(root_dir=tmpdir, params=params, modelling_approach="1", train_split_csv_name=None)
+
+    assert set(source.lut) == {100}
+    np.testing.assert_allclose(source.global_fill, fill_values.astype(np.float32))
 
 
-def test_build_dataset_appends_spatialized_tabular_channels_to_grid(temp_data_dir):
+def test_weather_preprocessing_scalers_fit_train_rows_only():
+    weather = pd.DataFrame(
+        {
+            "Season": [1, 1, 1],
+            "WeatherZone": [1, 1, 2],
+            "Temperature": [0.0, 10.0, 100.0],
+            "RelativeHumidity": [10.0, 20.0, 30.0],
+            "WindSpeed": [1.0, 3.0, 5.0],
+            "WindDirection": [0.0, 90.0, 180.0],
+            "Precipitation": [0.0, 1.0, 3.0],
+            "FineFuelMoistureCode": [80.0, 90.0, 100.0],
+            "DuffMoistureCode": [1.0, 3.0, 5.0],
+            "DroughtCode": [10.0, 20.0, 30.0],
+            "InitialSpreadIndex": [1.0, 2.0, 3.0],
+            "BuildupIndex": [2.0, 4.0, 6.0],
+            "FireWeatherIndex": [3.0, 6.0, 9.0],
+        }
+    )
+
+    processed = preprocess_weather_list(weather, fit_mask=np.array([True, True, False]))
+
+    assert processed.loc[2, "Temperature"] == pytest.approx(19.0)
+    assert processed.loc[2, "RelativeHumidity"] == pytest.approx(2.0)
+    assert processed.loc[2, "FineFuelMoistureCode"] == pytest.approx(2.0)
+
+
+def test_fire_size_processing_normalizes_with_train_gridcodes_only():
+    fire_size = pd.DataFrame({"GRIDCODE": [1, 2, 3], "SIZE_HA": [9.0, 99.0, 999.0]})
+
+    processed = process_fire_size_df(fire_size, train_firezone_ids={1, 2})
+
+    assert processed.loc[processed["GRIDCODE"].eq(1), "NORM_LOG_SIZE_HA"].item() == pytest.approx(0.0)
+    assert processed.loc[processed["GRIDCODE"].eq(2), "NORM_LOG_SIZE_HA"].item() == pytest.approx(1.0, abs=2e-5)
+    assert processed.loc[processed["GRIDCODE"].eq(3), "NORM_LOG_SIZE_HA"].item() > 1.5
+
+
+def test_build_dataset_appends_spatialized_tabular_channels_to_grid(temp_data_dir, monkeypatch):
     tmpdir, train_csv, _, _, weather_csv, weather_feats, _, _ = temp_data_dir
+    monkeypatch.setattr("src.datasets.sources.grids.get_range_output", lambda *_args, **_kwargs: (1.0, 0.0))
+    monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation", lambda *_args, **_kwargs: (1.0, 0.0))
 
     config = DataConfig(
         root_dir=tmpdir,
@@ -312,8 +404,11 @@ def test_build_dataset_appends_spatialized_tabular_channels_to_grid(temp_data_di
     assert inputs.shape == (5, 32, 32)
 
 
-def test_build_dataset_can_return_patch_metadata(temp_data_dir):
+def test_build_dataset_can_include_patch_metadata(temp_data_dir, monkeypatch):
     tmpdir, train_csv, _, _, _, _, _, _ = temp_data_dir
+    monkeypatch.setattr("src.datasets.sources.grids.get_range_output", lambda *_args, **_kwargs: (1.0, 0.0))
+    monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation", lambda *_args, **_kwargs: (1.0, 0.0))
+
     config = DataConfig(
         root_dir=tmpdir,
         raw_data_dir=tmpdir,
@@ -336,6 +431,7 @@ def test_build_dataset_can_return_patch_metadata(temp_data_dir):
     dataset = build_dataset(config=config, csv_name=train_csv, modelling_approach="1")
     sample = dataset[0]
 
+    assert "patch_metadata" in sample
     assert sample["patch_metadata"]["hex_id"].item() == 1
 
 
@@ -344,11 +440,11 @@ def test_build_dataset_passes_raw_data_dir_to_grid_source(temp_data_dir, monkeyp
     raw_data_dir = "/network/raw/source"
     seen = {}
 
-    def fake_get_range_output(root_dir, output_type):
+    def fake_get_range_output(root_dir, output_type, allowed_hex_ids=None):
         seen["output"] = (root_dir, output_type)
         return 1.0, 0.0
 
-    def fake_get_range_elevation(root_dir):
+    def fake_get_range_elevation(root_dir, allowed_hex_ids=None):
         seen["elevation"] = root_dir
         return 1000.0, 0.0
 
@@ -380,50 +476,23 @@ def test_build_dataset_passes_raw_data_dir_to_grid_source(temp_data_dir, monkeyp
     assert seen["elevation"] == raw_data_dir
 
 
-def test_grid_source_computes_log_standard_stats_from_raw_data_dir(temp_data_dir, monkeypatch):
-    tmpdir, *_ = temp_data_dir
-    raw_data_dir = "/network/raw/source"
-    seen = {}
-    expected_mean = float(np.log1p(0.5))
-    expected_std = 2.0
+def test_grid_source_rejects_invalid_explicit_raw_data_dir(temp_data_dir, monkeypatch):
+    tmpdir, _, _, _, _, _, _, _ = temp_data_dir
 
-    def fake_get_output_log_stats(root_dir, output_type):
-        seen["log_stats"] = (root_dir, output_type)
-        return expected_mean, expected_std
-
-    monkeypatch.setattr("src.datasets.sources.grids.get_output_log_stats", fake_get_output_log_stats)
+    monkeypatch.setattr(
+        "src.datasets.sources.grids.get_range_output",
+        lambda root_dir, output_type, allowed_hex_ids=None: (float("-inf"), float("inf")),
+    )
+    monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation", lambda root_dir, allowed_hex_ids=None: (1000.0, 0.0))
 
     grid_params = GridParams(
         feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],
-        target_name="fi",
-        out_norm="log_standard",
+        out_norm="min_max",
         fuel_feats_encoding="ordinal",
-        normalize_fuel_feats_ordinal=True,
     )
 
-    grid_source = GridSource(root_dir=tmpdir, raw_data_dir=raw_data_dir, params=grid_params, modelling_approach="1")
-    _, target, mask = grid_source.get_sample({"file_path": os.path.join(tmpdir, "sample_0.npy")})
-
-    assert seen["log_stats"] == (raw_data_dir, "fire_intensity")
-    assert grid_source.target_log_mean == expected_mean
-    assert grid_source.target_log_std == expected_std
-    target_np = target.squeeze(0).numpy()
-    mask_np = mask.squeeze(0).numpy()
-    np.testing.assert_allclose(target_np[mask_np], 0.0, atol=1e-6)
-
-
-def test_get_range_output_rejects_invalid_range(monkeypatch):
-    monkeypatch.setattr(spatial_utils, "find_hex_ids", lambda root_dir: [])
-
-    with pytest.raises(ValueError, match="Invalid fire_burn_probability normalization range"):
-        spatial_utils.get_range_output("/bad/raw", "fire_burn_probability")
-
-
-def test_get_range_elevation_rejects_invalid_range(monkeypatch):
-    monkeypatch.setattr(spatial_utils, "find_hex_ids", lambda root_dir: [])
-
-    with pytest.raises(ValueError, match="Invalid elevation normalization range"):
-        spatial_utils.get_range_elevation("/bad/raw")
+    with pytest.raises(ValueError, match="Invalid Burn Probability normalization range"):
+        GridSource(root_dir=tmpdir, raw_data_dir="/bad/raw", params=grid_params, modelling_approach="1")
 
 
 def test_grid_one_hot_encoding(temp_data_dir):
@@ -460,6 +529,109 @@ def test_grid_feature_names_list(temp_data_dir):
 
     # Assert shape is exactly 1
     assert x.shape[0] == 1
+
+
+def test_grid_source_appends_terrain_derivatives_from_elevation(temp_data_dir, monkeypatch):
+    tmpdir, *_ = temp_data_dir
+    monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation", lambda *_args, **_kwargs: (3100.0, 0.0))
+
+    sample_path = os.path.join(tmpdir, "sample_0.npy")
+    arr = np.zeros((32, 32, 7), dtype=np.float32)
+    arr[:, :, 1] = np.broadcast_to(np.arange(32, dtype=np.float32) * 100.0, (32, 32))
+    arr[:, :, 4] = 0.25
+    np.save(sample_path, arr)
+
+    grid_params = GridParams(
+        feature_names_list=["elevation_grid"],
+        target_name="bp",
+        out_norm="none",
+        terrain_derivatives=["slope", "aspect_sin", "aspect_cos"],
+        terrain_cell_size_m=100.0,
+    )
+    grid_source = GridSource(root_dir=tmpdir, params=grid_params, modelling_approach="1")
+
+    inputs, _, _ = grid_source.get_sample({"file_path": sample_path})
+
+    assert grid_source.input_dim() == 4
+    assert inputs.shape == (4, 32, 32)
+    torch.testing.assert_close(inputs[1], torch.full((32, 32), 0.5), rtol=1e-5, atol=1e-5)
+    torch.testing.assert_close(inputs[2], torch.full((32, 32), -1.0), rtol=1e-5, atol=1e-5)
+    torch.testing.assert_close(inputs[3], torch.zeros((32, 32)), rtol=1e-5, atol=1e-5)
+
+
+def test_grid_source_terrain_derivatives_are_computed_after_transforms(temp_data_dir, monkeypatch):
+    tmpdir, *_ = temp_data_dir
+    monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation", lambda *_args, **_kwargs: (3100.0, 0.0))
+
+    sample_path = os.path.join(tmpdir, "sample_0.npy")
+    arr = np.zeros((32, 32, 7), dtype=np.float32)
+    arr[:, :, 1] = np.broadcast_to(np.arange(32, dtype=np.float32) * 100.0, (32, 32))
+    arr[:, :, 4] = 0.25
+    np.save(sample_path, arr)
+
+    def hflip_transform(x, target, mask):
+        return F.hflip(x), F.hflip(target), F.hflip(mask)
+
+    grid_params = GridParams(
+        feature_names_list=["elevation_grid"],
+        target_name="bp",
+        out_norm="none",
+        terrain_derivatives=["aspect_sin"],
+        terrain_cell_size_m=100.0,
+    )
+    grid_source = GridSource(root_dir=tmpdir, params=grid_params, modelling_approach="1", transform=hflip_transform)
+
+    inputs, _, _ = grid_source.get_sample({"file_path": sample_path})
+
+    torch.testing.assert_close(inputs[-1], torch.full((32, 32), 1.0), rtol=1e-5, atol=1e-5)
+
+
+def test_grid_source_sets_flat_terrain_aspect_to_zero(temp_data_dir, monkeypatch):
+    tmpdir, *_ = temp_data_dir
+    monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation", lambda *_args, **_kwargs: (1000.0, 0.0))
+
+    sample_path = os.path.join(tmpdir, "sample_0.npy")
+    arr = np.zeros((32, 32, 7), dtype=np.float32)
+    arr[:, :, 1] = 500.0
+    arr[:, :, 4] = 0.25
+    np.save(sample_path, arr)
+
+    grid_params = GridParams(
+        feature_names_list=["elevation_grid"],
+        target_name="bp",
+        out_norm="none",
+        terrain_derivatives=["slope", "aspect_sin", "aspect_cos"],
+        terrain_cell_size_m=100.0,
+    )
+    grid_source = GridSource(root_dir=tmpdir, params=grid_params, modelling_approach="1")
+
+    inputs, _, _ = grid_source.get_sample({"file_path": sample_path})
+
+    torch.testing.assert_close(inputs[1:], torch.zeros((3, 32, 32)), rtol=1e-5, atol=1e-5)
+
+
+def test_grid_source_terrain_derivatives_require_elevation(temp_data_dir):
+    tmpdir, *_ = temp_data_dir
+    grid_params = GridParams(
+        feature_names_list=["ignition_grid"],
+        target_name="bp",
+        terrain_derivatives=["slope"],
+    )
+
+    with pytest.raises(ValueError, match="requires 'elevation_grid'"):
+        GridSource(root_dir=tmpdir, params=grid_params, modelling_approach="1")
+
+
+def test_grid_source_rejects_unknown_terrain_derivatives(temp_data_dir):
+    tmpdir, *_ = temp_data_dir
+    grid_params = GridParams(
+        feature_names_list=["elevation_grid"],
+        target_name="bp",
+        terrain_derivatives=["aspect_degrees"],
+    )
+
+    with pytest.raises(ValueError, match="Invalid terrain_derivatives"):
+        GridSource(root_dir=tmpdir, params=grid_params, modelling_approach="1")
 
 
 def test_mask_threshold(temp_data_dir):
@@ -551,6 +723,19 @@ def test_grid_transforms(temp_data_dir):
     is_270 = torch.equal(y_rot, torch.rot90(y_orig, 3, dims=[1, 2]))
 
     assert is_90 or is_180 or is_270
+
+
+def test_get_transforms_returns_grid_augmentations():
+    config = DataSourceConfig(
+        name="grid",
+        params=GridParams(
+            feature_names_list=["ignition_grid"],
+            transforms_list=["random_flip", "random_rotate"],
+            augmentation_prob=0.5,
+        ),
+    )
+
+    assert get_transforms(config) is not None
 
 
 def test_tabular_weighted_sampling(temp_data_dir):
@@ -645,107 +830,3 @@ def test_grid_target_nan_excluded_from_mask(temp_data_dir):
 
     assert not mask.squeeze(0).numpy()[0, 0]
     assert target.squeeze(0).numpy()[0, 0] == 0.0
-
-
-def test_grid_source_appends_terrain_derivatives_from_elevation(temp_data_dir, monkeypatch):
-    tmpdir, *_ = temp_data_dir
-    monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation", lambda *_args, **_kwargs: (3100.0, 0.0))
-    write_test_elevation_raster(tmpdir, cell_size=50.0)
-
-    sample_path = os.path.join(tmpdir, "sample_0.npy")
-    arr = np.zeros((32, 32, 7), dtype=np.float32)
-    arr[:, :, 1] = np.broadcast_to(np.arange(32, dtype=np.float32) * 100.0, (32, 32))
-    arr[:, :, 4] = 0.25
-    np.save(sample_path, arr)
-
-    grid_params = GridParams(
-        feature_names_list=["elevation_grid"],
-        target_name="bp",
-        out_norm="none",
-        terrain_derivatives=["slope", "aspect_sin", "aspect_cos"],
-    )
-    grid_source = GridSource(root_dir=tmpdir, raw_data_dir=tmpdir, params=grid_params, modelling_approach="1")
-
-    inputs, _, _ = grid_source.get_sample({"file_path": sample_path, "hex_id": "01"})
-
-    assert grid_source.input_dim() == 4
-    assert inputs.shape == (4, 32, 32)
-    expected_slope = torch.atan(torch.tensor(2.0)) / (torch.pi / 2.0)
-    torch.testing.assert_close(inputs[1], torch.full((32, 32), expected_slope), rtol=1e-5, atol=1e-5)
-    torch.testing.assert_close(inputs[2], torch.full((32, 32), -1.0), rtol=1e-5, atol=1e-5)
-    torch.testing.assert_close(inputs[3], torch.zeros((32, 32)), rtol=1e-5, atol=1e-5)
-
-
-def test_grid_source_terrain_derivatives_are_computed_after_transforms(temp_data_dir, monkeypatch):
-    tmpdir, *_ = temp_data_dir
-    monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation", lambda *_args, **_kwargs: (3100.0, 0.0))
-    write_test_elevation_raster(tmpdir)
-
-    sample_path = os.path.join(tmpdir, "sample_0.npy")
-    arr = np.zeros((32, 32, 7), dtype=np.float32)
-    arr[:, :, 1] = np.broadcast_to(np.arange(32, dtype=np.float32) * 100.0, (32, 32))
-    arr[:, :, 4] = 0.25
-    np.save(sample_path, arr)
-
-    def hflip_transform(x, target, mask):
-        return F.hflip(x), F.hflip(target), F.hflip(mask)
-
-    grid_params = GridParams(
-        feature_names_list=["elevation_grid"],
-        target_name="bp",
-        out_norm="none",
-        terrain_derivatives=["aspect_sin"],
-    )
-    grid_source = GridSource(root_dir=tmpdir, raw_data_dir=tmpdir, params=grid_params, modelling_approach="1", transform=hflip_transform)
-
-    inputs, _, _ = grid_source.get_sample({"file_path": sample_path, "hex_id": "01"})
-
-    torch.testing.assert_close(inputs[-1], torch.full((32, 32), 1.0), rtol=1e-5, atol=1e-5)
-
-
-def test_grid_source_sets_flat_terrain_aspect_to_zero(temp_data_dir, monkeypatch):
-    tmpdir, *_ = temp_data_dir
-    monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation", lambda *_args, **_kwargs: (1000.0, 0.0))
-    write_test_elevation_raster(tmpdir)
-
-    sample_path = os.path.join(tmpdir, "sample_0.npy")
-    arr = np.zeros((32, 32, 7), dtype=np.float32)
-    arr[:, :, 1] = 500.0
-    arr[:, :, 4] = 0.25
-    np.save(sample_path, arr)
-
-    grid_params = GridParams(
-        feature_names_list=["elevation_grid"],
-        target_name="bp",
-        out_norm="none",
-        terrain_derivatives=["slope", "aspect_sin", "aspect_cos"],
-    )
-    grid_source = GridSource(root_dir=tmpdir, raw_data_dir=tmpdir, params=grid_params, modelling_approach="1")
-
-    inputs, _, _ = grid_source.get_sample({"file_path": sample_path, "hex_id": "01"})
-
-    torch.testing.assert_close(inputs[1:], torch.zeros((3, 32, 32)), rtol=1e-5, atol=1e-5)
-
-
-def test_grid_source_terrain_derivatives_require_elevation(temp_data_dir):
-    tmpdir, *_ = temp_data_dir
-    grid_params = GridParams(
-        feature_names_list=["ignition_grid"],
-        target_name="bp",
-        terrain_derivatives=["slope"],
-    )
-
-    with pytest.raises(ValueError, match="requires 'elevation_grid'"):
-        GridSource(root_dir=tmpdir, params=grid_params, modelling_approach="1")
-
-
-def test_grid_source_rejects_unknown_terrain_derivatives(temp_data_dir):
-    tmpdir, *_ = temp_data_dir
-    grid_params = GridParams(
-        feature_names_list=["elevation_grid"],
-        target_name="bp",
-        terrain_derivatives=["aspect_degrees"],
-    )
-
-    with pytest.raises(ValueError, match="Invalid terrain_derivatives"):
-        GridSource(root_dir=tmpdir, params=grid_params, modelling_approach="1")

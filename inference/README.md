@@ -132,7 +132,7 @@ predicted_hexel_grid, grid_profile = run_pipeline(
 predictor = BurnRiskPredictor.from_checkpoint(
     checkpoint_path="experiments/best_model/best.pth",
     spatial_channels=10,
-    auxiliary_input_dims={"weather": 7, "fire_size": 5},
+    auxiliary_input_dims={"tabular_weather": 7, "tabular_fire_size": 5},
 )
 predicted_hexel_grid, grid_profile = predictor(spatial_batch, auxiliary_batch)
 ```

@@ -55,14 +55,20 @@ class MSELoss(nn.Module):
 
 
 class CCCLoss(nn.Module):
-    """Concordance correlation coefficient loss, 1 - CCC, on sigmoid probabilities."""
+    """
+    Concordance correlation coefficient loss, 1 - CCC.
 
-    def __init__(self, eps: float = 1e-8):
+    Use the sigmoid variant for probability targets such as BP.
+    """
+
+    def __init__(self, use_sigmoid: bool = True, eps: float = 1e-8):
         super().__init__()
+        self.use_sigmoid = use_sigmoid
         self.eps = eps
 
     def forward(self, logits: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None):
-        preds = torch.sigmoid(logits).flatten(1).float()
+        preds = torch.sigmoid(logits) if self.use_sigmoid else logits
+        preds = preds.flatten(1).float()
         targets = targets.flatten(1).float()
         mask_flat = None if mask is None else mask.bool().flatten(1)
 
@@ -85,6 +91,52 @@ class CCCLoss(nn.Module):
         if not ccc_values:
             return logits.new_tensor(0.0)
         return 1.0 - torch.stack(ccc_values).mean()
+
+
+class PearsonLoss(nn.Module):
+    """
+    Pearson correlation loss, 1 - r.
+
+    This is a differentiable rank-order proxy. Use the sigmoid variant for BP
+    and RegressionPearsonLoss for raw FI/ROS regression outputs.
+    """
+
+    def __init__(self, use_sigmoid: bool = True, eps: float = 1e-8):
+        super().__init__()
+        self.use_sigmoid = use_sigmoid
+        self.eps = eps
+
+    def forward(self, logits: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None):
+        preds = torch.sigmoid(logits) if self.use_sigmoid else logits
+        preds = preds.flatten(1).float()
+        targets = targets.flatten(1).float()
+        mask_flat = None if mask is None else mask.bool().flatten(1)
+
+        correlations = []
+        for idx in range(preds.shape[0]):
+            pred_i = preds[idx]
+            target_i = targets[idx]
+            if mask_flat is not None:
+                valid = mask_flat[idx]
+                pred_i = pred_i[valid]
+                target_i = target_i[valid]
+            if pred_i.numel() < 2:
+                continue
+            pred_centered = pred_i - pred_i.mean()
+            target_centered = target_i - target_i.mean()
+            denom = pred_centered.norm() * target_centered.norm()
+            correlations.append((pred_centered * target_centered).sum() / denom.clamp_min(self.eps))
+
+        if not correlations:
+            return logits.new_tensor(0.0)
+        return 1.0 - torch.stack(correlations).mean()
+
+
+class RegressionPearsonLoss(PearsonLoss):
+    """Pearson loss on raw model outputs."""
+
+    def __init__(self, eps: float = 1e-8):
+        super().__init__(use_sigmoid=False, eps=eps)
 
 
 class MAELoss(nn.Module):
@@ -136,39 +188,6 @@ class HuberLoss(nn.Module):
         loss = loss * mask
         denom = mask.sum().clamp_min(self.eps)
         return loss.sum() / denom
-
-
-class RegressionPearsonLoss(nn.Module):
-    """Pearson correlation loss, 1 - r, on raw regression outputs."""
-
-    def __init__(self, eps: float = 1e-8):
-        super().__init__()
-        self.eps = eps
-
-    def forward(self, logits: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor = None):
-        preds = logits.flatten(1).float()
-        targets = targets.flatten(1).float()
-        mask_flat = None if mask is None else mask.bool().flatten(1)
-
-        correlations = []
-        for idx in range(preds.shape[0]):
-            pred_i = preds[idx]
-            target_i = targets[idx]
-            if mask_flat is not None:
-                valid = mask_flat[idx]
-                pred_i = pred_i[valid]
-                target_i = target_i[valid]
-            if pred_i.numel() < 2:
-                continue
-
-            pred_centered = pred_i - pred_i.mean()
-            target_centered = target_i - target_i.mean()
-            denom = pred_centered.norm() * target_centered.norm()
-            correlations.append((pred_centered * target_centered).sum() / denom.clamp_min(self.eps))
-
-        if not correlations:
-            return logits.new_tensor(0.0)
-        return 1.0 - torch.stack(correlations).mean()
 
 
 class DiceLoss(nn.Module):
@@ -306,11 +325,12 @@ class BernoulliKLLoss(nn.Module):
 
 
 class HexSummaryLoss(nn.Module):
-    """Batch-level BP summary loss grouped by hex ID.
+    """Differentiable cross-hex loss on batch-level BP summaries.
 
-    This provides a lightweight differentiable proxy for stitched hex ranking:
-    each patch is summarized, patch summaries are averaged by hex in the batch,
-    then the hex-level predictions are compared by correlation or pairwise rank.
+    This is not a stitched-raster loss. It uses patch metadata to group patches
+    by hex ID within each batch, summarizes valid BP predictions per patch, then
+    compares grouped hex summaries. It is intended as a lightweight proxy for
+    the stitched/hex ranking failure mode.
     """
 
     requires_patch_metadata = True

@@ -267,3 +267,14 @@ def denormalize_output_target(
             return data
 
     raise ValueError(f"Unsupported output normalization: {out_norm!r}")
+
+
+def apply_bp_nodata_zero_range(
+    target_name: str,
+    max_value: float,
+    min_value: float,
+    bp_nodata_as_zero: bool,
+) -> tuple[float, float]:
+    if target_name == "bp" and bp_nodata_as_zero:
+        return max_value, 0.0
+    return max_value, min_value

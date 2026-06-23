@@ -14,6 +14,7 @@ class LoggerConfig(BaseModel):
 
 
 class ModelConfig(BaseModel):
+    architecture: str = "auto"
     num_classes: int = 1
     hidden_features: list[int] = [64, 128, 256, 512]
 
@@ -63,6 +64,8 @@ class EvaluationConfig(BaseModel):
     best_ckpt_metrics_mode: list[str] = ["max"]  # max, or min
     checkpoint_filename: str = "best.pth"
     robust_plot_percentile: float | None = Field(default=None, gt=0.0, le=100.0)
+    bp_nodata_as_zero: bool = True
+    prediction_support_policy: str = "input"
 
 
 class GridParams(BaseModel):
@@ -79,6 +82,8 @@ class GridParams(BaseModel):
     transforms_list: list[str] = Field(default_factory=list)
     augmentation_prob: float = 0.0
     terrain_derivatives: list[str] = Field(default_factory=list)
+    terrain_cell_size_m: float = Field(default=100.0, gt=0.0)
+    bp_nodata_as_zero: bool = True
 
 
 class TabularParams(BaseModel):
@@ -98,14 +103,15 @@ class TabularParams(BaseModel):
 
 
 class SpatializedTabularParams(TabularParams):
-    """Parameters for rasterizing zone-level tabular features onto patch pixels."""
+    """Parameters for rasterizing zone-level tabular covariates onto patch pixels."""
 
     zone_channel_key: str = "firezones_grid"
     aggregation: str = "mean"
-    include_missing_mask: bool = False
-    missing_value_strategy: str = "global_mean"
     shuffle_lut: bool = False
     shuffle_seed: int = 42
+    include_missing_firezone_mask: bool = False
+    missing_value_strategy: str = "global_mean"
+    imputation_stats_path: str | None = None
 
 
 class DataSourceConfig(BaseModel):
@@ -117,10 +123,11 @@ class DataSourceConfig(BaseModel):
     def parse_params_for_source(cls, data: Any) -> Any:
         if not isinstance(data, dict):
             return data
-
         name = data.get("name")
         params = data.get("params")
-        if not isinstance(name, str) or not isinstance(params, dict):
+        if not isinstance(name, str):
+            return data
+        if not isinstance(params, dict):
             return data
 
         param_classes = {

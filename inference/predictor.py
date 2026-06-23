@@ -9,8 +9,9 @@ from typing import Any
 
 import torch
 
+from src.config import ModelConfig
 from src.datasets.targets import get_target_spec
-from src.models.unet import BaselineUNet, MultiSourceUNet
+from src.models.factory import build_model
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +47,7 @@ class BurnRiskPredictor:
         For typical usage, prefer the `from_checkpoint` classmethod.
 
         Args:
-            model (torch.nn.Module): A PyTorch model (BaselineUNet or MultiSourceUNet).
+            model (torch.nn.Module): A PyTorch dense prediction model.
             device (str | torch.device): Device the model is on.
             config (dict[str, Any] | None): Optional config dict for reference.
         """
@@ -116,34 +117,11 @@ class BurnRiskPredictor:
         auxiliary_input_dims: dict[str, int],
     ) -> torch.nn.Module:
         """Instantiate the model architecture based on config."""
-        # Accept the old checkpoint key so previously trained models remain loadable.
-        input_branches = model_config.get("input_branches", model_config.get("input_feature_list", ["spatial"]))
-        use_auxiliary = "auxiliary" in input_branches
-
-        if use_auxiliary:
-            return MultiSourceUNet(
-                input_channels=spatial_channels,
-                num_classes=model_config["num_classes"],
-                hidden_features=model_config["hidden_features"],
-                input_branches=input_branches,
-                use_skip_connections=model_config["use_skip_connections"],
-                use_transpose_conv=model_config["use_transpose_conv"],
-                use_activation_after_upsampling=model_config["use_activation_after_upsampling"],
-                auxiliary_input_dims=auxiliary_input_dims,
-                auxiliary_hidden_dims=model_config["auxiliary_hidden_dims"],
-                auxiliary_embed_dims=model_config["auxiliary_embed_dims"],
-                auxiliary_feature_encoder_poolings=model_config["auxiliary_feature_encoder_poolings"],
-            )
-        else:
-            return BaselineUNet(
-                input_channels=spatial_channels,
-                num_classes=model_config["num_classes"],
-                hidden_features=model_config["hidden_features"],
-                input_branches=input_branches,
-                use_skip_connections=model_config["use_skip_connections"],
-                use_transpose_conv=model_config["use_transpose_conv"],
-                use_activation_after_upsampling=model_config["use_activation_after_upsampling"],
-            )
+        return build_model(
+            model_config=ModelConfig(**model_config),
+            spatial_input_channels=spatial_channels,
+            auxiliary_input_dims=auxiliary_input_dims,
+        )
 
     @torch.no_grad()
     def predict_batch(

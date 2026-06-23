@@ -1,4 +1,5 @@
 import os
+from collections.abc import Collection
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +21,9 @@ NODATA = np.nan
 
 # mapping cause to cause index
 fire_cause_mapping = {1: "H", 2: "N"}
+
+# cause letter to the label used in IgnitionDistribution.csv
+fire_cause_label_mapping = {"H": "Human", "N": "Lightning"}
 
 # TODO: revisit fuel grouping
 FUEL_GROUP_MAP = {
@@ -75,7 +79,7 @@ def load_raster(path: str) -> np.ma.MaskedArray:
 def load_spatial_raster(
     path: Path,
     reproject_flag: bool = True,
-    actual_mask_path: Path | None = None,
+    mask_path: Path | None = None,
     reference_profile: dict[str, Any] | None = None,
 ) -> tuple[np.ma.MaskedArray, dict[str, Any]]:
     """Load one raster band, optionally reproject/clip/crop it, and return updated profile."""
@@ -103,12 +107,12 @@ def load_spatial_raster(
         )
         crs = profile["crs"]
 
-    if actual_mask_path:
+    if mask_path:
         raster, transform, profile = clip_array_to_mask(
             raster=raster,
             transform=transform,
             profile=profile,
-            mask_path=actual_mask_path,
+            mask_path=mask_path,
             crs=crs,
             nodata=nodata,
         )
@@ -289,9 +293,35 @@ def reproject_raster(
     return dst_masked, dst_transform, out_profile
 
 
-def get_range_elevation(root_dir: str) -> tuple[float, float]:
-    """Get the global range of elevation for normalization"""
-    all_hex_ids = find_hex_ids(root_dir)
+def read_split_hex_ids(split_csv_path: str | Path, hex_id_col: str = "hex_id") -> set[int]:
+    """Return the set of integer hex ids referenced by a split index CSV."""
+    path = Path(split_csv_path)
+    if not path.exists():
+        raise FileNotFoundError(f"Split index CSV not found: {path}")
+    df = pd.read_csv(path)
+    if hex_id_col not in df.columns:
+        raise KeyError(f"Column {hex_id_col!r} not found in split CSV {path}. Available columns: {list(df.columns)}")
+    hex_ids = {int(value) for value in df[hex_id_col].dropna()}
+    if not hex_ids:
+        raise ValueError(f"Split CSV {path} contains no hex ids in column {hex_id_col!r}.")
+    return hex_ids
+
+
+def _restrict_hex_ids(all_hex_ids: list, allowed_hex_ids: Collection[int] | None) -> list:
+    """Filter raw hex-id directory names to those whose integer id is in allowed_hex_ids."""
+    if allowed_hex_ids is None:
+        return all_hex_ids
+    allowed = {int(value) for value in allowed_hex_ids}
+    return [hex_id for hex_id in all_hex_ids if int(hex_id) in allowed]
+
+
+def get_range_elevation(root_dir: str, allowed_hex_ids: Collection[int] | None = None) -> tuple[float, float]:
+    """Get the global range of elevation for normalization.
+
+    When allowed_hex_ids is provided, only those hexes contribute to the range so the
+    statistic is derived from the training split rather than the full (leak-prone) dataset.
+    """
+    all_hex_ids = _restrict_hex_ids(find_hex_ids(root_dir), allowed_hex_ids)
     min_value, max_value = np.inf, -np.inf
     for hex_id in all_hex_ids:
         paths = Paths(hex_id=hex_id, root_dir=root_dir)
@@ -312,13 +342,16 @@ def get_range_elevation(root_dir: str) -> tuple[float, float]:
     return float(max_value), float(min_value)
 
 
-def get_range_output(root_dir: str, output_type: str) -> tuple[float, float]:
+def get_range_output(root_dir: str, output_type: str, allowed_hex_ids: Collection[int] | None = None) -> tuple[float, float]:
     """
-    Get global max and min for one output type across all valid hexelss.
+    Get global max and min for one output type across all valid hexels.
     Usage:
     get_output_range(root_dir, "fire_intensity")
     get_output_range(root_dir, "fire_ros")
     get_output_range(root_dir, "fire_burn_probability")
+
+    When allowed_hex_ids is provided, only those hexes contribute so the range is derived
+    from the training split rather than the full (leak-prone) dataset.
     """
     path_methods = {
         "fire_intensity": "output_fire_intensity",
@@ -329,7 +362,7 @@ def get_range_output(root_dir: str, output_type: str) -> tuple[float, float]:
     if output_type not in path_methods:
         raise ValueError(f"Unsupported output_type: {output_type}")
 
-    all_hex_ids = find_hex_ids(root_dir)
+    all_hex_ids = _restrict_hex_ids(find_hex_ids(root_dir), allowed_hex_ids)
     min_value, max_value = np.inf, -np.inf
 
     for hex_id in all_hex_ids:
@@ -352,9 +385,44 @@ def get_range_output(root_dir: str, output_type: str) -> tuple[float, float]:
     return max_value, min_value
 
 
-def get_output_log_stats(root_dir: str, output_type: str) -> tuple[float, float]:
+def get_output_log_stats_cached(
+    root_dir: str,
+    output_type: str,
+    allowed_hex_ids: Collection[int] | None = None,
+    raw_data_dir: str | None = None,
+) -> tuple[float, float]:
+    """
+    Return log1p mean/std for a target, reading from a cached JSON file if available.
+    Falls back to scanning raw rasters via get_output_log_stats.
+
+    The cached JSON (``target_log_stats.json``) is the canonical, train-only artifact
+    produced by ``compute_target_log_stats``. The fallback scan honours allowed_hex_ids
+    (and an explicit raw_data_dir holding the per-hex rasters) so it stays train-only too.
+    """
+    import json as _json
+
+    cache_path = os.path.join(root_dir, "target_log_stats.json")
+    if os.path.exists(cache_path):
+        with open(cache_path) as f:
+            cached = _json.load(f)
+        entry = cached.get(output_type, {})
+        mean = entry.get("log_mean")
+        std = entry.get("log_std")
+        if mean is not None and std is not None:
+            return float(mean), float(std)
+    return get_output_log_stats(raw_data_dir or root_dir, output_type, allowed_hex_ids)
+
+
+def get_output_log_stats(
+    root_dir: str,
+    output_type: str,
+    allowed_hex_ids: Collection[int] | None = None,
+) -> tuple[float, float]:
     """
     Get global mean/std of log1p target values for one output type across all valid hexels.
+
+    When allowed_hex_ids is provided, only those hexes contribute so the statistic is
+    derived from the training split rather than the full (leak-prone) dataset.
     """
     path_methods = {
         "fire_intensity": "output_fire_intensity",
@@ -369,7 +437,7 @@ def get_output_log_stats(root_dir: str, output_type: str) -> tuple[float, float]
     total = 0.0
     total_sq = 0.0
 
-    for hex_id in find_hex_ids(root_dir):
+    for hex_id in _restrict_hex_ids(find_hex_ids(root_dir), allowed_hex_ids):
         paths = Paths(hex_id=hex_id, root_dir=root_dir)
         output_path = getattr(paths, path_methods[output_type])()
         output_grid = load_raster(str(output_path))
@@ -390,6 +458,33 @@ def get_output_log_stats(root_dir: str, output_type: str) -> tuple[float, float]
     if not np.isfinite(std) or std <= 0.0:
         raise ValueError(f"Invalid log-standard normalization std for output_type={output_type!r} in root_dir={root_dir!r}: {std}.")
     return float(mean), std
+
+
+def write_target_log_stats(
+    *,
+    raw_data_dir: str | Path,
+    output_path: str | Path,
+    output_types: Collection[str],
+    allowed_hex_ids: Collection[int],
+) -> dict[str, dict[str, float]]:
+    """Compute train-only log1p mean/std for each output type and persist them to JSON.
+
+    Mirrors the train-only imputation-stats artifact: the statistics are derived solely
+    from allowed_hex_ids (the training split) so held-out hexes never leak into the target
+    normalization constants used by training, evaluation, and inference.
+    """
+    import json as _json
+
+    stats: dict[str, dict[str, float]] = {}
+    for output_type in output_types:
+        mean, std = get_output_log_stats(str(raw_data_dir), output_type, allowed_hex_ids)
+        stats[output_type] = {"log_mean": mean, "log_std": std}
+
+    path = Path(output_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w") as handle:
+        _json.dump(stats, handle, indent=2)
+    return stats
 
 
 def denormalize_burn_count(data: np.ndarray, min_val: float, max_val: float) -> np.ndarray:
