@@ -113,6 +113,7 @@ def main() -> None:
     spatial_channels, auxiliary_input_dims = get_dataset_dimensions(test_loader.dataset)
     print(f"Detected Data Dimensions: Spatial={spatial_channels} | Auxiliary={auxiliary_input_dims}")
 
+    # iROS stats come from the checkpoint (registered buffers), not re-computed at eval time.
     trainer = Trainer(config, spatial_input_channels=spatial_channels, auxiliary_input_dims=auxiliary_input_dims)
 
     # ---------- Load best checkpoint ----------

@@ -12,7 +12,7 @@ from tqdm import tqdm
 from data_preparation.spatial.utils import get_output_log_stats_cached, get_range_output, read_split_hex_ids
 from src.config import Config, GridParams
 from src.datasets.targets import get_target_specs
-from src.datasets.utils import apply_bp_nodata_zero_range
+from src.datasets.utils import apply_bp_nodata_zero_range, get_iros_normalization_stats
 from src.logger import CometLogger
 from src.losses import WeightedLoss
 from src.models.factory import build_model, resolve_model_architecture
@@ -22,10 +22,17 @@ from src.utils import AVAILABLE_METRICS, build_single_loss, set_device
 
 
 class Trainer:
-    def __init__(self, config: Config, spatial_input_channels: int | None = None, auxiliary_input_dims: dict[str, int] | None = None):
+    def __init__(
+        self,
+        config: Config,
+        spatial_input_channels: int | None = None,
+        auxiliary_input_dims: dict[str, int] | None = None,
+        train_dataset=None,
+    ):
         self.config = config
         self.spatial_input_channels = spatial_input_channels
         self.auxiliary_input_dims = auxiliary_input_dims if auxiliary_input_dims is not None else {}
+        self.train_dataset = train_dataset
 
         # Set device
         self.device = set_device()
@@ -82,6 +89,7 @@ class Trainer:
             model_config=self.config.model,
             spatial_input_channels=self.spatial_input_channels,
             auxiliary_input_dims=self.auxiliary_input_dims,
+            **self._get_iros_stats(),
         )
 
         self.model.to(self.device)
@@ -110,6 +118,16 @@ class Trainer:
         self._validate_and_load_metrics()
 
         self._configure_metric_target_transform()
+
+    def _get_iros_stats(self) -> dict[str, torch.Tensor | None]:
+        """Extract iROS normalization stats from the training dataset when fuel_feats_encoding is iROS."""
+        if self.train_dataset is None:
+            return {"iros_mean": None, "iros_std": None}
+        grid_params = self._get_grid_params()
+        if grid_params is None or grid_params.fuel_feats_encoding != "iROS":
+            return {"iros_mean": None, "iros_std": None}
+        iros_mean, iros_std = get_iros_normalization_stats(self.train_dataset)
+        return {"iros_mean": iros_mean, "iros_std": iros_std}
 
     def _build_loss(self) -> torch.nn.Module:
         loss_config = self.config.optimizer.loss

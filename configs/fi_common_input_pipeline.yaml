@@ -4,7 +4,7 @@
 #   - grid: fuel (one-hot) + elevation + terrain derivatives (slope, aspect_sin, aspect_cos)
 #   - spatialized weather + fire-size with per-source missing masks
 #   - wind as Cartesian components only (wind_x, wind_y); WindSpeed dropped (redundant with the norm)
-save_dir: "experiments/fi_common_input_pipeline"
+save_dir: "experiments/fi_common_input_pipeline_fuel_iROS"
 
 modelling_approach: "1"
 
@@ -40,7 +40,7 @@ evaluation:
   robust_plot_percentile: 99.0
 
 data:
-  root_dir: "/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA/data_samples_v2"
+  root_dir: "/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA/data_samples_v3"
   raw_data_dir: "/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA"
 
   train_split: "train_indices.csv"
@@ -57,7 +57,7 @@ data:
         feature_names_list: ["ignition_grid_human", "ignition_grid_lightning", "fuel_grid", "elevation_grid"]
         target_name: "fi"
         out_norm: "log_standard"
-        fuel_feats_encoding: "one_hot"
+        fuel_feats_encoding: "iROS"
         normalize_fuel_feats_ordinal: false # set to true if using ordinal
         transforms_list: []
         augmentation_prob: 0.0
@@ -108,7 +108,7 @@ logger:
   enabled: true
   project_name: "nrcan05-wildfireriskmapping"
   workspace: "mila-amlrt"
-  experiment_name: "fi_common_input_pipeline"
+  experiment_name: "fi_common_input_pipeline_fuel_iROS"
   tags:
     - "full_data"
     - "modelling_approach=1"

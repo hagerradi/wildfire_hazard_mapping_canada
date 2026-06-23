@@ -11,6 +11,7 @@ from src.models.encoders import (
     WindFeatureEncoderMixer,
     WindFeatureEncoderSpatial,
     append_coord_channels,
+    iROSEncoder,
 )
 from src.models.utils import double_conv_block
 
@@ -74,6 +75,10 @@ class BaselineUNet(UNetBase):
         use_transpose_conv: bool = False,
         use_activation_after_upsampling: bool = False,
         use_coordconv: bool = False,
+        iros_input_dim: int = 0,
+        iros_embed_dim: int = 4,
+        iros_mean: torch.Tensor | None = None,
+        iros_std: torch.Tensor | None = None,
     ):
         super().__init__()
         if hidden_features is None:
@@ -89,12 +94,25 @@ class BaselineUNet(UNetBase):
         self.use_activation_after_upsampling = use_activation_after_upsampling
         self.use_coordconv = use_coordconv
         self.input_branches = input_branches
+        self.iros_input_dim = iros_input_dim
+        self.iros_embed_dim = iros_embed_dim if iros_input_dim > 0 else 0
+        # iROS embedding is concatenated with spatial input before the encoder.
+        self._effective_spatial_in = self.input_channels + self.iros_embed_dim
+        self.iros_encoder: iROSEncoder | None
+        if self.iros_input_dim > 0:
+            _mean = iros_mean if iros_mean is not None else torch.zeros(iros_input_dim)
+            _std = iros_std if iros_std is not None else torch.ones(iros_input_dim)
+            self.iros_encoder = iROSEncoder(iros_mean=_mean, iros_std=_std, in_channels=self.iros_input_dim, embed_dim=self.iros_embed_dim)
+        else:
+            self.iros_encoder = None
         self._build_components()
         # output layer
         self.out_conv = nn.Conv2d(self.hidden_features[0], self.num_classes, kernel_size=1)
 
     def build_encoder(self) -> nn.Module:
-        encoder = BaselineEncoder(in_channels=self.input_channels, hidden_features=self.hidden_features, use_coordconv=self.use_coordconv)
+        encoder = BaselineEncoder(
+            in_channels=self._effective_spatial_in, hidden_features=self.hidden_features, use_coordconv=self.use_coordconv
+        )
         return encoder
 
     def build_bottleneck(self) -> nn.Module:
@@ -114,6 +132,9 @@ class BaselineUNet(UNetBase):
         return decoder
 
     def forward(self, x: torch.Tensor, x_auxiliary: dict[str, torch.Tensor] | None = None) -> torch.Tensor:
+        if self.iros_encoder is not None and x_auxiliary is not None and "iros" in x_auxiliary:
+            iros_emb = self.iros_encoder(x_auxiliary["iros"])  # (B, iros_embed_dim, H, W)
+            x = torch.cat([x, iros_emb], dim=1)  # (B, C + iros_embed_dim, H, W)
         x, skip_connections = self.encoder(x)
         if self.use_coordconv:
             x = append_coord_channels(x)
@@ -138,6 +159,8 @@ class MultiSourceUNet(UNetBase):
         auxiliary_embed_dims: dict[str, int] | None = None,
         auxiliary_feature_encoder_poolings: dict[str, str] | None = None,
         use_coordconv: bool = False,
+        iros_mean: torch.Tensor | None = None,
+        iros_std: torch.Tensor | None = None,
     ):
         super().__init__()
 
@@ -153,6 +176,19 @@ class MultiSourceUNet(UNetBase):
         self.auxiliary_hidden_dims: dict[str, list[int] | dict[str, list[int]]] = auxiliary_hidden_dims or {}
         self.auxiliary_embed_dims: dict[str, int] = auxiliary_embed_dims or {}
         self.auxiliary_feature_encoder_poolings: dict[str, str] = auxiliary_feature_encoder_poolings or {}
+
+        # iROS early-fusion: encoded to iros_embed_dim channels then concatenated with spatial input.
+        iros_in = self.auxiliary_input_dims.get("iros", 0)
+        self.iros_embed_dim = self.auxiliary_embed_dims.get("iros", 4) if iros_in > 0 else 0
+        self.iros_encoder: iROSEncoder | None
+        if iros_in > 0:
+            _mean = iros_mean if iros_mean is not None else torch.zeros(iros_in)
+            _std = iros_std if iros_std is not None else torch.ones(iros_in)
+            self.iros_encoder = iROSEncoder(iros_mean=_mean, iros_std=_std, in_channels=iros_in, embed_dim=self.iros_embed_dim)
+        else:
+            self.iros_encoder = None
+        self._effective_spatial_in = self.input_channels + self.iros_embed_dim
+
         self._build_components()
         self.out_conv = nn.Conv2d(self.hidden_features[0], self.num_classes, kernel_size=1)
 
@@ -161,17 +197,19 @@ class MultiSourceUNet(UNetBase):
 
         features = self.input_branches if self.input_branches is not None else []
 
-        # Build base spatial grids encoder.
+        # Build base spatial grids encoder; input channels include iROS embedding if present.
         if "spatial" in features:
             encoders["spatial"] = BaselineEncoder(
-                in_channels=self.input_channels,
+                in_channels=self._effective_spatial_in,
                 hidden_features=self.hidden_features,
                 use_coordconv=self.use_coordconv,
             )
 
-        # Build encoders for each extra auxiliary feature type.
+        # Build encoders for each extra auxiliary feature type (iROS is handled separately).
         if self.auxiliary_input_dims:
             for name, input_dim in self.auxiliary_input_dims.items():
+                if name == "iros":
+                    continue  # early-fused via self.iros_encoder before the spatial encoder
                 if name == "wind_grid_mixer":
                     hidden_dims = self.auxiliary_hidden_dims.get(name, {"mixer": [16], "local": [32, 64, 16], "global": [16]})
                     if isinstance(hidden_dims, dict):
@@ -213,10 +251,12 @@ class MultiSourceUNet(UNetBase):
         if self.hidden_features is None:
             raise ValueError("Hidden features cannot be None.")
 
-        # Get the dims. of all extra auxiliary features.
+        # iROS is early-fused and must not appear in the bottleneck aux dims.
         auxillary_dims: dict[str, int] = {}
         if self.auxiliary_input_dims:
             for name in self.auxiliary_input_dims:
+                if name == "iros":
+                    continue
                 auxillary_dims[name] = self.auxiliary_embed_dims.get(name, 64)
 
         return MultiSourceBottleneck(
@@ -249,22 +289,27 @@ class MultiSourceUNet(UNetBase):
         skip_connections = []
         tabular_embeddings = []
 
+        # iROS early fusion: encode and concatenate with spatial input before the UNet encoder.
+        if self.iros_encoder is not None and x_auxiliary is not None and "iros" in x_auxiliary:
+            iros_emb = self.iros_encoder(x_auxiliary["iros"])  # (B, iros_embed_dim, H, W)
+            x = torch.cat([x, iros_emb], dim=1)  # (B, C + iros_embed_dim, H, W)
+
         # Spatial encoder path.
         if "spatial" in self.encoder:  # type: ignore
             x, skip_connections = self.encoder["spatial"](x)  # type: ignore
 
-        # Extra auxiliary encoders path.
+        # Extra auxiliary encoders path (iROS is already handled above).
         x_wind = None
         if self.auxiliary_input_dims and x_auxiliary is not None:
             for name in self.auxiliary_input_dims:
-                if name in x_auxiliary:
-                    encoder_aux = self.encoder[name]  # type: ignore
-                    encoder_emb = encoder_aux(x_auxiliary[name])
-                    if name == "wind_grid_mixer" or name == "wind_grid_spatial":
-                        # print("====================in wind grid==================")
-                        x_wind = encoder_emb
-                        continue
-                    tabular_embeddings.append(encoder_emb)
+                if name == "iros" or name not in x_auxiliary:
+                    continue
+                encoder_aux = self.encoder[name]  # type: ignore
+                encoder_emb = encoder_aux(x_auxiliary[name])
+                if name == "wind_grid_mixer" or name == "wind_grid_spatial":
+                    x_wind = encoder_emb
+                    continue
+                tabular_embeddings.append(encoder_emb)
 
         # Bottleneck path: concat. all tabular embeds.
         x_fused_tabular = None

@@ -77,6 +77,76 @@ class BaselineEncoder(EncoderBase):
         return x, skip_connections
 
 
+class iROSEncoder(nn.Module):
+    """
+    Independently encode the iROS curve at every pixel.
+
+    Input:
+        x: (B, num_isi_values, H, W)
+
+    Output:
+        embedding: (B, embed_dim, H, W)
+    """
+
+    def __init__(
+        self, iros_mean: torch.Tensor, iros_std: torch.Tensor, in_channels: int = 18, hidden_dim: int = 16, embed_dim: int = 4
+    ) -> None:
+        super().__init__()
+
+        self.in_channels = in_channels
+        self.embed_dim = embed_dim
+        if iros_mean.numel() != in_channels:
+            raise ValueError(f"Expected {in_channels} mean values, got {iros_mean.numel()}")
+
+        if iros_std.numel() != in_channels:
+            raise ValueError(f"Expected {in_channels} std values, got {iros_std.numel()}")
+
+        self.in_channels = in_channels
+        self.embed_dim = embed_dim
+
+        self.iros_mean: torch.Tensor
+        self.iros_std: torch.Tensor
+        self.register_buffer(
+            "iros_mean",
+            iros_mean.reshape(1, in_channels, 1, 1),
+        )
+
+        self.register_buffer(
+            "iros_std",
+            iros_std.reshape(1, in_channels, 1, 1).clamp_min(1e-6),
+        )
+
+        self.encoder = nn.Sequential(
+            nn.Conv2d(in_channels, hidden_dim, kernel_size=1, bias=False),
+            nn.GroupNorm(num_groups=1, num_channels=hidden_dim),
+            nn.SiLU(inplace=True),
+            nn.Conv2d(
+                hidden_dim,
+                embed_dim,
+                kernel_size=1,
+                bias=True,
+            ),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            x: iROS curves with shape (B, 18, H, W).
+
+        Returns:
+            Per-pixel embeddings with shape (B, embed_dim, H, W).
+        """
+        if x.ndim != 4:
+            raise ValueError(f"Expected a 4D tensor (B, C, H, W), got {tuple(x.shape)}")
+
+        if x.shape[1] != self.in_channels:
+            raise ValueError(f"Expected {self.in_channels} iROS channels, " f"got {x.shape[1]}")
+        x = torch.log1p(x.clamp_min(0))
+        x = (x - self.iros_mean) / self.iros_std
+
+        return self.encoder(x)
+
+
 class AttentionPooling(nn.Module):
     def __init__(self, input_dim: int):
         super().__init__()

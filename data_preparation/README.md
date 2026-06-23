@@ -12,7 +12,7 @@ sbatch run_files/generate_grid_data.sh
 
 Instead, you can run the following on an interactive node:
 ```bash
-python -m data_preparation.process_hexels_into_grids --root_dir="/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA"  --save_dir="/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA/data_samples_v3" --modelling_approach=1 --win_h=256 --win_w=256 --overlap_ratio=0.2 --ignition_weighting="distribution" --fuel_representation="raw"
+python -m data_preparation.process_hexels_into_grids --root_dir="/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA"  --save_dir="/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA/data_samples_v3" --modelling_approach=1 --win_h=256 --win_w=256 --overlap_ratio=0.2 --ignition_weighting="distribution" --fuel_grid_representation="raw"
 ```
 
 `--ignition_weighting` controls the ignition channels: `distribution` (default) produces zone-area-weighted 2-channel ignition (human + lightning), while `max` produces the original single-channel max-aggregation.
@@ -55,6 +55,8 @@ Notes: If you used modelling approach 2, set `--save_dir` to `data_samples_appro
 Step 4 (necessary if fuel_representation is '`raw`): Generate iROS values from the FBP package
 
 `python -m data_preparation.tabular.fuel_features.generate_fuel_vectors_national --output-dir /network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA/data_samples_v3`
+
+This saves a csv file in the root_dir called `fbp_rosi_curves_national_fuel.csv`
 
 Step 5 (optional): Precompute target log-stats for `log_standard` normalization (fire intensity / ROS)
 

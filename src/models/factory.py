@@ -1,3 +1,4 @@
+import torch
 import torch.nn as nn
 
 from src.config import ModelConfig
@@ -23,6 +24,8 @@ def build_model(
     model_config: ModelConfig,
     spatial_input_channels: int | None,
     auxiliary_input_dims: dict[str, int] | None = None,
+    iros_mean: torch.Tensor | None = None,
+    iros_std: torch.Tensor | None = None,
 ) -> nn.Module:
     if spatial_input_channels is None:
         raise ValueError("spatial_input_channels must be detected before building the model.")
@@ -31,6 +34,12 @@ def build_model(
     architecture = resolve_model_architecture(model_config)
     auxiliary_requested = "auxiliary" in model_config.input_branches
 
+    # iROS early-fusion params (used by both BaselineUNet and MultiSourceUNet).
+    iros_input_dim = auxiliary_input_dims.get("iros", 0)
+    iros_embed_dim = model_config.auxiliary_embed_dims.get("iros", 4) if iros_input_dim > 0 else 0
+
+    # If iROS is the only auxiliary dim and no explicit multi-source architecture is requested,
+    # BaselineUNet can handle it via its built-in iROS encoder.
     if architecture in BASELINE_UNET_NAMES:
         if auxiliary_requested:
             raise ValueError("BaselineUNet cannot consume requested auxiliary features. Use architecture='auto' or 'multi_source_unet'.")
@@ -43,6 +52,10 @@ def build_model(
             use_transpose_conv=model_config.use_transpose_conv,
             use_activation_after_upsampling=model_config.use_activation_after_upsampling,
             use_coordconv=model_config.use_coordconv,
+            iros_input_dim=iros_input_dim,
+            iros_embed_dim=iros_embed_dim,
+            iros_mean=iros_mean,
+            iros_std=iros_std,
         )
 
     if architecture in MULTI_SOURCE_UNET_NAMES:
@@ -61,6 +74,8 @@ def build_model(
             auxiliary_embed_dims=model_config.auxiliary_embed_dims,
             auxiliary_feature_encoder_poolings=model_config.auxiliary_feature_encoder_poolings,
             use_coordconv=model_config.use_coordconv,
+            iros_mean=iros_mean,
+            iros_std=iros_std,
         )
 
     supported = sorted(BASELINE_UNET_NAMES | MULTI_SOURCE_UNET_NAMES | {"auto"})
