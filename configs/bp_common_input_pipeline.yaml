@@ -72,7 +72,6 @@ data:
         augmentation_prob: 0.0
         terrain_derivatives: ["slope", "aspect_sin", "aspect_cos"]
         bp_nodata_as_zero: true
-        input_mask_policy: "input_only"
 
     - name: "spatialized_weather"
       params:

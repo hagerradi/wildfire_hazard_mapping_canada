@@ -30,9 +30,6 @@ class GridSource(DataSource):
     """
 
     _ALLOWED_TERRAIN_DERIVATIVES = {"slope", "aspect_sin", "aspect_cos"}
-    # Input validity is determined solely by the input channels' own finiteness; target coverage never
-    # restricts which pixels count as valid model inputs. "input_only" is the only supported policy.
-    _ALLOWED_INPUT_MASK_POLICIES = {"input_only"}
 
     def __init__(
         self,
@@ -81,15 +78,8 @@ class GridSource(DataSource):
         self.terrain_derivatives = params.terrain_derivatives
         self.terrain_cell_size_m = params.terrain_cell_size_m
         self.bp_nodata_as_zero = params.bp_nodata_as_zero
-        self.input_mask_policy = params.input_mask_policy
         self.num_fuel_classes = int(max(FUEL_GROUP_MAP.values()) + 1)
         self.elevation_input_channel_index: int | None = None
-
-        if self.input_mask_policy not in self._ALLOWED_INPUT_MASK_POLICIES:
-            raise ValueError(
-                f"Invalid input_mask_policy={self.input_mask_policy!r}. "
-                f"Allowed options are: {sorted(self._ALLOWED_INPUT_MASK_POLICIES)}"
-            )
 
         unknown_terrain_derivatives = set(self.terrain_derivatives) - self._ALLOWED_TERRAIN_DERIVATIVES
         if unknown_terrain_derivatives:
