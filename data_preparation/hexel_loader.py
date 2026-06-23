@@ -10,6 +10,7 @@ from data_preparation.spatial import NODATA, load_fuel_grid, load_ignition_grid,
 from data_preparation.utils import feature_names, feature_names_weighted_ignition
 
 IGNITION_WEIGHTING_CHOICES = ("max", "distribution")
+FUEL_GRID_CHOICES = ("raw", "group")
 
 
 def get_num_channels_array(arr: np.ndarray) -> int:
@@ -40,6 +41,7 @@ def load_spatial_features_per_hexel(
     modelling_approach: int = 1,
     mask_scope: str = "actual",
     ignition_weighting: str = "distribution",
+    fuel_representation: str = "raw"
 ) -> tuple[np.ndarray | None, np.ndarray | None, dict[int, tuple[int, int]] | None]:
     """
     Load all data (features and output) per hexel
@@ -55,6 +57,9 @@ def load_spatial_features_per_hexel(
     """
     if ignition_weighting not in IGNITION_WEIGHTING_CHOICES:
         raise ValueError(f"ignition_weighting must be one of {IGNITION_WEIGHTING_CHOICES}, got {ignition_weighting!r}.")
+
+    if fuel_representation not in FUEL_GRID_CHOICES:
+        raise ValueError(f"fuel_representation must be one of {FUEL_GRID_CHOICES}, got {fuel_representation!r}.")
 
     use_distribution = ignition_weighting == "distribution"
 
@@ -113,7 +118,8 @@ def load_spatial_features_per_hexel(
 
     elevation_grid, reference_profile = load_spatial_raster(path=all_paths.elevation_grid(hex_id=hex_id), mask_path=scope_mask_path)
     # load all common grids on the elevation reference grid
-    fuel_grid = load_fuel_grid(root_dir=root_dir, hex_id=hex_id, reference_profile=reference_profile, mask_scope=scope)
+    fuel_grid = load_fuel_grid(root_dir=root_dir, hex_id=hex_id, reference_profile=reference_profile,
+                               fuel_representation=fuel_representation, mask_scope=scope)
 
     firezones_grid, _ = load_spatial_raster(
         path=all_paths.firezones_grid(hex_id=hex_id),

@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from data_preparation.hexel_loader import IGNITION_WEIGHTING_CHOICES, load_spatial_features_per_hexel
+from data_preparation.hexel_loader import FUEL_GRID_CHOICES, IGNITION_WEIGHTING_CHOICES, load_spatial_features_per_hexel
 from data_preparation.paths import MASK_SCOPE_CHOICES, prepared_mask_scope
 from data_preparation.spatial import NODATA
 from data_preparation.utils import find_hex_ids, get_processed_hex_ids
@@ -121,6 +121,7 @@ def generate_data_samples(
     num_tasks: int = 1,
     mask_scope: str = "actual",
     ignition_weighting: str = "distribution",
+    fuel_representation: str = "raw",
     overwrite: bool = False,
 ):
     scope = prepared_mask_scope(mask_scope)
@@ -160,6 +161,7 @@ def generate_data_samples(
             modelling_approach=modelling_approach,
             mask_scope=scope,
             ignition_weighting=ignition_weighting,
+            fuel_representation=fuel_representation,
         )
         if (stacked_feats is None) or (mask is None):
             print(f"================Failed for hex {hex_id}===================")
@@ -197,6 +199,13 @@ def main():
         choices=IGNITION_WEIGHTING_CHOICES,
         default="distribution",
         help="'distribution' (default) for zone-area-weighted 2-channel ignition or 'max' for the original max-aggregation (1 channel).",
+    )
+    parser.add_argument(
+        "--fuel_grid_representation",
+        choices=FUEL_GRID_CHOICES,
+        default="raw",
+        help="'group' (default) for grouping similar fuel classes to use with one-hot encoding "
+        "or 'raw' to use along with iROS values",
     )
     parser.add_argument(
         "--overwrite",

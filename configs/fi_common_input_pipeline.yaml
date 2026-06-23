@@ -58,7 +58,7 @@ data:
         target_name: "fi"
         out_norm: "log_standard"
         fuel_feats_encoding: "one_hot"
-        normalize_fuel_feats_ordinal: true
+        normalize_fuel_feats_ordinal: false # set to true if using ordinal
         transforms_list: []
         augmentation_prob: 0.0
         terrain_derivatives: ["slope", "aspect_sin", "aspect_cos"]
@@ -145,3 +145,11 @@ metrics:
   - "iou_top10"
   - "auc_iou_top10"
   - "auc_iou_full"
+
+data_prep:
+  modelling_approach: 1
+  win_h: 256
+  win_w: 256
+  overlap_ratio: 0.2
+  ignition_weighting: "distribution" # ("max", "distribution")
+  fuel_representation: "raw" # ("raw", "group")

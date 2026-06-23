@@ -1,5 +1,7 @@
 # Data preparation pipeline
 
+## ALWAYS UPDATE configs/CONFIG_FILE.yaml with the correct configurations under "data_prep"
+
 Step 1: Process hexel data into multiple square patches, which will be our data samples:
 
 Note: If you want to run this in the cluster using SLURM array jobs, you can modify the `run_files/generate_grid_data.sh` by changing the save directory path and run the following in the terminal (from the main directory)
@@ -10,10 +12,12 @@ sbatch run_files/generate_grid_data.sh
 
 Instead, you can run the following on an interactive node:
 ```bash
-python -m data_preparation.process_hexels_into_grids --root_dir="/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA"  --save_dir="/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA/data_samples_v1" --modelling_approach=1 --win_h=256 --win_w=256 --overlap_ratio=0.2 --ignition_weighting="distribution"
+python -m data_preparation.process_hexels_into_grids --root_dir="/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA"  --save_dir="/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA/data_samples_v3" --modelling_approach=1 --win_h=256 --win_w=256 --overlap_ratio=0.2 --ignition_weighting="distribution" --fuel_representation="raw"
 ```
 
 `--ignition_weighting` controls the ignition channels: `distribution` (default) produces zone-area-weighted 2-channel ignition (human + lightning), while `max` produces the original single-channel max-aggregation.
+
+`--fuel_representation` controls the fuel grid representation: `raw` (default) produces raw class values, while `group` groups similar classes togther using `FUEL_GROUP_MAP` and saves the grid as 0-N values.
 
 Step 2: Create training, validation and test splits.
 
@@ -48,7 +52,11 @@ python -m data_preparation.process_tabular_data \
 
 Notes: If you used modelling approach 2, set `--save_dir` to `data_samples_approach_2`. The `process_tabular_data` script will look for the fire-size file in `--root_dir` first, then in `--save_dir`; ensure `df_fire_fru.csv` is present in one of those places.
 
-Step 4 (optional): Precompute target log-stats for `log_standard` normalization (fire intensity / ROS)
+Step 4 (necessary if fuel_representation is '`raw`): Generate iROS values from the FBP package
+
+`python -m data_preparation.tabular.fuel_features.generate_fuel_vectors_national --output-dir /network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA/data_samples_v3`
+
+Step 5 (optional): Precompute target log-stats for `log_standard` normalization (fire intensity / ROS)
 
 The `log_standard` target normalization needs train-only log1p mean/std constants. These are otherwise recomputed by scanning the raw rasters on every run; computing them once offline writes a `target_log_stats.json` into the `save_dir` so training/eval/inference just read the cached values.
 

@@ -1,5 +1,5 @@
 ############################################################
-#### Supports BurnP3
+#### Supports BurnP3+
 #### WARNING: lots of AI generated code
 # requirments: install R, open R terminal then,
 # remotes::install_github("cffdrs/cffdrs_r") # nolint: commented_code_linter.
@@ -9,12 +9,12 @@
 # To run this file: source('data_preparation/feature_processing/fuel_features/compute_fbp_features.R') # nolint
 # compute_fbp_features.R: main R script to generate features of fuel, at the raster level # nolint
 # raster inputs required:
-# elevation: elev.asc
-# FBP: fbp.asc
-# Weather - ffmc.asc
-# Weather - bui.asc
-# Weather - ws.asc
-# Weather - wd.asc
+# elevation: elev.tif
+# FBP: fbp.tif
+# Weather - ffmc.tif
+# Weather - bui.tif
+# Weather - ws.tif
+# Weather - wd.tif
 # Constant values required:
 # julien_day: julien day (value from the log file) - median day of a season
 ############################################################
@@ -24,16 +24,16 @@ rm(list = ls())
 # ---------------- CONFIG -----------------
 
 input_dir <- "data/fuel_input_data"
-base_dir <- "../yan_bp3/hex05/mapped_inputs"
+base_dir <- "../burnp3plus/hex05/spatial/"
 
-dem_path  <- file.path(base_dir, "elev.asc")
-fuel_path <- file.path(base_dir, "fbp.asc")
+dem_path  <- file.path(base_dir, "hex05_dem.tif")
+fuel_path <- file.path(base_dir, "hex05_fbp.tif")
 
 # these are rasters of mean of weather list projected on fire zones
-ffmc_rast_path <- file.path(input_dir, "ffmc.asc")
-bui_rast_path  <- file.path(input_dir, "bui.asc")
-ws_rast_path   <- file.path(input_dir, "ws.asc")
-wd_rast_path   <- file.path(input_dir, "wd.asc")
+ffmc_rast_path <- file.path(input_dir, "ffmc.tif")
+bui_rast_path  <- file.path(input_dir, "bui.tif")
+ws_rast_path   <- file.path(input_dir, "ws.tif")
+wd_rast_path   <- file.path(input_dir, "wd.tif")
 
 mixedwood_season <- "green"
 
@@ -41,6 +41,7 @@ mixedwood_season <- "green"
 
 library(terra)
 library(cffdrs)
+library(sf)
 
 cat("cffdrs version:", as.character(packageVersion("cffdrs")), "\n\n")
 
@@ -53,24 +54,52 @@ load_raster_fix_rows <- function(path, expected_rows) {
   crop(r, e)
 }
 # MANUAL FIX: FUEL is loaded with extra row by terra.
-fuel <- load_raster_fix_rows(fuel_path, expected_rows = 1669)
-
-dem_raw <- rast(dem_path)
+# fuel <- load_raster_fix_rows(fuel_path, expected_rows = 1669)
+fuel <- terra::rast(fuel_path)
+dem <- rast(dem_path)
 fuel_raw <- rast(fuel_path)
+
+cat("Fuel dimensions:\n")
+print(dim(fuel))
+print(ext(fuel))
+print(res(fuel))
+
+cat("DEM dimensions:\n")
+print(dim(dem))
+print(ext(dem))
+print(res(dem))
+
 if (!hasValues(fuel)) stop("Fuel raster has no values.")
-if (!hasValues(dem_raw)) stop("DEM raster has no values.")
+if (!hasValues(dem)) stop("DEM raster has no values.")
 
 # -----------------------------------------------------
 # Project DEM EXACTLY to fuel
 # -----------------------------------------------------
 
-cat("Aligning DEM to fuel...\n")
-dem <- project(dem_raw, fuel)
-stopifnot(all(dim(fuel) == dim(dem)))
+# cat("Aligning DEM to fuel...\n")
+# dem <- project(dem_raw, fuel)
+# stopifnot(all(dim(fuel) == dim(dem)))
 
-if (!compareGeom(fuel, dem, stopOnError = FALSE)) {
-  stop("DEM still does not match fuel after projection.")
+# if (!compareGeom(fuel, dem, stopOnError = FALSE)) {
+#   stop("DEM still does not match fuel after projection.")
+# }
+
+# ---------------- Julian day raster -----------------
+
+season_day_map <- list(
+  green    = 152,  # June 1
+  leafless = 121   # May 1
+)
+
+julien_day <- season_day_map[[mixedwood_season]]
+
+if (is.null(julien_day)) {
+  stop(paste("Unknown mixedwood_season:", mixedwood_season))
 }
+
+dj_rast <- fuel
+terra::values(dj_rast) <- julien_day
+names(dj_rast) <- "Dj"
 
 # ---------------- Compute slope and aspect -----------------
 
@@ -87,7 +116,7 @@ aspect_deg <- terrain(dem, v = "aspect", unit = "degrees")
 aspect_deg[is.na(aspect_deg)] <- 0
 # ---------------- Check lengths -----------------
 
-ncells <- length(values(fuel))
+ncells <- terra::ncell(fuel)
 if (is.na(ncells) || ncells == 0) stop("Fuel raster failed to load or is empty.") # nolint
 
 if (length(slope_vals) != ncells) {
@@ -111,6 +140,10 @@ if (!compareGeom(fuel, ffmc_rast, stopOnError = FALSE)) {
   stop("FFMC still does not match fuel after resampling/projection.")
 }
 
+buieff_rast <- fuel
+terra::values(buieff_rast) <- 0
+names(buieff_rast) <- "BUIEff"
+
 # Name weather & slope layers correctly
 names(ffmc_rast) <- "FFMC"
 names(bui_rast)  <- "BUI"
@@ -118,9 +151,9 @@ names(ws_rast)   <- "WS"
 names(wd_rast)   <- "WD"
 names(slope_pct) <- "GS"
 names(aspect_deg) <- "Aspect"
+names(buieff_rast) <- "BUIEff"
 
 # ---------------- LAT & LONG rasters from fuel + .prj -----------------
-library(sf)
 
 if (is.na(terra::crs(fuel))) {
   stop("Fuel raster has no CRS. Check that fbp.prj is present and readable.")
@@ -136,78 +169,137 @@ pts <- sf::st_as_sf(
   crs = terra::crs(fuel)  # WKT string from your PROJCRS
 )
 
-# 3) Reproject to WGS84 (EPSG:4326)
-pts_ll <- sf::st_transform(pts, 4326)
+# 3) Lat / lon rasters
+# ---------------- LAT & LONG rasters from fuel CRS -----------------
 
-# 4) Extract lon/lat coordinates
-lonlat <- sf::st_coordinates(pts_ll)   # matrix [ncell x 2], cols: X=lon, Y=lat
+if (terra::crs(fuel) == "" || is.na(terra::crs(fuel))) {
+  stop("Fuel raster has no CRS. Cannot compute LAT/LONG.")
+}
 
-# 5) Build LONG and LAT SpatRasters aligned with 'fuel'
-long_rast <- fuel
-lat_rast  <- fuel
+make_lonlat_rasters <- function(template_rast) {
+  cells <- 1:terra::ncell(template_rast)
 
-terra::values(long_rast) <- lonlat[, 1]  # longitude
-terra::values(lat_rast)  <- lonlat[, 2]  # latitude
+  # Cell-center coordinates in the fuel raster CRS
+  xy <- terra::xyFromCell(template_rast, cells)
 
-names(long_rast) <- "LONG"
-names(lat_rast)  <- "LAT"
+  pts <- sf::st_as_sf(
+    data.frame(cell = cells, x = xy[, 1], y = xy[, 2]),
+    coords = c("x", "y"),
+    crs = terra::crs(template_rast)
+  )
 
+  # FBP expects LAT/LONG in decimal degrees, EPSG:4326
+  pts_ll <- sf::st_transform(pts, 4326)
+  lonlat <- sf::st_coordinates(pts_ll)
+
+  long_rast <- template_rast
+  lat_rast  <- template_rast
+
+  terra::values(long_rast) <- lonlat[, 1]
+  terra::values(lat_rast)  <- lonlat[, 2]
+
+  names(long_rast) <- "LONG"
+  names(lat_rast)  <- "LAT"
+
+  list(
+    LONG = long_rast,
+    LAT = lat_rast
+  )
+}
+
+lonlat_rasters <- make_lonlat_rasters(fuel)
+
+long_rast <- lonlat_rasters$LONG
+lat_rast  <- lonlat_rasters$LAT
 # ---------------- Fuel lookup -----------------
 
-mixedwood_type_for <- function(default) {
-  if (mixedwood_season == "leafless") "M-1"
-  else if (mixedwood_season == "green") "M-2"
-  else default
+library(dplyr)
+library(stringr)
+
+fuel_lookup_csv <- "../burnp3plus/hex05/tabular/hex05_FuelTypes.csv"
+
+mixedwood_type_for <- function(default = "M-2") {
+  if (mixedwood_season == "leafless") {
+    return("M-1")
+  }
+
+  if (mixedwood_season == "green") {
+    return("M-2")
+  }
+
+  return(default)
 }
-season_day_map <- list(
-  green    = 152,  # June 1
-  leafless = 121   # May 1
+
+extract_pc <- function(description) {
+  pc <- stringr::str_match(description, "\\((\\d+)\\s*PC\\)")[, 2]
+  ifelse(is.na(pc), NA_real_, as.numeric(pc))
+}
+
+normalize_fuel_type <- function(description) {
+  description <- toupper(description)
+
+  dplyr::case_when(
+    description == "C-1" ~ "C-1",
+    description == "C-2" ~ "C-2",
+    description == "C-3" ~ "C-3",
+    description == "C-4" ~ "C-4",
+    description == "C-5" ~ "C-5",
+    description == "C-6" ~ "C-6",
+    description == "C-7" ~ "C-7",
+
+    description == "D-1" ~ "D-1",
+    description == "D-2" ~ "D-1",
+    description == "D-1/D-2" ~ "D-1",
+
+    description == "O-1A" ~ "O-1A",
+    description == "O-1B" ~ "O-1B",
+
+    description %in% c("NON-FUEL", "NF") ~ "NF",
+    description == "WA" ~ "WA",
+
+    stringr::str_detect(description, "^M-1\\s*\\(") ~ "M-1",
+    stringr::str_detect(description, "^M-2\\s*\\(") ~ "M-2",
+    stringr::str_detect(description, "^M-1/M-2\\s*\\(") ~ mixedwood_type_for("M-2"),
+
+    description == "M-1" ~ "M-1",
+    description == "M-2" ~ "M-2",
+    description == "M-1/M-2" ~ mixedwood_type_for("M-2"),
+
+    TRUE ~ NA_character_
+  )
+}
+
+load_fuel_lookup <- function(fuel_lookup_csv) {
+  fuel_table <- read.csv(
+  fuel_lookup_csv,
+  stringsAsFactors = FALSE,
+  check.names = FALSE
 )
-julien_day <- season_day_map[[mixedwood_season]]
 
-# Julian day raster
-dj_rast <- fuel
-values(dj_rast) <- julien_day
-names(dj_rast)  <- "Dj"
+  fuel_table <- fuel_table %>%
+    mutate(
+      ID = as.character(ID),
+      FuelType = normalize_fuel_type(Description),
+      PC = extract_pc(Description)
+    ) %>%
+    filter(!is.na(FuelType)) %>%
+    select(ID, FuelType, PC)
 
-fuel_lookup <- list(
-  # ---------------- Conifer (C) ----------------
-  "1"  = list(FuelType = "C-1", PC = NA),  # C-1 Spruce-Lichen Woodland
-  "2"  = list(FuelType = "C-2", PC = NA),  # C-2 Boreal Spruce
-  "3"  = list(FuelType = "C-3", PC = NA),  # C-3 Mature Jack / Lodgepole Pine
-  "4"  = list(FuelType = "C-4", PC = NA),  # C-4 Immature Jack / Lodgepole Pine
-  "5"  = list(FuelType = "C-5", PC = NA),  # C-5 Red and White Pine
-  "6"  = list(FuelType = "C-6", PC = NA),  # C-6 Conifer Plantation
-  "7"  = list(FuelType = "C-7", PC = NA),  # C-7 Ponderosa Pine / Douglas-fir
+  fuel_lookup <- setNames(
+    lapply(seq_len(nrow(fuel_table)), function(i) {
+      list(
+        FuelType = fuel_table$FuelType[i],
+        PC = fuel_table$PC[i]
+      )
+    }),
+    fuel_table$ID
+  )
 
-  # ---------------- Deciduous (D) ----------------
-  "11" = list(FuelType = "D-1", PC = NA),       # D-1 Leafless Aspen
-  "12" = list(FuelType = "D-1", PC = NA),       # D-2 Green Aspen (BUI thresholding handled elsewhere if needed) # nolint
-  "13" = list(FuelType = "D-1", PC = NA),       # D-1/D-2 Aspen -> map to D-1 for FBP # nolint
+  fuel_lookup
+}
 
-  # ---------------- Grass (O) ----------------
-  "31" = list(FuelType = "O-1A", PC = NA),      # O-1a Matted Grass
-  "32" = list(FuelType = "O-1B", PC = NA),      # O-1b Standing Grass
-
-  # ---------------- Non-fuel ----------------
-  "101" = list(FuelType = "NF", PC = NA),         # Non-fuel
-  "102" = list(FuelType = "WA", PC = NA),         # Water
-  "106" = list(FuelType = "NF", PC = NA),         # Urban
-
-  # ---------------- Mixedwood (M) ----------------
-  # Note: codes that are explicitly M-1 or M-2 keep that,
-  # codes that are M-1/M-2 use mixedwood_type_for() so
-  # they switch between M-1 / M-2 based on mixedwood_season.
-  "425" = list(FuelType = "M-1",                  PC = 25),  # M-1 leafless (25% conifer) # nolint
-  "525" = list(FuelType = "M-2",                  PC = 25),  # M-2 green (25% conifer) # nolint
-
-  "625" = list(FuelType = mixedwood_type_for("M-2"), PC = 25),  # M-1/M-2 (25% conifer) # nolint
-  "635" = list(FuelType = mixedwood_type_for("M-2"), PC = 35),  # M-1/M-2 (35% conifer) # nolint
-  "650" = list(FuelType = mixedwood_type_for("M-2"), PC = 50),  # M-1/M-2 (50% conifer) # nolint
-  "665" = list(FuelType = mixedwood_type_for("M-2"), PC = 65)   # M-1/M-2 (65% conifer) # nolint
-)
-fuel_vals <- values(fuel)
-
+fuel_lookup <- load_fuel_lookup(fuel_lookup_csv)
+fuel_vals <- terra::values(fuel, mat = FALSE)
 # ---------------- Map fuel to FBP (per cell) -----------------
 FuelType <- rep(NA_character_, ncells) # nolint
 PC       <- rep(NA_real_,      ncells) # nolint
@@ -249,20 +341,53 @@ values(fuel_rast)[!is.na(FuelType)] <- FuelType[!is.na(FuelType)]
 fuel_rast <- as.factor(fuel_rast)
 names(fuel_rast) <- "FuelType"
 
+for (r_name in c("ffmc_rast", "bui_rast", "ws_rast", "wd_rast")) {
+  r <- get(r_name)
+
+  if (!compareGeom(fuel, r, stopOnError = FALSE)) {
+    stop(paste(r_name, "does not match fuel geometry."))
+  }
+}
+
+
 # Build the full input SpatRaster for fbpRaster
+# Option 1
+# fbp_input_rast <- c(
+#   fuel_rast,
+#   lat_rast,
+#   long_rast,
+#   ffmc_rast,
+#   bui_rast,
+#   buieff_rast,
+#   ws_rast,
+#   wd_rast,
+#   slope_pct,
+#   dj_rast,
+#   aspect_deg,
+#   pc_rast
+# )
+# Option 2
+# fbp_input_rast <- c(
+#   fuel_rast,
+#   lat_rast,
+#   long_rast,
+#   ffmc_rast,
+#   buieff_rast,
+#   ws_rast,
+#   slope_pct,
+#   dj_rast,
+#   aspect_deg)
+# Option 3
 fbp_input_rast <- c(
   fuel_rast,
   lat_rast,
   long_rast,
-  ffmc_rast,
-  bui_rast,
-  ws_rast,
-  wd_rast,
-  slope_pct,
-  dj_rast,
-  aspect_deg,
-  pc_rast
+  buieff_rast
 )
+# Option 4
+# fbp_input_rast <- c(
+#   fuel_rast
+# )
 
 # Sanity check
 if (any(is.na(values(fuel_rast)))) {
@@ -292,16 +417,22 @@ ffmc_vals <- values(ffmc_rast)
 bui_vals <- values(bui_rast)
 ws_vals <- values(ws_rast)
 wd_vals <- values(wd_rast)
+lat_vals <- terra::values(lat_rast, mat = FALSE)
+long_vals <- terra::values(long_rast, mat = FALSE)
+aspect_vals <- terra::values(aspect_deg, mat = FALSE)
 
-valid_cell <- !is.na(FuelType) &              # have a mapped fuel type
-              !is.na(ffmc_vals) & # nolint
-              !is.na(bui_vals)  &
-              !is.na(ws_vals)   &
+valid_cell <- !is.na(FuelType) &
+              !is.na(lat_vals) &
+              !is.na(long_vals) &
+              !is.na(ffmc_vals) &
+              !is.na(bui_vals) &
+              !is.na(ws_vals) &
               !is.na(wd_vals) &
-              !is.na(slope_vals)
+              !is.na(slope_vals) &
+              !is.na(aspect_vals)
 
 # Do the same for other outputs if you want consistency:
-for (v in c("ROS", "HFI", "CFB", "SFC", "TFC")) {
+for (v in c("ROS", "HFI")) {
   if (!v %in% names(res_rast)) next
   vals <- values(res_rast[[v]])
   vals[!valid_cell] <- NA
@@ -317,7 +448,7 @@ for (v in fbp_vars) {
   }
 
   out_r   <- res_rast[[v]]
-  out_path <- file.path(input_dir, paste0(v, ".asc"))
+  out_path <- file.path(input_dir, paste0(v, ".tif"))
 
   writeRaster(out_r, out_path, overwrite = TRUE, NAflag = -9999)
   cat("Wrote", v, "to", out_path, "\n")
@@ -363,33 +494,32 @@ idx_test <- which(
 
 idx_test <- idx_test[seq_len(min(5, length(idx_test)))]
 
-cat("Comparing fbp() vs fbpRaster() for", length(idx_test), "pixels\n")
+# cat("Comparing fbp() vs fbpRaster() for", length(idx_test), "pixels\n")
 
-wd_vals   <- values(wd_rast)   # add this once, near other *_vals
-aspect_vals <- values(aspect_deg)  # numeric vector length = ncells
+# wd_vals   <- values(wd_rast)   # add this once, near other *_vals
+# aspect_vals <- values(aspect_deg)  # numeric vector length = ncells
 
-for (i in idx_test) {
-  pixel_df <- extract(fbp_input_rast, i)   # 'i' is a cell index
-  pixel_df <- pixel_df[1, ]               # drop row index column
+# for (i in idx_test) {
+#   pixel_df <- terra::extract(fbp_input_rast, i, ID = FALSE)
 
-  pixel_df$FuelType <- "D-1"
+#   res_df <- fbp(pixel_df, output = "Primary")
 
-  res_df   <- fbp(pixel_df, output = "Primary")
-  ros_df  <- res_df$ROS
-  sfc_df  <- res_df$SFC
+#   ros_df <- res_df$ROS
+#   sfc_df <- res_df$SFC
 
-  ros_rast <- values(res_rast[["ROS"]])[i]
-  sfc_rast <- values(res_rast[["SFC"]])[i]
+#   ros_rast <- terra::values(res_rast[["ROS"]], mat = FALSE)[i]
+#   sfc_rast <- terra::values(res_rast[["SFC"]], mat = FALSE)[i]
 
-  cat("Pixel i =", i, "\n")
-  print(pixel_df)
-  cat(
-    "i =", i,
-    "| FuelType =", FuelType[i],
-    "\n",
-    "  fbp()      ROS =", ros_df, "  SFC =", sfc_df, "\n",
-    "  fbpRaster  ROS =", ros_rast, "  SFC =", sfc_rast, "\n\n"
-  )
-}
+#   cat("Pixel i =", i, "\n")
+#   print(pixel_df)
+
+#   cat(
+#     "i =", i,
+#     "| FuelType =", pixel_df$FuelType,
+#     "\n",
+#     "  fbp()      ROS =", ros_df, "  SFC =", sfc_df, "\n",
+#     "  fbpRaster  ROS =", ros_rast, "  SFC =", sfc_rast, "\n\n"
+#   )
+# }
 
 #TODO: fbp and fbp-raster outputs don't exactly match at the pixel level.

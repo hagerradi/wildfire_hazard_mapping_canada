@@ -67,7 +67,7 @@ data:
         target_name: "bp"
         out_norm: "min_max"
         fuel_feats_encoding: "one_hot"
-        normalize_fuel_feats_ordinal: true
+        normalize_fuel_feats_ordinal: false # set to true if using ordinal
         transforms_list: []
         augmentation_prob: 0.0
         terrain_derivatives: ["slope", "aspect_sin", "aspect_cos"]
@@ -165,3 +165,5 @@ data_prep:
   win_h: 256
   win_w: 256
   overlap_ratio: 0.2
+  ignition_weighting: "distribution" # ("max", "distribution")
+  fuel_representation: "raw" # ("raw", "group")
