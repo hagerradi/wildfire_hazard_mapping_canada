@@ -13,6 +13,11 @@ from src.datasets.sources.base import DataSource
 
 
 def _integer_zone_ids_from_series(zone_ids: pd.Series, *, column_name: str, source_name: str) -> pd.Series:
+    """Coerce a zone-id series to a nullable ``Int64`` series, validating that values are integers.
+
+    Missing entries are preserved as ``pd.NA``. Raises ``ValueError`` if any present value is
+    non-numeric, non-finite, or not (approximately) an integer.
+    """
     numeric_zone_ids = pd.to_numeric(zone_ids, errors="coerce")
     invalid_numeric_mask = zone_ids.notna() & numeric_zone_ids.isna()
     if invalid_numeric_mask.any():
@@ -225,6 +230,12 @@ class SpatializedTabularSource(DataSource):
             )
 
     def _global_fill_from_stats(self, stats_path: str | Path) -> np.ndarray:
+        """Load the precomputed global-fill vector from a JSON imputation-stats file.
+
+        Resolves ``stats_path`` relative to ``root_dir`` when not absolute, checks that the file's
+        ``feature_names_list`` matches this source, and returns the ``global_fill`` array. Raises if
+        the file is missing, feature names disagree, or the values are the wrong shape or non-finite.
+        """
         path = Path(stats_path)
         if not path.is_absolute():
             path = Path(self.root_dir) / path
@@ -244,6 +255,13 @@ class SpatializedTabularSource(DataSource):
         return values
 
     def _global_fill(self, df: pd.DataFrame, train_zones: tuple[int, ...]) -> np.ndarray:
+        """Compute the per-feature fill vector used to impute pixels whose zone is absent from the LUT.
+
+        Returns zeros unless ``missing_value_strategy == "global_mean"``. When a precomputed
+        ``imputation_stats_path`` is configured it is used directly; otherwise the fill is the mean of
+        each feature over rows belonging to ``train_zones`` only (train-split to avoid leakage). Raises
+        if no rows match the training zones or the resulting means are non-finite.
+        """
         if self.missing_value_strategy != "global_mean":
             return np.zeros(len(self.feature_names_list), dtype=np.float32)
         if self.imputation_stats_path:
