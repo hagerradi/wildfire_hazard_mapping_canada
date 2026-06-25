@@ -93,9 +93,12 @@ class SpatializedTabularSource(DataSource):
     def _build_lut(self, df: pd.DataFrame) -> dict[int, np.ndarray]:
         """Aggregate every zone present in the tabular source into a zone -> feature-vector LUT.
 
-        The LUT is built from all rows: a zone's weather aggregate is an exogenous input covariate
-        (never a target), so including every zone is leak-safe under spatial splits and lets held-out
-        zones use their own real values instead of an imputed fill.
+        Built from all rows (not just training zones) so that zones absent from the training patches
+        still resolve to their own aggregated values instead of an imputed fill; the missing-firezone
+        fill/mask then applies only to zones with no row at all. Whether aggregating across all rows is
+        leak-free depends on the source and the split: it holds for exogenous covariates under spatial
+        (zone/hex) splits, whereas a temporal split or a target-derived covariate could leak. Callers
+        are responsible for ensuring the configured columns are appropriate for the split in use.
         """
         aggregations = {
             "mean": "mean",
@@ -106,10 +109,8 @@ class SpatializedTabularSource(DataSource):
         if self.aggregation not in aggregations:
             raise ValueError(f"Unsupported spatialized tabular aggregation {self.aggregation!r}. Supported values: {sorted(aggregations)}")
 
-        normalized_df = df.copy()
-        zone_id_key = "__spatialized_tabular_zone_id"
-        normalized_df[zone_id_key] = self._integer_zone_ids_from_csv(df[self.zone_id_col])
-        grouped = normalized_df.groupby(zone_id_key, dropna=True)[self.feature_names_list].agg(aggregations[self.aggregation])
+        zone_ids = self._integer_zone_ids_from_csv(df[self.zone_id_col])
+        grouped = df.groupby(zone_ids, dropna=True)[self.feature_names_list].agg(aggregations[self.aggregation])
         grouped = grouped.dropna(how="any")
         return {int(zone): row.to_numpy(dtype=np.float32) for zone, row in grouped.iterrows()}
 
