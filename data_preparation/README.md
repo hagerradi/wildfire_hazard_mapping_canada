@@ -27,7 +27,7 @@ Step 2: Create training, validation and test splits.
 - Finally, run the following with the decided splits
 
 ```bash
-python -m data_preparation.split_data --data_dir="/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA/data_samples_v1" --val_hex_id 02 23 33 18 46 --test_hex_id 01 12 39 16 49
+python -m data_preparation.split_data --data_dir="/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA/data_samples_v3" --val_hex_id 02 23 33 18 46 --test_hex_id 01 12 39 16 49
 ```
 
 Step 3: Create tabular files (weather + fire-size)
@@ -42,7 +42,7 @@ To build the tabular files, run the following:
 ```bash
 python -m data_preparation.process_tabular_data \
 	--root_dir="/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA" \
-	--save_dir="/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA/data_samples_v1" \
+	--save_dir="/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA/data_samples_v3" \
 	--weather_output_file="weather_table_processed.csv" \
 	--fire_size_input_file="df_fire_fru.csv" \
 	--fire_size_output_file="df_fire_fru_processed.csv" \
@@ -52,8 +52,9 @@ python -m data_preparation.process_tabular_data \
 
 Notes: If you used modelling approach 2, set `--save_dir` to `data_samples_approach_2`. The `process_tabular_data` script will look for the fire-size file in `--root_dir` first, then in `--save_dir`; ensure `df_fire_fru.csv` is present in one of those places.
 
-Step 4 (necessary if fuel_representation is '`raw`): Generate iROS values from the FBP package
+Step 4 (necessary if fuel_grid_representation is '`raw`): Generate iROS values from the FBP package
 
+Or do it locally and copy to the cluster (easier R support)
 `python -m data_preparation.tabular.fuel_features.generate_fuel_vectors_national --output-dir /network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA/data_samples_v3`
 
 This saves a csv file in the root_dir called `fbp_rosi_curves_national_fuel.csv`
@@ -65,7 +66,7 @@ The `log_standard` target normalization needs train-only log1p mean/std constant
 ```bash
 python -m data_preparation.compute_target_log_stats \
 	--raw_data_dir="/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA" \
-	--save_dir="/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA/data_samples_v1" \
+	--save_dir="/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA/data_samples_v3" \
 	--train_split="train_indices.csv" \
 	--output_types fire_intensity fire_ros
 ```

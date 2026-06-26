@@ -289,6 +289,44 @@ def _combine_season_curves(
     return weighted_ros
 
 
+def _build_season_mapping_from_greenup(greenup_path: str | Path) -> dict[str, str]:
+    """
+    Build a season-name -> ROS SeasonState mapping from a GreenUp CSV.
+
+    The CSV must have columns ``Season`` and ``GreenUp``.  A ``GreenUp``
+    value of ``"Yes"`` (case-insensitive) maps to ``"green"``; anything
+    else maps to ``"leafless"``.
+
+    Example input
+    -------------
+    Season,GreenUp
+    s1,No
+    s2,Yes
+    s3, Yes
+
+    Example output
+    --------------
+    {"s1": "leafless", "s2": "green", "s3": "green"}
+    """
+    greenup_path = Path(greenup_path)
+
+    if not greenup_path.exists():
+        raise FileNotFoundError(f"GreenUp table not found: {greenup_path}")
+
+    df = pd.read_csv(greenup_path)
+
+    required_cols = {"Season", "GreenUp"}
+    missing_cols = required_cols - set(df.columns)
+
+    if missing_cols:
+        raise ValueError(f"Missing required columns in GreenUp table {greenup_path}: " f"{sorted(missing_cols)}")
+
+    df["Season"] = df["Season"].astype(str).str.strip()
+    df["GreenUp"] = df["GreenUp"].astype(str).str.strip()
+
+    return {row["Season"]: "green" if row["GreenUp"].lower() == "yes" else "leafless" for _, row in df.iterrows()}
+
+
 def build_fuel_iros_lookup(
     root_dir: str | Path,
     raw_data_dir: str | Path,
@@ -296,7 +334,6 @@ def build_fuel_iros_lookup(
     season_col: str = "SeasonState",
     isi_col: str = "ISI",
     ros_col: str = "ROS",
-    season_mapping: dict[str, str] | None = None,
 ) -> dict[tuple[int, str], np.ndarray]:
     """
     Construct the complete ROS lookup table once at runtime.
@@ -328,22 +365,9 @@ def build_fuel_iros_lookup(
 
     raw_data_dir
         Root directory of hexel data.
-
-    season_mapping
-        Mapping from ignition season names to ROS SeasonState names.
-
-        Default:
-            s1 -> leafless
-            s2 -> green
     """
 
     # TODO: save non-seasonal fuel classes only once
-
-    if season_mapping is None:
-        season_mapping = {
-            "s1": "leafless",
-            "s2": "green",
-        }
 
     # Read and prepare all ROS curves only once.
     curves_by_code = read_ros_curves(
@@ -368,11 +392,14 @@ def build_fuel_iros_lookup(
             root_dir=raw_data_dir,
         )
 
+        greenup_path = all_paths.seasons_greenup_table(hex_id=hex_id)
+        hex_season_mapping = _build_season_mapping_from_greenup(greenup_path)
+
         ignition_distribution_path = Path(all_paths.ignition_distribution_table(hex_id=hex_id))
 
         season_weights = _read_hex_season_weights(
             distribution_path=ignition_distribution_path,
-            season_mapping=season_mapping,
+            season_mapping=hex_season_mapping,
         )
 
         for fbp_code, season_curves in curves_by_code.items():

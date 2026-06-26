@@ -4,7 +4,7 @@
 #   - grid: fuel (one-hot) + elevation + terrain derivatives (slope, aspect_sin, aspect_cos)
 #   - spatialized weather + fire-size with per-source missing masks
 #   - wind as Cartesian components only (wind_x, wind_y); WindSpeed dropped (redundant with the norm)
-save_dir: "experiments/fi_common_input_pipeline_fuel_iROS"
+save_dir: "experiments/fi_common_input_pipeline_fuel_iROS_v2"
 
 modelling_approach: "1"
 
@@ -47,7 +47,7 @@ data:
   val_split: "val_indices.csv"
   test_split: "test_indices.csv"
 
-  batch_size: 32
+  batch_size: 64
   num_workers: 2
   valid_mask_threshold: 0.01
 
@@ -108,7 +108,7 @@ logger:
   enabled: true
   project_name: "nrcan05-wildfireriskmapping"
   workspace: "mila-amlrt"
-  experiment_name: "fi_common_input_pipeline_fuel_iROS"
+  experiment_name: "fi_common_input_pipeline_fuel_iROS_v2"
   tags:
     - "full_data"
     - "modelling_approach=1"

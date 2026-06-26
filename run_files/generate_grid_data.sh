@@ -29,6 +29,8 @@ python -m data_preparation.process_hexels_into_grids \
     --win_h=256 \
     --win_w=256 \
     --overlap_ratio=0.2 \
+    --ignition_weighting="distribution" \
+    --fuel_grid_representation="raw" \
     --is_array_job \
     --task_id=$TASK_ID \
     --num_tasks=$NUM_TASKS
