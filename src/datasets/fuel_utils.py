@@ -241,15 +241,20 @@ def _combine_season_curves(
 
         return season_curves[only_state].sort_index().to_numpy(dtype=np.float32)
 
-    missing_weights = [season_state for season_state in season_states if season_state not in season_weights]
+    # Keep only the SeasonStates that this hex actually has ignition weight for.
+    # A SeasonState absent from season_weights means it never occurs in this hex
+    # (e.g. a fully green hex has no leafless weight), so it is simply excluded.
+    season_states = [s for s in season_states if s in season_weights]
 
-    if missing_weights:
+    if not season_states:
         raise ValueError(
-            "No ignition season weight was found for "
-            f"fbp_code={fbp_code}, hex_id={hex_id}, "
-            f"SeasonState={missing_weights}. "
-            f"Available weights={season_weights}"
+            f"None of the ROS SeasonStates for fbp_code={fbp_code}, hex_id={hex_id} "
+            f"have an ignition season weight. Available weights={season_weights}"
         )
+
+    # If only one applicable state remains after filtering, return it directly.
+    if len(season_states) == 1:
+        return season_curves[season_states[0]].sort_index().to_numpy(dtype=np.float32)
 
     applicable_weights = {season_state: season_weights[season_state] for season_state in season_states}
 
