@@ -10,7 +10,7 @@
 # Unlike the previous BP best model (non-spatialized tabular fed through an auxiliary MLP
 # branch), BP now consumes the spatialized tabular channels on the spatial branch, matching
 # FI/ROS. Spatialized input is heavier, so batch_size is 32 (was 64 for the auxiliary variant).
-save_dir: "experiments/bp_common_input_pipeline_fuel_iROS_v2"
+save_dir: "experiments/bp_common_input_pipeline_fuel_iROS_v3"
 
 modelling_approach: "1"
 
@@ -118,7 +118,7 @@ logger:
   enabled: true
   project_name: "nrcan05-wildfireriskmapping"
   workspace: "mila-amlrt"
-  experiment_name: "bp_common_input_pipeline_fuel_iROS_v2"
+  experiment_name: "bp_common_input_pipeline_fuel_iROS_v3"
   tags:
     - "full_data"
     - "modelling_approach=1"
