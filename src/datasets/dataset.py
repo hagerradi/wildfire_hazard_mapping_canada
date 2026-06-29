@@ -77,10 +77,10 @@ class MultiSourceDataset(Dataset):
             if name in SPATIALIZED_TABULAR_SOURCE_NAMES:
                 spatialized_inputs.append(source_sample)
             elif name == "grid" and len(source_sample) == 4:
-                # iROS mode: GridSource returns (input_arr, iros_arr, output_arr, mask)
-                inputs, iros_arr, targets, masks = source_sample
+                # iROS mode: GridSource returns (input_arr, fuel_curve_arr, output_arr, mask)
+                inputs, fuel_curve_arr, targets, masks = source_sample
                 sample["grid"] = (inputs, targets, masks)
-                sample["iros"] = iros_arr
+                sample["fuel_curve"] = fuel_curve_arr
             else:
                 sample[name] = source_sample
         if spatialized_inputs:
@@ -92,13 +92,13 @@ class MultiSourceDataset(Dataset):
             if "grid" not in sample:
                 raise ValueError("Configured grid transform requires a 'grid' source.")
             inputs, targets, masks = sample["grid"]
-            if "iros" in sample:
+            if "fuel_curve" in sample:
                 # Transform iROS jointly with spatial inputs so geometric augmentations stay consistent.
                 n_spatial = inputs.shape[0]
-                combined = torch.cat([inputs, sample["iros"]], dim=0)
+                combined = torch.cat([inputs, sample["fuel_curve"]], dim=0)
                 combined, targets, masks = self.grid_transform(combined, targets, masks)
                 sample["grid"] = (combined[:n_spatial], targets, masks)
-                sample["iros"] = combined[n_spatial:]
+                sample["fuel_curve"] = combined[n_spatial:]
             else:
                 sample["grid"] = self.grid_transform(inputs, targets, masks)
         if self.include_patch_metadata:

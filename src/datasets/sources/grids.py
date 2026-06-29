@@ -14,7 +14,7 @@ from data_preparation.spatial.utils import (
     read_split_hex_ids,
 )
 from src.config import GridParams
-from src.datasets.fuel_utils import build_fuel_iros_lookup, get_ros_from_lookup
+from src.datasets.fuel_utils import FUEL_CURVE_ENCODINGS, build_fuel_curve_lookup, get_fuel_curve_from_lookup
 from src.datasets.sources.base import DataSource
 from src.datasets.targets import get_target_specs
 from src.datasets.utils import (
@@ -173,7 +173,7 @@ class GridSource(DataSource):
                         else:
                             updated_input_channel_indices.append(channel_index + self.num_fuel_classes - 1)
                     self.input_channel_indices = updated_input_channel_indices
-                elif self.fuel_feats_encoding == "iROS":
+                elif self.fuel_feats_encoding in FUEL_CURVE_ENCODINGS:
                     # Remove the scalar fuel channel entirely; it will be returned as a separate iROS array.
                     self.input_channel_indices = [
                         channel_index for channel_index in self.raw_input_local_indices if channel_index != self.fuel_feat_local_index
@@ -203,17 +203,18 @@ class GridSource(DataSource):
                 source_dir=self.raw_data_dir,
             )
 
-        # 4. construct fuel iROS lookup table once at the beginning if fuel_feats_encoding is iROS (format: lookup[(fbp_code, hex_id)] -> ROS vector)
-        self.iros_vector_len = 0
-        self.iros_mean: np.ndarray | None = None
-        self.iros_std: np.ndarray | None = None
-        if "fuel_grid" in self.feature_names_list and self.fuel_feats_encoding == "iROS":
-            self.fuel_iros_lookup = build_fuel_iros_lookup(
+        # Construct fuel curve lookup table if a curve-based encoding is configured.
+        self.fuel_curve_len = 0
+        self.fuel_curve_mean: np.ndarray | None = None
+        self.fuel_curve_std: np.ndarray | None = None
+        if "fuel_grid" in self.feature_names_list and self.fuel_feats_encoding in FUEL_CURVE_ENCODINGS:
+            self.fuel_curve_lookup = build_fuel_curve_lookup(
                 root_dir=self.root_dir,
                 raw_data_dir=self.raw_data_dir,
+                feature_name=self.fuel_feats_encoding,
             )
-            self.iros_vector_len = len(next(iter(self.fuel_iros_lookup.values())))
-            self._compute_iros_normalization_stats()
+            self.fuel_curve_len = len(next(iter(self.fuel_curve_lookup.values())))
+            self._compute_fuel_curve_normalization_stats()
 
     @staticmethod
     def _validate_range(max_value: float, min_value: float, label: str, source_dir: str) -> None:
@@ -224,7 +225,7 @@ class GridSource(DataSource):
                 "not only the prepared patch directory."
             )
 
-    def _compute_iros_normalization_stats(self) -> None:
+    def _compute_fuel_curve_normalization_stats(self) -> None:
         """
         Compute a single global mean and std of log1p(ROS) from the iROS lookup table.
 
@@ -232,16 +233,16 @@ class GridSource(DataSource):
         are used so that normalization constants are never contaminated by val/test
         data.  When it is not provided, all hexels contribute (matching the
         behaviour of ``get_range_elevation``).
-        The results are stored in ``self.iros_mean`` and ``self.iros_std`` as float32
+        The results are stored in ``self.fuel_curve_mean`` and ``self.fuel_curve_std`` as float32
         numpy arrays of shape ``(1,)``.
         """
         if self._train_hex_ids is not None:
             train_hex_strs = {str(hid).zfill(2) for hid in self._train_hex_ids}
             # Include hex-specific vectors from train hexes AND hex-independent
             # vectors (key hex_id=None) which are not tied to any particular hex.
-            vectors = [vec for (_, hex_id), vec in self.fuel_iros_lookup.items() if hex_id is None or hex_id in train_hex_strs]
+            vectors = [vec for (_, hex_id), vec in self.fuel_curve_lookup.items() if hex_id is None or hex_id in train_hex_strs]
         else:
-            vectors = list(self.fuel_iros_lookup.values())
+            vectors = list(self.fuel_curve_lookup.values())
 
         if not vectors:
             raise ValueError(
@@ -251,8 +252,8 @@ class GridSource(DataSource):
             )
 
         log_vecs = np.log1p(np.clip(np.stack(vectors, axis=0), 0, None))  # (N, L)
-        self.iros_mean = np.array([log_vecs.mean()], dtype=np.float32)
-        self.iros_std = np.array([log_vecs.std()], dtype=np.float32)
+        self.fuel_curve_mean = np.array([log_vecs.mean()], dtype=np.float32)
+        self.fuel_curve_std = np.array([log_vecs.std()], dtype=np.float32)
 
     def _target_out_norm(self, target_name: str) -> str:
         return self.out_norm
@@ -343,17 +344,17 @@ class GridSource(DataSource):
         # 3b. iROS encoding: build per-pixel ROS curve array from the fuel class channel.
         # The fuel channel is excluded from input_arr via input_channel_indices (set in __init__),
         # so it never reaches the model as a raw feature.
-        iros_arr: np.ndarray | None = None
-        if "fuel_grid" in self.feature_names_list and self.fuel_feats_encoding == "iROS":
+        fuel_curve_arr: np.ndarray | None = None
+        if "fuel_grid" in self.feature_names_list and self.fuel_feats_encoding in FUEL_CURVE_ENCODINGS:
             hex_id = patch_info["hex_id"]
             fuel_channel = input_arr[:, :, self.fuel_feat_local_index]  # (H, W)
             H, W = fuel_channel.shape
-            iros_arr = np.zeros((H, W, self.iros_vector_len), dtype=np.float32)
+            fuel_curve_arr = np.zeros((H, W, self.fuel_curve_len), dtype=np.float32)
             valid_mask = np.isfinite(fuel_channel)
             for code in np.unique(fuel_channel[valid_mask]):
                 pixel_mask = fuel_channel == code
-                try:
-                    iros_arr[pixel_mask] = get_ros_from_lookup(self.fuel_iros_lookup, int(code), hex_id)
+                try:  # noqa: SIM105
+                    fuel_curve_arr[pixel_mask] = get_fuel_curve_from_lookup(self.fuel_curve_lookup, int(code), hex_id)
                 except KeyError:
                     pass  # leave as zeros for unknown fuel codes
 
@@ -387,17 +388,17 @@ class GridSource(DataSource):
         output_arr = torch.from_numpy(output_arr).permute(2, 0, 1)
         mask = torch.from_numpy(mask).permute(2, 0, 1)  # keep as boolean for efficiency
 
-        iros_tensor: torch.Tensor | None = None
-        if iros_arr is not None:
-            iros_tensor = torch.from_numpy(iros_arr).permute(2, 0, 1)  # (iros_vector_len (L), H, W)
+        fuel_curve_tensor: torch.Tensor | None = None
+        if fuel_curve_arr is not None:
+            fuel_curve_tensor = torch.from_numpy(fuel_curve_arr).permute(2, 0, 1)  # (fuel_curve_len (L), H, W)
 
         # 7. Apply transforms if provided
         if self.transform:
             input_arr, output_arr, mask = self.transform(input_arr, output_arr, mask)
         input_arr = self._append_terrain_derivative_channels(input_arr)
 
-        if iros_tensor is not None:
-            return (input_arr, iros_tensor, output_arr, mask)  # (C, H, W), (L, H, W), (1, H, W), (1, H, W)
+        if fuel_curve_tensor is not None:
+            return (input_arr, fuel_curve_tensor, output_arr, mask)  # (C, H, W), (L, H, W), (1, H, W), (1, H, W)
         return (input_arr, output_arr, mask)  # (C, H, W), (1, H, W), (1, H, W)
 
     def input_dim(self):

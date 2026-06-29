@@ -6,6 +6,16 @@ import pandas as pd
 from data_preparation.paths import Paths
 from data_preparation.utils import find_hex_ids
 
+# Fuel encoding modes that use a per-pixel curve vector (as opposed to scalar
+# or one-hot encodings).  Add new curve-based feature names here.
+FUEL_CURVE_ENCODINGS: frozenset[str] = frozenset({"iROS", "HFI"})
+
+# Maps feature_name -> (csv_filename, value_column_name)
+_FEATURE_CSV: dict[str, tuple[str, str]] = {
+    "iROS": ("fbp_rosi_curves_national_fuel.csv", "ROS"),
+    "HFI": ("fbp_hfi_curves_national_fuel.csv", "HFI"),
+}
+
 
 def _normalize_hex_id(hex_id: str | int) -> str:
     """
@@ -19,12 +29,12 @@ def _normalize_hex_id(hex_id: str | int) -> str:
     return str(hex_id).replace("hex", "").zfill(2)
 
 
-def read_ros_curves(
+def read_curves(
     ros_csv_path: str | Path,
     code_col: str = "fbp_code",
     season_col: str = "SeasonState",
     isi_col: str = "ISI",
-    ros_col: str = "ROS",
+    feature_col: str = "ROS",
 ) -> dict[int, dict[str, pd.Series]]:
     """
     Read the ROS curve CSV once.
@@ -44,7 +54,7 @@ def read_ros_curves(
     ros_csv_path = Path(ros_csv_path)
 
     if not ros_csv_path.exists():
-        raise FileNotFoundError(f"ROS curve CSV not found: {ros_csv_path}")
+        raise FileNotFoundError(f"Fuel curve CSV not found: {ros_csv_path}")
 
     df = pd.read_csv(ros_csv_path)
 
@@ -52,7 +62,7 @@ def read_ros_curves(
         code_col,
         season_col,
         isi_col,
-        ros_col,
+        feature_col,
     }
 
     missing_cols = required_cols - set(df.columns)
@@ -65,7 +75,7 @@ def read_ros_curves(
             code_col,
             season_col,
             isi_col,
-            ros_col,
+            feature_col,
         ]
     ].copy()
 
@@ -79,8 +89,8 @@ def read_ros_curves(
         errors="raise",
     )
 
-    df[ros_col] = pd.to_numeric(
-        df[ros_col],
+    df[feature_col] = pd.to_numeric(
+        df[feature_col],
         errors="raise",
     )
 
@@ -116,7 +126,7 @@ def read_ros_curves(
         )
 
         raise ValueError(
-            "Multiple ROS values were found for the same " "fbp_code, SeasonState, and ISI:\n" f"{duplicates.to_string(index=False)}"
+            "Multiple feature values were found for the same " "fbp_code, SeasonState, and ISI:\n" f"{duplicates.to_string(index=False)}"
         )
 
     curves_by_code: dict[int, dict[str, pd.Series]] = {}
@@ -131,7 +141,7 @@ def read_ros_curves(
             season_col,
             sort=False,
         ):
-            curve = season_group.sort_values(isi_col).set_index(isi_col)[ros_col].astype(float)
+            curve = season_group.sort_values(isi_col).set_index(isi_col)[feature_col].astype(float)
 
             season_curves[str(season_state)] = curve
 
@@ -332,32 +342,32 @@ def _build_season_mapping_from_greenup(greenup_path: str | Path) -> dict[str, st
     return {row["Season"]: "green" if row["GreenUp"].lower() == "yes" else "leafless" for _, row in df.iterrows()}
 
 
-def build_fuel_iros_lookup(
+def build_fuel_curve_lookup(
     root_dir: str | Path,
     raw_data_dir: str | Path,
     code_col: str = "fbp_code",
     season_col: str = "SeasonState",
     isi_col: str = "ISI",
-    ros_col: str = "ROS",
+    feature_name: str = "iROS",
 ) -> dict[tuple[int, str | None], np.ndarray]:
     """
-    Construct the complete ROS lookup table once at runtime.
+    Construct the complete fuel curve lookup table once at runtime.
 
     Lookup format
     -------------
     Hex-specific (multi-season fuel codes whose blend depends on ignition weights):
 
-        lookup[(fbp_code, hex_id)] -> ROS vector
+        lookup[(fbp_code, hex_id)] -> curve vector
 
     Hex-independent (single-SeasonState codes such as ``direct``, ``nonfuel``,
     ``water``, or codes with only one seasonal state):
 
-        lookup[(fbp_code, None)] -> ROS vector
+        lookup[(fbp_code, None)] -> curve vector
 
     Example
     -------
-        ros_lookup[(13, "01")]   # seasonal, hex-specific
-        ros_lookup[(1,  None)]   # direct, shared across all hexes
+        curve_lookup[(13, "01")]   # seasonal, hex-specific
+        curve_lookup[(1,  None)]   # direct, shared across all hexes
 
     For each hex, its ignition distribution file is obtained using:
 
@@ -373,21 +383,29 @@ def build_fuel_iros_lookup(
     Parameters
     ----------
     root_dir
-        Path to data and fbp_isi_rosi_curves_national_fuel.csv.
+        Path to data directory containing the fuel curve CSV.
 
     raw_data_dir
         Root directory of hexel data.
-    """
 
-    # Read and prepare all ROS curves only once.
-    curves_by_code = read_ros_curves(
-        ros_csv_path=Path(root_dir) / "fbp_rosi_curves_national_fuel.csv",
+    feature_name
+        Curve feature to load.  Must be a key in ``_FEATURE_CSV``
+        (e.g. ``"iROS"`` or ``"HFI"``).
+    """
+    if feature_name not in _FEATURE_CSV:
+        raise ValueError(f"Unknown feature_name={feature_name!r}. " f"Supported values: {sorted(_FEATURE_CSV)}")
+
+    csv_filename, feature_col = _FEATURE_CSV[feature_name]
+
+    # Read and prepare all curves only once.
+    curves_by_code = read_curves(
+        ros_csv_path=Path(root_dir) / csv_filename,
         code_col=code_col,
         season_col=season_col,
         isi_col=isi_col,
-        ros_col=ros_col,
+        feature_col=feature_col,
     )
-    ros_lookup: dict[tuple[int, str | None], np.ndarray] = {}
+    curve_lookup: dict[tuple[int, str | None], np.ndarray] = {}
 
     # Split codes into hex-independent (single SeasonState) and hex-specific
     # (multiple SeasonStates whose blend varies with ignition season weights).
@@ -397,7 +415,7 @@ def build_fuel_iros_lookup(
     # Single-state codes produce the same vector for every hex — store once.
     for fbp_code, season_curves in single_state_codes.items():
         only_state = next(iter(season_curves))
-        ros_lookup[(fbp_code, None)] = season_curves[only_state].sort_index().to_numpy(dtype=np.float32)
+        curve_lookup[(fbp_code, None)] = season_curves[only_state].sort_index().to_numpy(dtype=np.float32)
 
     # Multi-state codes must be blended per hex using hex-specific season weights.
     hex_ids = find_hex_ids(str(raw_data_dir))
@@ -421,24 +439,24 @@ def build_fuel_iros_lookup(
         )
 
         for fbp_code, season_curves in multi_state_codes.items():
-            ros_lookup[(fbp_code, hex_id)] = _combine_season_curves(
+            curve_lookup[(fbp_code, hex_id)] = _combine_season_curves(
                 fbp_code=fbp_code,
                 hex_id=hex_id,
                 season_curves=season_curves,
                 season_weights=season_weights,
             )
 
-    return ros_lookup
+    return curve_lookup
 
 
-def get_ros_from_lookup(
-    ros_lookup: dict[tuple[int, str | None], np.ndarray],
+def get_fuel_curve_from_lookup(
+    curve_lookup: dict[tuple[int, str | None], np.ndarray],
     fbp_code: int,
     hex_id: str | int,
     copy: bool = False,
 ) -> np.ndarray:
     """
-    Retrieve one ROS vector from the precomputed lookup.
+    Retrieve one vector from the precomputed lookup.
 
     For hex-specific (multi-season) codes the key is ``(fbp_code, hex_id)``.
     For hex-independent (single-state) codes the key is ``(fbp_code, None)``;
@@ -449,26 +467,14 @@ def get_ros_from_lookup(
     hex_key = (int(fbp_code), normalized_hex_id)
     direct_key = (int(fbp_code), None)
 
-    if hex_key in ros_lookup:
-        ros_vector = ros_lookup[hex_key]
-    elif direct_key in ros_lookup:
-        ros_vector = ros_lookup[direct_key]
+    if hex_key in curve_lookup:
+        fuel_vector = curve_lookup[hex_key]
+    elif direct_key in curve_lookup:
+        fuel_vector = curve_lookup[direct_key]
     else:
-        raise KeyError(f"No ROS vector found for fbp_code={int(fbp_code)}, hex_id={normalized_hex_id}")
+        raise KeyError(f"No vector found for fbp_code={int(fbp_code)}, hex_id={normalized_hex_id}")
 
     if copy:
-        return ros_vector.copy()
+        return fuel_vector.copy()
 
-    return ros_vector
-
-
-# ros_lookup_table = build_fuel_iros_lookup(root_dir="../burnp3plus/data_samples_v1", raw_data_dir="../burnp3plus")
-# print(len(ros_lookup_table))
-# ros_vector = get_ros_from_lookup(
-#     ros_lookup=ros_lookup_table,
-#     fbp_code=1,
-#     hex_id="05",
-# )
-
-# print(ros_vector)
-# print(ros_vector.shape)
+    return fuel_vector
