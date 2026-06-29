@@ -226,26 +226,33 @@ class GridSource(DataSource):
 
     def _compute_iros_normalization_stats(self) -> None:
         """
-        Compute per-ISI-bin mean and std of log1p(ROS) from the iROS lookup table.
+        Compute a single global mean and std of log1p(ROS) from the iROS lookup table.
 
-        If training hex IDs are available, only vectors from those hexels are used
-        so that normalization constants are never contaminated by val/test data.
+        When ``train_split_csv_name`` is provided, only vectors from those hexels
+        are used so that normalization constants are never contaminated by val/test
+        data.  When it is not provided, all hexels contribute (matching the
+        behaviour of ``get_range_elevation``).
         The results are stored in ``self.iros_mean`` and ``self.iros_std`` as float32
-        numpy arrays of shape ``(iros_vector_len,)``.
+        numpy arrays of shape ``(1,)``.
         """
         if self._train_hex_ids is not None:
             train_hex_strs = {str(hid).zfill(2) for hid in self._train_hex_ids}
-            vectors = [vec for (_, hex_id), vec in self.fuel_iros_lookup.items() if hex_id in train_hex_strs]
+            # Include hex-specific vectors from train hexes AND hex-independent
+            # vectors (key hex_id=None) which are not tied to any particular hex.
+            vectors = [vec for (_, hex_id), vec in self.fuel_iros_lookup.items() if hex_id is None or hex_id in train_hex_strs]
         else:
             vectors = list(self.fuel_iros_lookup.values())
 
-        if vectors:
-            log_vecs = np.log1p(np.clip(np.stack(vectors, axis=0), 0, None))  # (N, L)
-            self.iros_mean = log_vecs.mean(axis=0).astype(np.float32)
-            self.iros_std = log_vecs.std(axis=0).astype(np.float32)
-        else:
-            self.iros_mean = np.zeros(self.iros_vector_len, dtype=np.float32)
-            self.iros_std = np.ones(self.iros_vector_len, dtype=np.float32)
+        if not vectors:
+            raise ValueError(
+                "No iROS vectors found for the training hexels. "
+                "Check that train_split_csv_name refers to a valid split file "
+                "and that the training hexels have ignition distribution data."
+            )
+
+        log_vecs = np.log1p(np.clip(np.stack(vectors, axis=0), 0, None))  # (N, L)
+        self.iros_mean = np.array([log_vecs.mean()], dtype=np.float32)
+        self.iros_std = np.array([log_vecs.std()], dtype=np.float32)
 
     def _target_out_norm(self, target_name: str) -> str:
         return self.out_norm

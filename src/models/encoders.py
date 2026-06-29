@@ -81,6 +81,10 @@ class iROSEncoder(nn.Module):
     """
     Independently encode the iROS curve at every pixel.
 
+    A fixed ISI positional encoding (one value per bin, scaled to [0, 1]) is
+    appended to the normalized curve before the MLP so the encoder knows which
+    ISI level each channel corresponds to.
+
     Input:
         x: (B, num_isi_values, H, W)
 
@@ -95,29 +99,33 @@ class iROSEncoder(nn.Module):
 
         self.in_channels = in_channels
         self.embed_dim = embed_dim
-        if iros_mean.numel() != in_channels:
-            raise ValueError(f"Expected {in_channels} mean values, got {iros_mean.numel()}")
+        if iros_mean.numel() != 1 and iros_mean.numel() != in_channels:
+            raise ValueError(f"Expected 1 or {in_channels} mean values, got {iros_mean.numel()}")
 
-        if iros_std.numel() != in_channels:
-            raise ValueError(f"Expected {in_channels} std values, got {iros_std.numel()}")
-
-        self.in_channels = in_channels
-        self.embed_dim = embed_dim
+        if iros_std.numel() != 1 and iros_std.numel() != in_channels:
+            raise ValueError(f"Expected 1 or {in_channels} std values, got {iros_std.numel()}")
 
         self.iros_mean: torch.Tensor
         self.iros_std: torch.Tensor
         self.register_buffer(
             "iros_mean",
-            iros_mean.reshape(1, in_channels, 1, 1),
+            iros_mean.reshape(1, -1, 1, 1),
         )
 
         self.register_buffer(
             "iros_std",
-            iros_std.reshape(1, in_channels, 1, 1).clamp_min(1e-6),
+            iros_std.reshape(1, -1, 1, 1).clamp_min(1e-6),
         )
 
+        # Fixed positional encoding: bin index scaled to [0, 1].
+        # Shape (1, in_channels, 1, 1) so it broadcasts over (B, C, H, W).
+        isi_pos = torch.arange(in_channels, dtype=torch.float32) / max(in_channels - 1, 1)
+        self.isi_pos: torch.Tensor
+        self.register_buffer("isi_pos", isi_pos.reshape(1, in_channels, 1, 1))
+
+        # First conv receives in_channels (curve) + in_channels (positional) channels.
         self.encoder = nn.Sequential(
-            nn.Conv2d(in_channels, hidden_dim, kernel_size=1, bias=False),
+            nn.Conv2d(in_channels * 2, hidden_dim, kernel_size=1, bias=False),
             nn.GroupNorm(num_groups=1, num_channels=hidden_dim),
             nn.SiLU(inplace=True),
             nn.Conv2d(
@@ -131,7 +139,7 @@ class iROSEncoder(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         Args:
-            x: iROS curves with shape (B, 18, H, W).
+            x: iROS curves with shape (B, in_channels, H, W).
 
         Returns:
             Per-pixel embeddings with shape (B, embed_dim, H, W).
@@ -141,8 +149,14 @@ class iROSEncoder(nn.Module):
 
         if x.shape[1] != self.in_channels:
             raise ValueError(f"Expected {self.in_channels} iROS channels, " f"got {x.shape[1]}")
+
         x = torch.log1p(x.clamp_min(0))
         x = (x - self.iros_mean) / self.iros_std
+
+        # Append positional encoding so the encoder knows which ISI bin each
+        # channel corresponds to, independent of the ROS value at that bin.
+        pos = self.isi_pos.expand(x.shape[0], -1, x.shape[2], x.shape[3])
+        x = torch.cat([x, pos], dim=1)
 
         return self.encoder(x)
 

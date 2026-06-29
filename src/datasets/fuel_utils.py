@@ -339,18 +339,25 @@ def build_fuel_iros_lookup(
     season_col: str = "SeasonState",
     isi_col: str = "ISI",
     ros_col: str = "ROS",
-) -> dict[tuple[int, str], np.ndarray]:
+) -> dict[tuple[int, str | None], np.ndarray]:
     """
     Construct the complete ROS lookup table once at runtime.
 
     Lookup format
     -------------
+    Hex-specific (multi-season fuel codes whose blend depends on ignition weights):
+
         lookup[(fbp_code, hex_id)] -> ROS vector
+
+    Hex-independent (single-SeasonState codes such as ``direct``, ``nonfuel``,
+    ``water``, or codes with only one seasonal state):
+
+        lookup[(fbp_code, None)] -> ROS vector
 
     Example
     -------
-        ros_lookup[(13, "01")]
-        ros_lookup[(13, "05")]
+        ros_lookup[(13, "01")]   # seasonal, hex-specific
+        ros_lookup[(1,  None)]   # direct, shared across all hexes
 
     For each hex, its ignition distribution file is obtained using:
 
@@ -372,8 +379,6 @@ def build_fuel_iros_lookup(
         Root directory of hexel data.
     """
 
-    # TODO: save non-seasonal fuel classes only once
-
     # Read and prepare all ROS curves only once.
     curves_by_code = read_ros_curves(
         ros_csv_path=Path(root_dir) / "fbp_rosi_curves_national_fuel.csv",
@@ -382,11 +387,19 @@ def build_fuel_iros_lookup(
         isi_col=isi_col,
         ros_col=ros_col,
     )
-    ros_lookup: dict[
-        tuple[int, str],
-        np.ndarray,
-    ] = {}
+    ros_lookup: dict[tuple[int, str | None], np.ndarray] = {}
 
+    # Split codes into hex-independent (single SeasonState) and hex-specific
+    # (multiple SeasonStates whose blend varies with ignition season weights).
+    single_state_codes = {code: curves for code, curves in curves_by_code.items() if len(curves) == 1}
+    multi_state_codes = {code: curves for code, curves in curves_by_code.items() if len(curves) > 1}
+
+    # Single-state codes produce the same vector for every hex — store once.
+    for fbp_code, season_curves in single_state_codes.items():
+        only_state = next(iter(season_curves))
+        ros_lookup[(fbp_code, None)] = season_curves[only_state].sort_index().to_numpy(dtype=np.float32)
+
+    # Multi-state codes must be blended per hex using hex-specific season weights.
     hex_ids = find_hex_ids(str(raw_data_dir))
 
     for raw_hex_id in hex_ids:
@@ -407,7 +420,7 @@ def build_fuel_iros_lookup(
             season_mapping=hex_season_mapping,
         )
 
-        for fbp_code, season_curves in curves_by_code.items():
+        for fbp_code, season_curves in multi_state_codes.items():
             ros_lookup[(fbp_code, hex_id)] = _combine_season_curves(
                 fbp_code=fbp_code,
                 hex_id=hex_id,
@@ -419,28 +432,29 @@ def build_fuel_iros_lookup(
 
 
 def get_ros_from_lookup(
-    ros_lookup: dict[
-        tuple[int, str],
-        np.ndarray,
-    ],
+    ros_lookup: dict[tuple[int, str | None], np.ndarray],
     fbp_code: int,
     hex_id: str | int,
     copy: bool = False,
 ) -> np.ndarray:
     """
     Retrieve one ROS vector from the precomputed lookup.
+
+    For hex-specific (multi-season) codes the key is ``(fbp_code, hex_id)``.
+    For hex-independent (single-state) codes the key is ``(fbp_code, None)``;
+    the lookup falls back to that sentinel automatically.
     """
     normalized_hex_id = _normalize_hex_id(hex_id)
 
-    key = (
-        int(fbp_code),
-        normalized_hex_id,
-    )
+    hex_key = (int(fbp_code), normalized_hex_id)
+    direct_key = (int(fbp_code), None)
 
-    if key not in ros_lookup:
-        raise KeyError("No ROS vector found for " f"fbp_code={key[0]}, hex_id={key[1]}")
-
-    ros_vector = ros_lookup[key]
+    if hex_key in ros_lookup:
+        ros_vector = ros_lookup[hex_key]
+    elif direct_key in ros_lookup:
+        ros_vector = ros_lookup[direct_key]
+    else:
+        raise KeyError(f"No ROS vector found for fbp_code={int(fbp_code)}, hex_id={normalized_hex_id}")
 
     if copy:
         return ros_vector.copy()
