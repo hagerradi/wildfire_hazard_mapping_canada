@@ -225,6 +225,7 @@ def main():
         num_tasks=args.num_tasks,
         mask_scope=args.mask_scope,
         ignition_weighting=args.ignition_weighting,
+        fuel_representation=args.fuel_grid_representation,
         overwrite=args.overwrite,
     )
 
