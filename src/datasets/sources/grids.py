@@ -14,7 +14,7 @@ from data_preparation.spatial.utils import (
     read_split_hex_ids,
 )
 from src.config import GridParams
-from src.datasets.fuel_utils import FUEL_CURVE_ENCODINGS, build_fuel_curve_lookup, get_fuel_curve_from_lookup
+from src.datasets.fuel_utils import FUEL_CURVE_ENCODINGS, build_fuel_curve_lookup, get_fuel_curve_from_lookup, normalize_hex_id
 from src.datasets.sources.base import DataSource
 from src.datasets.targets import get_target_specs
 from src.datasets.utils import (
@@ -215,6 +215,7 @@ class GridSource(DataSource):
             )
             self.fuel_curve_len = len(next(iter(self.fuel_curve_lookup.values())))
             self._compute_fuel_curve_normalization_stats()
+            self._build_dense_fuel_lookup()
 
     @staticmethod
     def _validate_range(max_value: float, min_value: float, label: str, source_dir: str) -> None:
@@ -224,6 +225,40 @@ class GridSource(DataSource):
                 f"min={min_value}, max={max_value}. Check that raw_data_dir points to the raw hexel dataset, "
                 "not only the prepared patch directory."
             )
+
+    def _build_dense_fuel_lookup(self) -> None:
+        """
+        Pre-compute per-hex dense arrays (shape: max_code+1, L) so that
+        per-pixel fuel curve assignment in get_sample() can use a single
+        NumPy fancy-index instead of a Python loop over unique codes.
+
+        ``self._dense_fuel_base``       -- (max_code+1, L) for hex-independent codes
+        ``self._dense_fuel_per_hex``    -- {hex_id_str: (max_code+1, L)} for hex-specific codes
+        ``self._dense_fuel_max_code``   -- int, highest fuel code seen in the lookup
+        """
+        all_codes = [code for code, _ in self.fuel_curve_lookup.keys()]
+        max_code = max(all_codes)
+        L = self.fuel_curve_len
+
+        # Base array: codes whose curve is the same for every hex (hex_id key is None).
+        base_arr = np.zeros((max_code + 1, L), dtype=np.float32)
+        for (code, hid), vec in self.fuel_curve_lookup.items():
+            if hid is None:
+                base_arr[code] = vec
+
+        # Per-hex arrays: start from the base and overlay hex-specific vectors.
+        hex_ids = {hid for _, hid in self.fuel_curve_lookup.keys() if hid is not None}
+        dense_per_hex: dict[str, np.ndarray] = {}
+        for hex_id in hex_ids:
+            arr = base_arr.copy()
+            for (code, hid), vec in self.fuel_curve_lookup.items():
+                if hid == hex_id:
+                    arr[code] = vec
+            dense_per_hex[hex_id] = arr
+
+        self._dense_fuel_base: np.ndarray = base_arr
+        self._dense_fuel_per_hex: dict[str, np.ndarray] = dense_per_hex
+        self._dense_fuel_max_code: int = max_code
 
     def _compute_fuel_curve_normalization_stats(self) -> None:
         """
@@ -346,17 +381,18 @@ class GridSource(DataSource):
         # so it never reaches the model as a raw feature.
         fuel_curve_arr: np.ndarray | None = None
         if "fuel_grid" in self.feature_names_list and self.fuel_feats_encoding in FUEL_CURVE_ENCODINGS:
-            hex_id = patch_info["hex_id"]
+            hex_id = normalize_hex_id(patch_info["hex_id"])
             fuel_channel = input_arr[:, :, self.fuel_feat_local_index]  # (H, W)
-            H, W = fuel_channel.shape
-            fuel_curve_arr = np.zeros((H, W, self.fuel_curve_len), dtype=np.float32)
             valid_mask = np.isfinite(fuel_channel)
-            for code in np.unique(fuel_channel[valid_mask]):
-                pixel_mask = fuel_channel == code
-                try:  # noqa: SIM105
-                    fuel_curve_arr[pixel_mask] = get_fuel_curve_from_lookup(self.fuel_curve_lookup, int(code), hex_id)
-                except KeyError:
-                    pass  # leave as zeros for unknown fuel codes
+            # Vectorized lookup: a single fancy-index into the pre-built dense
+            # array replaces the previous Python loop over unique fuel codes,
+            # eliminating per-sample Python overhead in DataLoader workers.
+            dense = self._dense_fuel_per_hex.get(hex_id, self._dense_fuel_base)
+            # Replace NaN with 0 before casting to int to avoid undefined behaviour.
+            safe_fuel = np.where(valid_mask, fuel_channel, 0.0)
+            fuel_int = safe_fuel.astype(np.int32).clip(0, self._dense_fuel_max_code)
+            fuel_curve_arr = dense[fuel_int]  # (H, W, L)
+            fuel_curve_arr[~valid_mask] = 0.0  # zero-out nodata pixels
 
         # 4. Mean Imputation
         input_arr = fill_nan_channel_mean_numpy(input_arr)

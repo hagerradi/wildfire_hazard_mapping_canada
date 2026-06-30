@@ -17,7 +17,7 @@ _FEATURE_CSV: dict[str, tuple[str, str]] = {
 }
 
 
-def _normalize_hex_id(hex_id: str | int) -> str:
+def normalize_hex_id(hex_id: str | int) -> str:
     """
     Normalize hex IDs to two digits.
 
@@ -27,6 +27,10 @@ def _normalize_hex_id(hex_id: str | int) -> str:
         "01" -> "01"
     """
     return str(hex_id).replace("hex", "").zfill(2)
+
+
+# Keep the private alias for internal callers.
+_normalize_hex_id = normalize_hex_id
 
 
 def read_curves(
