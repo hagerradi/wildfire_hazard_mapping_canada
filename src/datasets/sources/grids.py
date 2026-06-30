@@ -236,24 +236,25 @@ class GridSource(DataSource):
         ``self._dense_fuel_per_hex``    -- {hex_id_str: (max_code+1, L)} for hex-specific codes
         ``self._dense_fuel_max_code``   -- int, highest fuel code seen in the lookup
         """
-        all_codes = [code for code, _ in self.fuel_curve_lookup.keys()]
-        max_code = max(all_codes)
+        max_code = max(code for code, _ in self.fuel_curve_lookup.keys())
         L = self.fuel_curve_len
 
         # Base array: codes whose curve is the same for every hex (hex_id key is None).
         base_arr = np.zeros((max_code + 1, L), dtype=np.float32)
+        # Group lookup entries by hex_id to avoid repeated full-dict scans.
+        hex_specific: dict[str, dict[int, np.ndarray]] = {}
         for (code, hid), vec in self.fuel_curve_lookup.items():
             if hid is None:
                 base_arr[code] = vec
+            else:
+                hex_specific.setdefault(hid, {})[code] = vec
 
         # Per-hex arrays: start from the base and overlay hex-specific vectors.
-        hex_ids = {hid for _, hid in self.fuel_curve_lookup.keys() if hid is not None}
         dense_per_hex: dict[str, np.ndarray] = {}
-        for hex_id in hex_ids:
+        for hex_id, code_map in hex_specific.items():
             arr = base_arr.copy()
-            for (code, hid), vec in self.fuel_curve_lookup.items():
-                if hid == hex_id:
-                    arr[code] = vec
+            for code, vec in code_map.items():
+                arr[code] = vec
             dense_per_hex[hex_id] = arr
 
         self._dense_fuel_base: np.ndarray = base_arr
