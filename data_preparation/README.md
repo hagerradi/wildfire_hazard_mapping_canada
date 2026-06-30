@@ -17,7 +17,7 @@ python -m data_preparation.process_hexels_into_grids --root_dir="/network/projec
 
 `--ignition_weighting` controls the ignition channels: `distribution` (default) produces zone-area-weighted 2-channel ignition (human + lightning), while `max` produces the original single-channel max-aggregation.
 
-`--fuel_representation` controls the fuel grid representation: `raw` (default) produces raw class values, while `group` groups similar classes togther using `FUEL_GROUP_MAP` and saves the grid as 0-N values.
+`--fuel_grid_representation` controls the fuel grid representation: `raw` (default) produces raw class values, while `group` groups similar classes together using `FUEL_GROUP_MAP` and saves the grid as 0-N values.
 
 Step 2: Create training, validation and test splits.
 
