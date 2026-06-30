@@ -204,7 +204,7 @@ def main():
         "--fuel_grid_representation",
         choices=FUEL_GRID_CHOICES,
         default="raw",
-        help="'group' (default) for grouping similar fuel classes to use with one-hot encoding " "or 'raw' to use along with iROS values",
+        help="'raw' (default) for raw fuel class values (use with iROS curves) or 'group' to group similar classes for one-hot encoding.",
     )
     parser.add_argument(
         "--overwrite",
