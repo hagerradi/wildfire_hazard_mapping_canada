@@ -64,6 +64,7 @@ def main() -> None:
     parser.add_argument(
         "--output-dir",
         type=Path,
+        required=True,
         help="Folder where the R script should save its outputs.",
     )
 
