@@ -14,7 +14,7 @@
 set -euo pipefail
 
 # Capture the first argument, default to 'configs/default_v1.yaml' if empty
-CONFIG_FILE=${1:-configs/default_v1.yaml}
+CONFIG_FILE=${1:-configs/bp_common_input_pipeline.yaml}
 TRAIN_ARGS=${TRAIN_ARGS:-}
 EVAL_ARGS=${EVAL_ARGS:-}
 RUN_HEXEL_EVAL=${RUN_HEXEL_EVAL:-1}

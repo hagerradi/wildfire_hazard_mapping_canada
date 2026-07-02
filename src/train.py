@@ -22,7 +22,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--config",
         type=str,
-        default="configs/default_v1.yaml",
+        default="configs/bp_common_input_pipeline.yaml",
         help="Path to YAML config file.",
     )
     # logging is enabled by default, unless you pass --no_log_test_predicted_hexels
