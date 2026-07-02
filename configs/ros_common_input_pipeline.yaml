@@ -4,7 +4,7 @@
 #   - grid: fuel (one-hot) + elevation + terrain derivatives (slope, aspect_sin, aspect_cos)
 #   - spatialized weather + fire-size with per-source missing masks
 #   - wind as Cartesian components only (wind_x, wind_y); WindSpeed dropped (redundant with the norm)
-save_dir: "experiments/ros_common_input_pipeline_fuel_iROS_v3"
+save_dir: "experiments/ros_common_input_pipeline_fuel_iROS"
 
 modelling_approach: "1"
 
@@ -108,21 +108,21 @@ logger:
   enabled: true
   project_name: "nrcan05-wildfireriskmapping"
   workspace: "mila-amlrt"
-  experiment_name: "ros_common_input_pipeline_fuel_iROS_v3"
+  experiment_name: "ros_common_input_pipeline_fuel_iROS"
   tags:
     - "full_data"
     - "modelling_approach=1"
     - "target=ros"
     - "coordconv=patch_local"
-    - "data_samples_v2"
+    - "data_samples_v3"
     - "ignition=aggregated_human_lightning"
-    - "fuel_one_hot_encoding"
+    - "raw_fuel_iROS"
     - "best_ckpt=ccc"
     - "loss=huber_raw_pearson"
     - "target_norm=log_standard"
     - "tabular_fusion=spatialized"
     - "spatialized_sources=weather_fire_size"
-    - "missing_masks=weather_fire_size"
+    - "missing_masks=fire_size"
     - "terrain_derivatives=slope_aspect"
     - "wind=vector_components"
   log_every_n_step: 10
