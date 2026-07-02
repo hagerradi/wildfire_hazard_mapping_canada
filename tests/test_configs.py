@@ -35,12 +35,11 @@ def test_common_input_pipeline_configs_share_unified_input_pipeline():
         config = _load_config(path)
         sources = {source.name: source.params for source in config.data.input_sources}
 
-        # Spatial-only model with patch-local coordconv.
+        # Spatial-only model
         assert config.model.input_branches == ["spatial"]
-        assert config.model.use_coordconv is True
 
-        # Dataset is the leakage-fixed, aggregated-ignition data_samples_v2.
-        assert config.data.root_dir.endswith("data_samples_v2")
+        # Dataset is the leakage-fixed, aggregated-ignition data_samples_v3.
+        assert config.data.root_dir.endswith("data_samples_v3")
 
         # Grid: aggregated 2-channel ignition + terrain derivatives.
         assert isinstance(sources["grid"], GridParams)
@@ -52,7 +51,7 @@ def test_common_input_pipeline_configs_share_unified_input_pipeline():
         assert isinstance(sources["spatialized_weather"], SpatializedTabularParams)
         assert isinstance(sources["spatialized_fire_size"], SpatializedTabularParams)
         assert sources["spatialized_weather"].include_missing_firezone_mask is False
-        assert sources["spatialized_fire_size"].include_missing_firezone_mask is True
+        assert sources["spatialized_fire_size"].include_missing_firezone_mask is False
 
         # Wind is expressed as Cartesian components only; WindSpeed is dropped.
         weather_features = set(sources["spatialized_weather"].feature_names_list)

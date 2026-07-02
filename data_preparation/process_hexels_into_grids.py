@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from data_preparation.hexel_loader import IGNITION_WEIGHTING_CHOICES, load_spatial_features_per_hexel
+from data_preparation.hexel_loader import FUEL_GRID_CHOICES, IGNITION_WEIGHTING_CHOICES, load_spatial_features_per_hexel
 from data_preparation.paths import MASK_SCOPE_CHOICES, prepared_mask_scope
 from data_preparation.spatial import NODATA
 from data_preparation.utils import find_hex_ids, get_processed_hex_ids
@@ -121,6 +121,7 @@ def generate_data_samples(
     num_tasks: int = 1,
     mask_scope: str = "actual",
     ignition_weighting: str = "distribution",
+    fuel_representation: str = "raw",
     overwrite: bool = False,
 ):
     scope = prepared_mask_scope(mask_scope)
@@ -160,6 +161,7 @@ def generate_data_samples(
             modelling_approach=modelling_approach,
             mask_scope=scope,
             ignition_weighting=ignition_weighting,
+            fuel_representation=fuel_representation,
         )
         if (stacked_feats is None) or (mask is None):
             print(f"================Failed for hex {hex_id}===================")
@@ -199,6 +201,12 @@ def main():
         help="'distribution' (default) for zone-area-weighted 2-channel ignition or 'max' for the original max-aggregation (1 channel).",
     )
     parser.add_argument(
+        "--fuel_grid_representation",
+        choices=FUEL_GRID_CHOICES,
+        default="raw",
+        help="'raw' (default) for raw fuel class values (use with iROS curves) or 'group' to group similar classes for one-hot encoding.",
+    )
+    parser.add_argument(
         "--overwrite",
         action="store_true",
         help="Reprocess every hex even if its meta_hex_*.csv already exists (overwrites patches in place).",
@@ -217,6 +225,7 @@ def main():
         num_tasks=args.num_tasks,
         mask_scope=args.mask_scope,
         ignition_weighting=args.ignition_weighting,
+        fuel_representation=args.fuel_grid_representation,
         overwrite=args.overwrite,
     )
 

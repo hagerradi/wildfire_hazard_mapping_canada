@@ -77,6 +77,90 @@ class BaselineEncoder(EncoderBase):
         return x, skip_connections
 
 
+class FuelCurveEncoder(nn.Module):
+    """
+    Independently encode the iROS curve at every pixel.
+
+    A fixed ISI positional encoding (one value per bin, scaled to [0, 1]) is
+    appended to the normalized curve before the MLP so the encoder knows which
+    ISI level each channel corresponds to.
+
+    Input:
+        x: (B, num_isi_values, H, W)
+
+    Output:
+        embedding: (B, embed_dim, H, W)
+    """
+
+    def __init__(
+        self, curve_mean: torch.Tensor, curve_std: torch.Tensor, in_channels: int = 18, hidden_dim: int = 16, embed_dim: int = 4
+    ) -> None:
+        super().__init__()
+
+        self.in_channels = in_channels
+        self.embed_dim = embed_dim
+        if curve_mean.numel() != 1 and curve_mean.numel() != in_channels:
+            raise ValueError(f"Expected 1 or {in_channels} mean values, got {curve_mean.numel()}")
+
+        if curve_std.numel() != 1 and curve_std.numel() != in_channels:
+            raise ValueError(f"Expected 1 or {in_channels} std values, got {curve_std.numel()}")
+
+        self.curve_mean: torch.Tensor
+        self.curve_std: torch.Tensor
+        self.register_buffer(
+            "curve_mean",
+            curve_mean.reshape(1, -1, 1, 1),
+        )
+
+        self.register_buffer(
+            "curve_std",
+            curve_std.reshape(1, -1, 1, 1).clamp_min(1e-6),
+        )
+
+        # Fixed positional encoding: bin index scaled to [0, 1].
+        # Shape (1, in_channels, 1, 1) so it broadcasts over (B, C, H, W).
+        isi_pos = torch.arange(in_channels, dtype=torch.float32) / max(in_channels - 1, 1)
+        self.isi_pos: torch.Tensor
+        self.register_buffer("isi_pos", isi_pos.reshape(1, in_channels, 1, 1))
+
+        # First conv receives in_channels (curve) + in_channels (positional) channels.
+        self.encoder = nn.Sequential(
+            nn.Conv2d(in_channels * 2, hidden_dim, kernel_size=1, bias=False),
+            nn.GroupNorm(num_groups=1, num_channels=hidden_dim),
+            nn.SiLU(inplace=True),
+            nn.Conv2d(
+                hidden_dim,
+                embed_dim,
+                kernel_size=1,
+                bias=True,
+            ),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            x: fuel curves with shape (B, in_channels, H, W).
+
+        Returns:
+            Per-pixel embeddings with shape (B, embed_dim, H, W).
+        """
+        if x.ndim != 4:
+            raise ValueError(f"Expected a 4D tensor (B, C, H, W), got {tuple(x.shape)}")
+
+        if x.shape[1] != self.in_channels:
+            raise ValueError(f"Expected {self.in_channels} fuel curve channels, " f"got {x.shape[1]}")
+
+        x = torch.log1p(x.clamp_min(0))
+        x = (x - self.curve_mean) / self.curve_std
+
+        # Append positional encoding so the encoder knows which ISI bin each
+        # channel corresponds to, independent of the ROS value at that bin.
+        pos = self.isi_pos.expand(x.shape[0], -1, x.shape[2], x.shape[3])
+        x = torch.cat([x, pos], dim=1)
+
+        return self.encoder(x)
+
+
 class AttentionPooling(nn.Module):
     def __init__(self, input_dim: int):
         super().__init__()

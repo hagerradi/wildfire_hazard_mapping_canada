@@ -9,6 +9,7 @@ from data_preparation.spatial.utils import FUEL_GROUP_MAP, load_spatial_raster
 def load_fuel_grid(
     root_dir: str,
     hex_id: str,
+    fuel_representation: str = "raw",
     reference_profile: dict[str, Any] | None = None,
     mask_scope: str = "actual",
 ) -> np.ma.MaskedArray:
@@ -27,9 +28,12 @@ def load_fuel_grid(
     data = fuel_grid.data
     mask = np.ma.getmaskarray(fuel_grid)
 
-    grouped = np.full(data.shape, -1, dtype=np.int16)
+    if fuel_representation == "group":
+        grouped = np.full(data.shape, -1, dtype=np.int16)
 
-    for fuel_id, group_id in FUEL_GROUP_MAP.items():
-        grouped[data == fuel_id] = group_id
+        for fuel_id, group_id in FUEL_GROUP_MAP.items():
+            grouped[data == fuel_id] = group_id
 
-    return np.ma.masked_array(grouped, mask=mask)
+        return np.ma.masked_array(grouped, mask=mask)
+
+    return np.ma.masked_array(data, mask=mask)

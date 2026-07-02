@@ -7,14 +7,14 @@
 #SBATCH --partition=long
 #SBATCH --ntasks=1
 #SBATCH --time=15:59:00
-#SBATCH --mem-per-cpu=20Gb
+#SBATCH --mem-per-cpu=40Gb
 #SBATCH --cpus-per-task=4
 #SBATCH --gres=gpu:a100:1
 
 set -euo pipefail
 
 # Capture the first argument, default to 'configs/default_v1.yaml' if empty
-CONFIG_FILE=${1:-configs/default_v1.yaml}
+CONFIG_FILE=${1:-configs/bp_common_input_pipeline.yaml}
 TRAIN_ARGS=${TRAIN_ARGS:-}
 EVAL_ARGS=${EVAL_ARGS:-}
 RUN_HEXEL_EVAL=${RUN_HEXEL_EVAL:-1}

@@ -11,8 +11,9 @@ from tqdm import tqdm
 
 from data_preparation.spatial.utils import get_output_log_stats_cached, get_range_output, read_split_hex_ids
 from src.config import Config, GridParams
+from src.datasets.fuel_utils import FUEL_CURVE_ENCODINGS
 from src.datasets.targets import get_target_specs
-from src.datasets.utils import apply_bp_nodata_zero_range
+from src.datasets.utils import apply_bp_nodata_zero_range, get_fuel_curve_normalization_stats
 from src.logger import CometLogger
 from src.losses import WeightedLoss
 from src.models.factory import build_model, resolve_model_architecture
@@ -22,10 +23,17 @@ from src.utils import AVAILABLE_METRICS, build_single_loss, set_device
 
 
 class Trainer:
-    def __init__(self, config: Config, spatial_input_channels: int | None = None, auxiliary_input_dims: dict[str, int] | None = None):
+    def __init__(
+        self,
+        config: Config,
+        spatial_input_channels: int | None = None,
+        auxiliary_input_dims: dict[str, int] | None = None,
+        train_dataset=None,
+    ):
         self.config = config
         self.spatial_input_channels = spatial_input_channels
         self.auxiliary_input_dims = auxiliary_input_dims if auxiliary_input_dims is not None else {}
+        self.train_dataset = train_dataset
 
         # Set device
         self.device = set_device()
@@ -82,6 +90,7 @@ class Trainer:
             model_config=self.config.model,
             spatial_input_channels=self.spatial_input_channels,
             auxiliary_input_dims=self.auxiliary_input_dims,
+            **self._get_fuel_curve_stats(),
         )
 
         self.model.to(self.device)
@@ -110,6 +119,16 @@ class Trainer:
         self._validate_and_load_metrics()
 
         self._configure_metric_target_transform()
+
+    def _get_fuel_curve_stats(self) -> dict[str, torch.Tensor | None]:
+        """Extract fuel curve normalization stats from the training dataset when fuel_feats_encoding is iROS."""
+        if self.train_dataset is None:
+            return {"fuel_curve_mean": None, "fuel_curve_std": None}
+        grid_params = self._get_grid_params()
+        if grid_params is None or grid_params.fuel_feats_encoding not in FUEL_CURVE_ENCODINGS:
+            return {"fuel_curve_mean": None, "fuel_curve_std": None}
+        fuel_curve_mean, fuel_curve_std = get_fuel_curve_normalization_stats(self.train_dataset)
+        return {"fuel_curve_mean": fuel_curve_mean, "fuel_curve_std": fuel_curve_std}
 
     def _build_loss(self) -> torch.nn.Module:
         loss_config = self.config.optimizer.loss

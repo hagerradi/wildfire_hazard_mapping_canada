@@ -12,7 +12,7 @@
 set -euo pipefail
 
 # Usage: sbatch run_files/eval_hexels.sh configs/<your_config>.yaml
-CONFIG_FILE=${1:-configs/default_v1.yaml}
+CONFIG_FILE=${1:-configs/bp_common_input_pipeline.yaml}
 EVAL_ARGS=${EVAL_ARGS:-}
 
 cd "${SLURM_SUBMIT_DIR:-$(pwd)}"

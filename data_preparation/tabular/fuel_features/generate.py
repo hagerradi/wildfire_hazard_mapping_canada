@@ -19,7 +19,7 @@ def weather_list_to_grid(
     weather_list: pd.DataFrame, fire_weather_zone_grid: np.ma.MaskedArray, selected_weather_features: list[str], sampling: str = "dist"
 ) -> np.ndarray:
     """Project weather list onto the Fire Weather Zones"""
-    fire_weather_zones = weather_list["wx_zone"].unique()
+    fire_weather_zones = weather_list["WeatherZone"].unique()
 
     # Determine number of output channels based on sampling strategy
     if sampling == "dist":
@@ -32,7 +32,7 @@ def weather_list_to_grid(
     out = np.full((h, w, n_channels), NODATA, dtype="float32")
 
     for zone in fire_weather_zones:
-        weather_zone_subset = weather_list[weather_list["wx_zone"] == zone][selected_weather_features]
+        weather_zone_subset = weather_list[weather_list["WeatherZone"] == zone][selected_weather_features]
         # Randomly sample 1 row from the given weather list (1xlen(selected_weather_features))
         if sampling == "random":
             value = np.array(weather_zone_subset.sample(1, random_state=42))
@@ -50,14 +50,22 @@ def weather_list_to_grid(
 
 
 def save_grid(path: str, data_arr: np.ndarray, profile: dict):
-    """save grid as .asc file"""
-    # Ensure nodata in profile matches what we use
+    """Save a single-band raster as GeoTIFF."""
+
     profile = profile.copy()
 
-    # Replace NaNs with nodata
-    data_arr = np.nan_to_num(data_arr, nan=profile["nodata"])
+    profile.update(
+        driver="GTiff",
+        dtype="float32",
+        count=1,
+        nodata=profile.get("nodata", -9999.0),
+        compress="lzw",
+    )
 
-    data_arr = data_arr.astype("float32")
+    data_arr = np.asarray(data_arr, dtype="float32")
+
+    nodata = profile["nodata"]
+    data_arr = np.nan_to_num(data_arr, nan=nodata)
 
     with rasterio.open(path, "w", **profile) as dst:
         dst.write(data_arr, 1)
@@ -65,7 +73,7 @@ def save_grid(path: str, data_arr: np.ndarray, profile: dict):
 
 def load_weather_grid(weather_list_file_path: str, zone_grid_file_path: str):
     """Single function to run the weather grid creation"""
-    selected_weather_features = ["ffmc", "bui", "ws", "wd"]
+    selected_weather_features = ["FineFuelMoistureCode", "BuildupIndex", "WindSpeed", "WindDirection"]
     weather_csv = load_weather_list(weather_list_file_path, season=1, normalize_weatherlist=False)
 
     with rasterio.open(zone_grid_file_path) as src:
@@ -82,26 +90,26 @@ def load_weather_grid(weather_list_file_path: str, zone_grid_file_path: str):
         # to unify with original fbp and elev - not unified with our NODATA
         nodata=-9999.0,
     )
-    save_grid("data/fuel_input_data/ffmc.asc", out_weather_params[:, :, 0], weather_profile)
-    save_grid("data/fuel_input_data/bui.asc", out_weather_params[:, :, 1], weather_profile)
-    save_grid("data/fuel_input_data/ws.asc", out_weather_params[:, :, 2], weather_profile)
-    save_grid("data/fuel_input_data/wd.asc", out_weather_params[:, :, 3], weather_profile)
+    save_grid("data/fuel_data/ffmc.tif", out_weather_params[:, :, 0], weather_profile)
+    save_grid("data/fuel_data/bui.tif", out_weather_params[:, :, 1], weather_profile)
+    save_grid("data/fuel_data/ws.tif", out_weather_params[:, :, 2], weather_profile)
+    save_grid("data/fuel_data/wd.tif", out_weather_params[:, :, 3], weather_profile)
 
 
 if __name__ == "__main__":
     os.makedirs("data", exist_ok=True)
-    os.makedirs("data/fuel_input_data", exist_ok=True)
+    os.makedirs("data/fuel_data", exist_ok=True)
 
     # 1: generate weather features
-    load_weather_grid(
-        weather_list_file_path="../yan_bp3/hex05/burning_conditions_module/hex_05_weather_list.csv",
-        zone_grid_file_path="../yan_bp3/hex05/mapped_inputs/cfrs.asc",
-    )
+    # load_weather_grid(
+    #     weather_list_file_path="../burnp3plus/hex05/tabular/hex05_DailyWeather.csv",
+    #     zone_grid_file_path="../burnp3plus/hex05/spatial/hex05_firezones.tif",
+    # )
 
     # 2: run the R script (fbp_features.R) externally to generate ROS
-    subprocess.run(["Rscript", "data_preparation/tabular/fuel_features/compute_fbp_features.R"], check=True)
+    subprocess.run(["Rscript", "data_preparation/tabular/fuel_features/compute_fbp_features_v2.R"], check=True)
 
     # 3: visualize outputs
-    ros_output = load_raster("data/fuel_input_data/ROS.asc")
+    ros_output = load_raster("data/fuel_data/HFI.tif")
     print(np.unique(ros_output))
     visualize_ignition_grid(ros_output, cause=1, season=1)

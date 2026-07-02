@@ -74,6 +74,9 @@ class Paths:
     def ignition_distribution_table(self, hex_id: int | str) -> Path:
         return self.tabular_dir / f"hex{hex_id}_IgnitionDistribution.csv"
 
+    def seasons_greenup_table(self, hex_id: int | str) -> Path:
+        return self.tabular_dir / f"hex{hex_id}_GreenUp.csv"
+
     def firezones_table(self, hex_id: int | str) -> Path:
         return self.tabular_dir / f"hex{hex_id}_FireZones.csv"
 

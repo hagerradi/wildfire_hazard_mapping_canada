@@ -99,12 +99,34 @@ def get_dataset_dimensions(dataset) -> tuple[int | None, dict[str, int]]:
     for name, source in sources.items():
         if name == "grid":
             spatial_channels = source.input_dim()
+            iros_len = getattr(source, "fuel_curve_len", 0)
+            if iros_len > 0:
+                auxiliary_input_dims["fuel_curve"] = iros_len
         elif name in SPATIALIZED_TABULAR_SOURCE_NAMES:
             spatial_channels = (spatial_channels or 0) + source.input_dim()
         else:
             auxiliary_input_dims[name] = source.input_dim()
 
     return spatial_channels, auxiliary_input_dims
+
+
+def get_fuel_curve_normalization_stats(dataset) -> tuple[torch.Tensor | None, torch.Tensor | None]:
+    """
+    Returns ``(fuel_curve_mean, fuel_curve_std)`` tensors from the GridSource if a
+    curve-based fuel encoding is active, otherwise returns ``(None, None)``.
+
+    These stats are computed from training hexels only inside ``GridSource.__init__`` and
+    should be passed to the model at construction time so that ``FuelCurveEncoder`` normalizes
+    correctly. During evaluation the model loads them from the saved checkpoint instead.
+    """
+    grid_source = getattr(dataset, "sources", {}).get("grid")
+    if grid_source is None or getattr(grid_source, "fuel_curve_len", 0) == 0:
+        return None, None
+    mean = getattr(grid_source, "fuel_curve_mean", None)
+    std = getattr(grid_source, "fuel_curve_std", None)
+    if mean is None or std is None:
+        return None, None
+    return torch.from_numpy(mean), torch.from_numpy(std)
 
 
 def fill_nan_channel_mean_numpy(arr: np.ndarray) -> np.ndarray:

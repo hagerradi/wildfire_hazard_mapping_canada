@@ -14,6 +14,7 @@ from data_preparation.spatial.utils import (
     read_split_hex_ids,
 )
 from src.config import GridParams
+from src.datasets.fuel_utils import FUEL_CURVE_ENCODINGS, build_fuel_curve_lookup, normalize_hex_id
 from src.datasets.sources.base import DataSource
 from src.datasets.targets import get_target_specs
 from src.datasets.utils import (
@@ -172,6 +173,11 @@ class GridSource(DataSource):
                         else:
                             updated_input_channel_indices.append(channel_index + self.num_fuel_classes - 1)
                     self.input_channel_indices = updated_input_channel_indices
+                elif self.fuel_feats_encoding in FUEL_CURVE_ENCODINGS:
+                    # Remove the scalar fuel channel entirely; it will be returned as a separate iROS array.
+                    self.input_channel_indices = [
+                        channel_index for channel_index in self.raw_input_local_indices if channel_index != self.fuel_feat_local_index
+                    ]
             if "elevation_grid" in self.feature_names_list:
                 elev_feat_local_index = self.channel_index_to_local_index[self.channel_feature_map["elevation_grid"][0]]
                 elev_feat_encoded_index = elev_feat_local_index
@@ -197,6 +203,20 @@ class GridSource(DataSource):
                 source_dir=self.raw_data_dir,
             )
 
+        # Construct fuel curve lookup table if a curve-based encoding is configured.
+        self.fuel_curve_len = 0
+        self.fuel_curve_mean: np.ndarray | None = None
+        self.fuel_curve_std: np.ndarray | None = None
+        if "fuel_grid" in self.feature_names_list and self.fuel_feats_encoding in FUEL_CURVE_ENCODINGS:
+            self.fuel_curve_lookup = build_fuel_curve_lookup(
+                root_dir=self.root_dir,
+                raw_data_dir=self.raw_data_dir,
+                feature_name=self.fuel_feats_encoding,
+            )
+            self.fuel_curve_len = len(next(iter(self.fuel_curve_lookup.values())))
+            self._compute_fuel_curve_normalization_stats()
+            self._build_dense_fuel_lookup()
+
     @staticmethod
     def _validate_range(max_value: float, min_value: float, label: str, source_dir: str) -> None:
         if not np.isfinite(max_value) or not np.isfinite(min_value) or max_value <= min_value:
@@ -205,6 +225,73 @@ class GridSource(DataSource):
                 f"min={min_value}, max={max_value}. Check that raw_data_dir points to the raw hexel dataset, "
                 "not only the prepared patch directory."
             )
+
+    def _build_dense_fuel_lookup(self) -> None:
+        """
+        Pre-compute per-hex dense arrays (shape: max_code+1, L) so that
+        per-pixel fuel curve assignment in get_sample() can use a single
+        NumPy fancy-index instead of a Python loop over unique codes.
+
+        ``self._dense_fuel_base``       -- (max_code+1, L) for hex-independent codes
+        ``self._dense_fuel_per_hex``    -- {hex_id_str: (max_code+1, L)} for hex-specific codes
+        ``self._known_fuel_codes``      -- frozenset of all fuel codes with an explicit lookup entry
+        """
+        max_code = max(code for code, _ in self.fuel_curve_lookup.keys())
+        L = self.fuel_curve_len
+
+        # Base array: codes whose curve is the same for every hex (hex_id key is None).
+        base_arr = np.zeros((max_code + 1, L), dtype=np.float32)
+        # Group lookup entries by hex_id to avoid repeated full-dict scans.
+        hex_specific: dict[str, dict[int, np.ndarray]] = {}
+        for (code, hid), vec in self.fuel_curve_lookup.items():
+            if hid is None:
+                base_arr[code] = vec
+            else:
+                hex_specific.setdefault(hid, {})[code] = vec
+
+        # Per-hex arrays: start from the base and overlay hex-specific vectors.
+        dense_per_hex: dict[str, np.ndarray] = {}
+        for hex_id, code_map in hex_specific.items():
+            arr = base_arr.copy()
+            for code, vec in code_map.items():
+                arr[code] = vec
+            dense_per_hex[hex_id] = arr
+
+        self._dense_fuel_base: np.ndarray = base_arr
+        self._dense_fuel_per_hex: dict[str, np.ndarray] = dense_per_hex
+        # Set of all fuel codes that have an explicit entry in the lookup.
+        # Used at get_sample time to detect unsupported codes early.
+        self._known_fuel_codes: frozenset[int] = frozenset(code for code, _ in self.fuel_curve_lookup.keys())
+
+    def _compute_fuel_curve_normalization_stats(self) -> None:
+        """
+        Compute a single global mean and std of log1p(ROS) from the iROS lookup table.
+
+        When ``train_split_csv_name`` is provided, only vectors from those hexels
+        are used so that normalization constants are never contaminated by val/test
+        data.  When it is not provided, all hexels contribute (matching the
+        behaviour of ``get_range_elevation``).
+        The results are stored in ``self.fuel_curve_mean`` and ``self.fuel_curve_std`` as float32
+        numpy arrays of shape ``(1,)``.
+        """
+        if self._train_hex_ids is not None:
+            train_hex_strs = {str(hid).zfill(2) for hid in self._train_hex_ids}
+            # Include hex-specific vectors from train hexes AND hex-independent
+            # vectors (key hex_id=None) which are not tied to any particular hex.
+            vectors = [vec for (_, hex_id), vec in self.fuel_curve_lookup.items() if hex_id is None or hex_id in train_hex_strs]
+        else:
+            vectors = list(self.fuel_curve_lookup.values())
+
+        if not vectors:
+            raise ValueError(
+                "No iROS vectors found for the training hexels. "
+                "Check that train_split_csv_name refers to a valid split file "
+                "and that the training hexels have ignition distribution data."
+            )
+
+        log_vecs = np.log1p(np.clip(np.stack(vectors, axis=0), 0, None))  # (N, L)
+        self.fuel_curve_mean = np.array([log_vecs.mean()], dtype=np.float32)
+        self.fuel_curve_std = np.array([log_vecs.std()], dtype=np.float32)
 
     def _target_out_norm(self, target_name: str) -> str:
         return self.out_norm
@@ -292,6 +379,34 @@ class GridSource(DataSource):
         if "fuel_grid" in self.feature_names_list and self.fuel_feats_encoding == "one_hot":  # (H,W,C+20)
             input_arr = one_hot_encode(arr=input_arr, channel_idx=self.fuel_feat_local_index, num_classes=self.num_fuel_classes)
 
+        # 3b. iROS encoding: build per-pixel ROS curve array from the fuel class channel.
+        # The fuel channel is excluded from input_arr via input_channel_indices (set in __init__),
+        # so it never reaches the model as a raw feature.
+        fuel_curve_arr: np.ndarray | None = None
+        if "fuel_grid" in self.feature_names_list and self.fuel_feats_encoding in FUEL_CURVE_ENCODINGS:
+            hex_id = normalize_hex_id(patch_info["hex_id"])
+            fuel_channel = input_arr[:, :, self.fuel_feat_local_index]  # (H, W)
+            valid_mask = np.isfinite(fuel_channel)
+            # Vectorized lookup: a single fancy-index into the pre-built dense
+            # array replaces the previous Python loop over unique fuel codes,
+            # eliminating per-sample Python overhead in DataLoader workers.
+            dense = self._dense_fuel_per_hex.get(hex_id, self._dense_fuel_base)
+            # Replace NaN with 0 before casting to int to avoid undefined behaviour.
+            safe_fuel = np.where(valid_mask, fuel_channel, 0.0)
+            fuel_int = safe_fuel.astype(np.int32)
+            # Validate that all observed fuel codes are known. Codes from nodata
+            # pixels (set to 0 above) are excluded since they are masked out anyway.
+            observed_codes = set(int(c) for c in np.unique(fuel_int[valid_mask]))
+            unknown_codes = observed_codes - self._known_fuel_codes
+            if unknown_codes:
+                raise ValueError(
+                    f"Patch {patch_info.get('hex_id', '?')} contains fuel code(s) with no "
+                    f"entry in the {self.fuel_feats_encoding} lookup table: "
+                    f"{sorted(unknown_codes)}. Known codes: {sorted(self._known_fuel_codes)}."
+                )
+            fuel_curve_arr = dense[fuel_int]  # (H, W, L)
+            fuel_curve_arr[~valid_mask] = 0.0  # zero-out nodata pixels
+
         # 4. Mean Imputation
         input_arr = fill_nan_channel_mean_numpy(input_arr)
 
@@ -322,11 +437,17 @@ class GridSource(DataSource):
         output_arr = torch.from_numpy(output_arr).permute(2, 0, 1)
         mask = torch.from_numpy(mask).permute(2, 0, 1)  # keep as boolean for efficiency
 
+        fuel_curve_tensor: torch.Tensor | None = None
+        if fuel_curve_arr is not None:
+            fuel_curve_tensor = torch.from_numpy(fuel_curve_arr).permute(2, 0, 1)  # (fuel_curve_len (L), H, W)
+
         # 7. Apply transforms if provided
         if self.transform:
             input_arr, output_arr, mask = self.transform(input_arr, output_arr, mask)
         input_arr = self._append_terrain_derivative_channels(input_arr)
 
+        if fuel_curve_tensor is not None:
+            return (input_arr, fuel_curve_tensor, output_arr, mask)  # (C, H, W), (L, H, W), (1, H, W), (1, H, W)
         return (input_arr, output_arr, mask)  # (C, H, W), (1, H, W), (1, H, W)
 
     def input_dim(self):
