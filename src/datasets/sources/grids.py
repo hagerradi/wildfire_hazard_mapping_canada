@@ -14,7 +14,7 @@ from data_preparation.spatial.utils import (
     read_split_hex_ids,
 )
 from src.config import GridParams
-from src.datasets.fuel_utils import FUEL_CURVE_ENCODINGS, build_fuel_curve_lookup, get_fuel_curve_from_lookup, normalize_hex_id
+from src.datasets.fuel_utils import FUEL_CURVE_ENCODINGS, build_fuel_curve_lookup, normalize_hex_id
 from src.datasets.sources.base import DataSource
 from src.datasets.targets import get_target_specs
 from src.datasets.utils import (

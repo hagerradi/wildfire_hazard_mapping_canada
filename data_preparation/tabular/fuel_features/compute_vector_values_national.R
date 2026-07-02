@@ -149,7 +149,6 @@ fbp_input <- meta_df %>%
 
     # ISI supplied directly
     ISI = ISI,
-
     LAT = 44.6648,
     LONG = -63.5762,
     FFMC = 90,
@@ -347,7 +346,7 @@ plot_df_clean <- plot_df %>%
   bind_rows(
     plot_df %>%
       filter(ISI == 0) %>%
-      mutate(ROS = 0)
+      mutate(ROS = 0, HFI = 0)
   ) %>%
   arrange(CurveLabel, ISI)
 
@@ -361,7 +360,7 @@ point_df <- plot_df_clean %>%
   filter(ISI %% 2 == 0)
 
 # ------------------------------------------------------------
-# Plot
+# Plot ROS
 # ------------------------------------------------------------
 
 p <- ggplot(plot_df_clean, aes(x = ISI, y = ROS, group = CurveLabel)) +
@@ -474,7 +473,7 @@ ggsave(
 )
 
 write.csv(
-  plot_df,
+  plot_df_clean,
   file = csv_path,
   row.names = FALSE
 )
@@ -484,5 +483,129 @@ cat(png_path, "\n\n")
 
 cat("Saved CSV to:\n")
 cat(csv_path, "\n\n")
+
+# ------------------------------------------------------------
+# Plot HFI
+# ------------------------------------------------------------
+
+p_hfi <- ggplot(plot_df_clean, aes(x = ISI, y = HFI, group = CurveLabel)) +
+  geom_line(
+    aes(
+      color = CurveLabel,
+      linetype = CurveLabel,
+      linewidth = CurveLabel
+    ),
+    lineend = "butt"
+  ) +
+  geom_point(
+    data = point_df,
+    aes(
+      x = ISI,
+      y = HFI,
+      color = CurveLabel
+    ),
+    size = 1.6,
+    show.legend = FALSE
+  ) +
+  scale_color_manual(
+    values = curve_colors,
+    breaks = curve_order,
+    limits = curve_order
+  ) +
+  scale_linetype_manual(
+    values = curve_linetypes,
+    breaks = curve_order,
+    limits = curve_order
+  ) +
+  scale_linewidth_manual(
+    values = curve_sizes,
+    breaks = curve_order,
+    limits = curve_order
+  ) +
+  scale_x_continuous(
+    limits = c(0, 85),
+    breaks = seq(0, 85, by = 10),
+    minor_breaks = seq(0, 85, by = 2),
+    expand = c(0, 0)
+  ) +
+  scale_y_continuous(
+    expand = c(0, 0),
+    limits = c(0, NA)
+  ) +
+  guides(
+    color = guide_legend(
+      title = NULL,
+      ncol = 1,
+      override.aes = list(
+        linetype = unname(curve_linetypes[curve_order]),
+        linewidth = unname(curve_sizes[curve_order])
+      )
+    ),
+    linetype = "none",
+    linewidth = "none"
+  ) +
+  labs(
+    x = "Initial Spread Index",
+    y = "Head Fire Intensity, kW/m"
+  ) +
+  theme_classic(base_size = 13) +
+  theme(
+    plot.title = element_text(
+      color = "steelblue",
+      face = "bold",
+      size = 12,
+      hjust = 0
+    ),
+    plot.subtitle = element_text(
+      color = "steelblue",
+      face = "bold",
+      size = 9,
+      hjust = 0
+    ),
+    axis.title = element_text(face = "bold", color = "black"),
+    axis.text = element_text(color = "black"),
+    axis.line = element_line(color = "gray40", linewidth = 0.4),
+    axis.ticks = element_line(color = "gray40"),
+    axis.ticks.length = unit(0.16, "cm"),
+    legend.position = "right",
+    legend.text = element_text(size = 9),
+    legend.key.width = unit(1.2, "cm"),
+    legend.key.height = unit(0.45, "cm"),
+    panel.border = element_rect(
+      color = "gray65",
+      fill = NA,
+      linewidth = 0.5
+    ),
+    plot.margin = margin(15, 20, 15, 15)
+  )
+
+print(p_hfi)
+
+# ------------------------------------------------------------
+# Save HFI outputs
+# ------------------------------------------------------------
+
+hfi_png_path <- file.path(out_dir, "fbp_hfi_curves_national_fuel.png")
+hfi_csv_path <- file.path(out_dir, "fbp_hfi_curves_national_fuel.csv")
+
+ggsave(
+  filename = hfi_png_path,
+  plot = p_hfi,
+  width = 12,
+  height = 8,
+  dpi = 300
+)
+
+write.csv(
+  plot_df_clean,
+  file = hfi_csv_path,
+  row.names = FALSE
+)
+
+cat("Saved HFI plot to:\n")
+cat(hfi_png_path, "\n\n")
+
+cat("Saved HFI CSV to:\n")
+cat(hfi_csv_path, "\n\n")
 
 cat("Done.\n")
