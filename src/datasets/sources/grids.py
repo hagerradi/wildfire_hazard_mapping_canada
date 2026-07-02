@@ -234,7 +234,7 @@ class GridSource(DataSource):
 
         ``self._dense_fuel_base``       -- (max_code+1, L) for hex-independent codes
         ``self._dense_fuel_per_hex``    -- {hex_id_str: (max_code+1, L)} for hex-specific codes
-        ``self._dense_fuel_max_code``   -- int, highest fuel code seen in the lookup
+        ``self._known_fuel_codes``      -- frozenset of all fuel codes with an explicit lookup entry
         """
         max_code = max(code for code, _ in self.fuel_curve_lookup.keys())
         L = self.fuel_curve_len
@@ -259,7 +259,9 @@ class GridSource(DataSource):
 
         self._dense_fuel_base: np.ndarray = base_arr
         self._dense_fuel_per_hex: dict[str, np.ndarray] = dense_per_hex
-        self._dense_fuel_max_code: int = max_code
+        # Set of all fuel codes that have an explicit entry in the lookup.
+        # Used at get_sample time to detect unsupported codes early.
+        self._known_fuel_codes: frozenset[int] = frozenset(code for code, _ in self.fuel_curve_lookup.keys())
 
     def _compute_fuel_curve_normalization_stats(self) -> None:
         """
@@ -391,7 +393,17 @@ class GridSource(DataSource):
             dense = self._dense_fuel_per_hex.get(hex_id, self._dense_fuel_base)
             # Replace NaN with 0 before casting to int to avoid undefined behaviour.
             safe_fuel = np.where(valid_mask, fuel_channel, 0.0)
-            fuel_int = safe_fuel.astype(np.int32).clip(0, self._dense_fuel_max_code)
+            fuel_int = safe_fuel.astype(np.int32)
+            # Validate that all observed fuel codes are known. Codes from nodata
+            # pixels (set to 0 above) are excluded since they are masked out anyway.
+            observed_codes = set(int(c) for c in np.unique(fuel_int[valid_mask]))
+            unknown_codes = observed_codes - self._known_fuel_codes
+            if unknown_codes:
+                raise ValueError(
+                    f"Patch {patch_info.get('hex_id', '?')} contains fuel code(s) with no "
+                    f"entry in the {self.fuel_feats_encoding} lookup table: "
+                    f"{sorted(unknown_codes)}. Known codes: {sorted(self._known_fuel_codes)}."
+                )
             fuel_curve_arr = dense[fuel_int]  # (H, W, L)
             fuel_curve_arr[~valid_mask] = 0.0  # zero-out nodata pixels
 
