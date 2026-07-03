@@ -1,0 +1,295 @@
+"""Tests for src/evaluate_hazard.py that avoid real model inference."""
+
+import json
+import types
+from pathlib import Path
+
+import numpy as np
+import pytest
+from rasterio.crs import CRS
+from rasterio.transform import from_origin
+
+from src.config import Config, HazardEvalConfig, HazardModelEntry
+from src.datasets.postprocessing.hexel_reconstruction import StitchedHexel
+from src.datasets.targets import get_target_spec
+from src.evaluate_hazard import (
+    load_hazard_config,
+    prepare_model_config_for_hazard,
+    raw_ground_truth_denominator,
+    read_reference_denominator,
+    resolve_hazard_denominator,
+    write_hazard_metric_summaries,
+)
+
+BP_CONFIG = Path("configs/bp_common_input_pipeline.yaml")
+HAZARD_EVAL_CONFIG = Path("configs/hazard_eval_common_input_pipeline.yaml")
+
+
+def _profile(height=2, width=2):
+    return {
+        "driver": "GTiff",
+        "height": height,
+        "width": width,
+        "count": 1,
+        "dtype": "float32",
+        "crs": CRS.from_epsg(3978),
+        "transform": from_origin(0.0, float(height), 1.0, 1.0),
+        "nodata": -9999.0,
+    }
+
+
+def _hexel(target_name, pred_grid, gt_grid, hex_id="01"):
+    return StitchedHexel(
+        hex_id=hex_id,
+        target=get_target_spec(target_name),
+        gt_grid=np.asarray(gt_grid, dtype=float),
+        pred_grid=np.asarray(pred_grid, dtype=float),
+        profile=_profile(),
+    )
+
+
+def _paired_hexels():
+    bp = _hexel("bp", pred_grid=[[0.5, 0.0], [0.2, 0.1]], gt_grid=[[0.4, 0.1], [0.3, 0.0]])
+    fi = _hexel("fi", pred_grid=[[100.0, 200.0], [50.0, 50.0]], gt_grid=[[80.0, 120.0], [60.0, 40.0]])
+    return [(bp, fi)]
+
+
+def _hazard_config(**overrides):
+    base = dict(
+        root_dir="placeholder/root",
+        raw_data_dir="placeholder/raw",
+        bp=HazardModelEntry(config_path=str(BP_CONFIG)),
+        fi=HazardModelEntry(config_path="configs/fi_common_input_pipeline.yaml"),
+    )
+    base.update(overrides)
+    return HazardEvalConfig(**base)
+
+
+class TestLoadHazardConfig:
+    def test_loads_real_yaml(self):
+        config = load_hazard_config(str(HAZARD_EVAL_CONFIG))
+        assert isinstance(config, HazardEvalConfig)
+        assert config.bp.config_path == str(BP_CONFIG)
+        assert config.fi.config_path.endswith("fi_common_input_pipeline.yaml")
+
+
+class TestPrepareModelConfigForHazard:
+    def _bp_config(self) -> Config:
+        import yaml
+
+        with BP_CONFIG.open() as handle:
+            return Config(**yaml.safe_load(handle))
+
+    def test_overrides_paths_checkpoint_and_logger(self):
+        model_config = self._bp_config()
+        hazard_config = _hazard_config(
+            root_dir="/staged/root",
+            raw_data_dir="/persistent/raw",
+            test_split="custom_test.csv",
+            valid_mask_threshold=0.5,
+            bp=HazardModelEntry(config_path=str(BP_CONFIG), checkpoint_filename="epoch_10.pth"),
+        )
+        prepared = prepare_model_config_for_hazard(model_config, hazard_config, hazard_config.bp, "bp")
+
+        assert prepared.data.root_dir == "/staged/root"
+        assert prepared.data.raw_data_dir == "/persistent/raw"
+        assert prepared.data.test_split == "custom_test.csv"
+        assert prepared.data.valid_mask_threshold == 0.5
+        assert prepared.evaluation.checkpoint_filename == "epoch_10.pth"
+        assert prepared.logger.enabled is False
+
+    def test_rejects_wrong_target(self):
+        model_config = self._bp_config()
+        hazard_config = _hazard_config()
+        with pytest.raises(ValueError, match="Expected a 'fi' model"):
+            prepare_model_config_for_hazard(model_config, hazard_config, hazard_config.fi, "fi")
+
+
+class TestReadReferenceDenominator:
+    def test_reads_bare_number(self, tmp_path):
+        path = tmp_path / "denom.json"
+        path.write_text("123.5")
+        assert read_reference_denominator(str(path)) == 123.5
+
+    @pytest.mark.parametrize("key", ["scale_denominator", "denominator"])
+    def test_reads_dict_keys(self, tmp_path, key):
+        path = tmp_path / "denom.json"
+        path.write_text(json.dumps({key: 42.0}))
+        assert read_reference_denominator(str(path)) == 42.0
+
+    def test_rejects_missing_key(self, tmp_path):
+        path = tmp_path / "denom.json"
+        path.write_text(json.dumps({"unrelated": 1.0}))
+        with pytest.raises(KeyError, match="scale_denominator"):
+            read_reference_denominator(str(path))
+
+    @pytest.mark.parametrize("value", ["0", "-5", "NaN", "Infinity"])
+    def test_rejects_non_positive_or_non_finite_bare(self, tmp_path, value):
+        path = tmp_path / "denom.json"
+        path.write_text(value)
+        with pytest.raises(ValueError, match="positive finite"):
+            read_reference_denominator(str(path))
+
+    @pytest.mark.parametrize("value", [0.0, -1.0, float("nan"), float("inf")])
+    def test_rejects_non_positive_or_non_finite_dict(self, tmp_path, value):
+        path = tmp_path / "denom.json"
+        path.write_text(json.dumps({"scale_denominator": value}))
+        with pytest.raises(ValueError, match="positive finite"):
+            read_reference_denominator(str(path))
+
+
+class TestResolveHazardDenominator:
+    def test_explicit_denominator_wins(self):
+        hazard_config = _hazard_config(scale_denominator=7.0, scale_denominator_source="eval_ground_truth")
+        denom, meta = resolve_hazard_denominator(hazard_config, _paired_hexels())
+        assert denom == 7.0
+        assert meta["source"] == "explicit"
+
+    def test_eval_ground_truth_max(self):
+        # gt raw = bp_gt * min(fi_gt, cap): max is 0.4*80=32, 0.1*120=12, 0.3*60=18, 0.0
+        hazard_config = _hazard_config(scale_denominator_source="eval_ground_truth")
+        denom, meta = resolve_hazard_denominator(hazard_config, _paired_hexels())
+        assert denom == 32.0
+        assert meta["source"] == "eval_ground_truth"
+
+    def test_prediction_max(self):
+        # pred raw = bp_pred * min(fi_pred, cap): 0.5*100=50, 0.0*200=0, 0.2*50=10, 0.1*50=5
+        hazard_config = _hazard_config(scale_denominator_source="prediction")
+        denom, _ = resolve_hazard_denominator(hazard_config, _paired_hexels())
+        assert denom == 50.0
+
+    def test_all_raw_ground_truth_writes_json(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(
+            "src.evaluate_hazard.raw_ground_truth_denominator",
+            lambda raw_data_dir, fi_cap, *args, **kwargs: 99.0,
+        )
+        hazard_config = _hazard_config(scale_denominator_source="all_raw_ground_truth")
+        denom, meta = resolve_hazard_denominator(hazard_config, _paired_hexels(), save_dir=str(tmp_path))
+        assert denom == 99.0
+        written = json.loads((tmp_path / "hazard_scale_denominator.json").read_text())
+        assert written["scale_denominator"] == 99.0
+        assert written["scale_denominator_source"] == "all_raw_ground_truth"
+
+
+class TestRawGroundTruthDenominator:
+    def test_max_over_raw_rasters(self, monkeypatch):
+        # Two hexes; hazard = bp * min(fi, cap). Expected max is hex "02": 0.5 * 200 = 100.
+        rasters = {
+            ("01", "bp"): np.array([[0.1, 0.2]]),
+            ("01", "fi"): np.array([[10.0, 20.0]]),
+            ("02", "bp"): np.array([[0.5, 0.0]]),
+            ("02", "fi"): np.array([[200.0, 5.0]]),
+        }
+
+        class FakePaths:
+            def __init__(self, hex_id, root_dir):
+                self.hex_id = hex_id
+
+            def output_burn_prob(self):
+                return f"{self.hex_id}:bp"
+
+            def output_fire_intensity(self):
+                return f"{self.hex_id}:fi"
+
+        def fake_load_raster(path):
+            hex_id, kind = path.split(":")
+            return rasters[(hex_id, kind)]
+
+        monkeypatch.setattr("src.evaluate_hazard.find_hex_ids", lambda root_dir: ["01", "02"])
+        monkeypatch.setattr("src.evaluate_hazard.Paths", FakePaths)
+        monkeypatch.setattr("src.evaluate_hazard.load_raster", fake_load_raster)
+
+        assert raw_ground_truth_denominator("/raw", fi_cap=10000.0) == 100.0
+
+    def test_respects_fi_cap(self, monkeypatch):
+        rasters = {("01", "bp"): np.array([[1.0]]), ("01", "fi"): np.array([[50000.0]])}
+
+        class FakePaths:
+            def __init__(self, hex_id, root_dir):
+                self.hex_id = hex_id
+
+            def output_burn_prob(self):
+                return f"{self.hex_id}:bp"
+
+            def output_fire_intensity(self):
+                return f"{self.hex_id}:fi"
+
+        monkeypatch.setattr("src.evaluate_hazard.find_hex_ids", lambda root_dir: ["01"])
+        monkeypatch.setattr("src.evaluate_hazard.Paths", FakePaths)
+        monkeypatch.setattr("src.evaluate_hazard.load_raster", lambda path: rasters[tuple(path.split(":"))])
+
+        assert raw_ground_truth_denominator("/raw", fi_cap=10000.0) == 10000.0
+
+    def test_restricts_to_allowed_hex_ids(self, monkeypatch):
+        # Only hex "01" is allowed, so hex "02" (larger hazard) must be excluded.
+        rasters = {
+            ("01", "bp"): np.array([[0.1, 0.2]]),
+            ("01", "fi"): np.array([[10.0, 20.0]]),
+            ("02", "bp"): np.array([[0.5, 0.0]]),
+            ("02", "fi"): np.array([[200.0, 5.0]]),
+        }
+
+        class FakePaths:
+            def __init__(self, hex_id, root_dir):
+                self.hex_id = hex_id
+
+            def output_burn_prob(self):
+                return f"{self.hex_id}:bp"
+
+            def output_fire_intensity(self):
+                return f"{self.hex_id}:fi"
+
+        def fake_load_raster(path):
+            hex_id, kind = path.split(":")
+            return rasters[(hex_id, kind)]
+
+        monkeypatch.setattr("src.evaluate_hazard.find_hex_ids", lambda root_dir: ["01", "02"])
+        monkeypatch.setattr("src.evaluate_hazard.Paths", FakePaths)
+        monkeypatch.setattr("src.evaluate_hazard.load_raster", fake_load_raster)
+
+        # Max over hex "01" only: 0.2 * 20 = 4.0.
+        assert raw_ground_truth_denominator("/raw", fi_cap=10000.0, allowed_hex_ids=[1]) == pytest.approx(4.0)
+
+
+class TestWriteHazardMetricSummaries:
+    def _fake_result(self, hex_id, metrics):
+        return types.SimpleNamespace(hex_id=hex_id, metrics=metrics)
+
+    def test_writes_per_hex_csv_and_aggregate_json(self, tmp_path):
+        results = [
+            self._fake_result("01", {"exact_accuracy": 0.8, "per_class_iou": np.array([0.5, np.nan])}),
+            self._fake_result("02", {"exact_accuracy": 0.6, "per_class_iou": np.array([0.7, 0.3])}),
+        ]
+        csv_path, json_path, aggregate = write_hazard_metric_summaries(
+            results, str(tmp_path), denominator=50.0, denominator_metadata={"source": "prediction", "value": 50.0}
+        )
+
+        import pandas as pd
+
+        per_hex = pd.read_csv(csv_path, dtype={"hex_id": str})
+        assert list(per_hex["hex_id"]) == ["01", "02"]
+        assert set(per_hex.columns) >= {"hex_id", "exact_accuracy", "per_class_iou_1", "per_class_iou_2"}
+
+        summary = json.loads(Path(json_path).read_text())
+        assert summary["num_hexels"] == 2
+        assert summary["denominator"] == 50.0
+        assert summary["denominator_metadata"]["source"] == "prediction"
+        # finite mean ignores the NaN per_class_iou_2 value from hex 01
+        assert aggregate["exact_accuracy"] == pytest.approx(0.7)
+        assert aggregate["per_class_iou_2"] == pytest.approx(0.3)
+        assert summary["metrics"]["per_class_iou_1"] == pytest.approx(0.6)
+
+    def test_all_nan_aggregate_becomes_null(self, tmp_path):
+        results = [
+            self._fake_result("01", {"exact_accuracy": np.nan}),
+            self._fake_result("02", {"exact_accuracy": np.nan}),
+        ]
+        _, json_path, aggregate = write_hazard_metric_summaries(
+            results, str(tmp_path), denominator=1.0, denominator_metadata={"source": "prediction"}
+        )
+
+        assert np.isnan(aggregate["exact_accuracy"])
+        raw = Path(json_path).read_text()
+        assert "NaN" not in raw
+        summary = json.loads(raw)
+        assert summary["metrics"]["exact_accuracy"] is None
