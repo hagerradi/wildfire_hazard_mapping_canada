@@ -1,7 +1,7 @@
 # base configurations for experiments
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class LoggerConfig(BaseModel):
@@ -183,3 +183,70 @@ class Config(BaseModel):
     logger: LoggerConfig
     metrics: list[str] = ["mse", "mae", "spearman", "ssim"]
     data_prep: DataPrepConfig = Field(default_factory=DataPrepConfig)
+
+
+DEFAULT_HAZARD_BIN_THRESHOLDS = [0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 25.0, 50.0]
+
+DenominatorSource = Literal[
+    "reference_file",
+    "all_raw_ground_truth",
+    "train_ground_truth",
+    "eval_ground_truth",
+    "prediction",
+]
+
+
+class HazardModelEntry(BaseModel):
+    """A single trained model (BP or FI) contributing predictions to hazard evaluation."""
+
+    config_path: str
+    checkpoint_filename: str = "best.pth"
+    save_predictions: bool = False
+
+
+class HazardEvalConfig(BaseModel):
+    """Config for hazard evaluation combining BP and FI model checkpoints."""
+
+    save_dir: str = "experiments/hazard_eval"
+
+    root_dir: str
+    raw_data_dir: str
+    test_split: str = "test_indices.csv"
+    valid_mask_threshold: float = 0.01
+    mask_scope: Literal["actual", "buffer", "buffer_only"] = "actual"
+    stitch_mode: Literal["mean", "max"] = "mean"
+
+    bp: HazardModelEntry
+    fi: HazardModelEntry
+
+    fi_cap: float | None = Field(default=10000.0, gt=0.0)
+    scale_to: float = Field(default=100.0, gt=0.0)
+    bin_thresholds: list[float] = Field(default_factory=lambda: list(DEFAULT_HAZARD_BIN_THRESHOLDS))
+    scale_denominator: float | None = Field(default=None, gt=0.0)
+    scale_denominator_source: DenominatorSource = "all_raw_ground_truth"
+    reference_denominator_path: str | None = None
+    on_missing_reference_denominator: Literal["error"] = "error"
+    self_normalized_prediction: bool = False
+
+    metrics: list[str] = Field(default_factory=lambda: ["spearman", "auc_iou_full"])
+    save_hazard_map: bool = True
+
+    @field_validator("bin_thresholds")
+    @classmethod
+    def _validate_bin_thresholds(cls, thresholds: list[float]) -> list[float]:
+        if not thresholds:
+            raise ValueError("bin_thresholds must be non-empty")
+        if any(t <= 0 for t in thresholds):
+            raise ValueError("bin_thresholds must be strictly positive")
+        if any(nxt <= cur for cur, nxt in zip(thresholds, thresholds[1:], strict=False)):
+            raise ValueError("bin_thresholds must be strictly increasing")
+        return thresholds
+
+    @model_validator(mode="after")
+    def _require_reference_denominator_path(self) -> "HazardEvalConfig":
+        if self.scale_denominator_source == "reference_file" and self.scale_denominator is None and self.reference_denominator_path is None:
+            raise ValueError(
+                "reference_denominator_path is required when scale_denominator_source='reference_file' "
+                "and no explicit scale_denominator is set"
+            )
+        return self
