@@ -19,6 +19,10 @@ from src.config import (
     TrainingConfig,
 )
 from src.datasets.postprocessing import utils as post_utils
+from src.datasets.postprocessing.hexel_reconstruction import (
+    StitchedHexel,
+    reconstruct_denormalized_hexels,
+)
 from src.datasets.postprocessing.utils import (
     denormalize_model_target,
     effective_robust_plot_percentile,
@@ -248,6 +252,66 @@ def test_evaluate_and_visualize_hexels_hides_support_outline_for_target_policy(t
 
     assert visualize_calls[0]["prediction_support_label"] == "target support"
     assert visualize_calls[0]["show_prediction_support_outline"] is False
+
+
+def test_reconstruct_denormalized_hexels_yields_single_stitched_hexel(tmp_path, monkeypatch):
+    with (tmp_path / "feature_channel_map_1.json").open("w") as f:
+        json.dump({"ignition_grid": [0], "bp_out_grid": [3]}, f)
+
+    patch = np.ones((2, 2, 4), dtype=np.float32)
+    patch[:, :, 3] = 1.0
+    np.save(tmp_path / "patch.npy", patch)
+
+    pd.DataFrame([{"filename": "patch.npy", "hex_id": 1, "valid_ratio": 1.0, "season": "spring", "cause": "H", "row": 0, "col": 0}]).to_csv(
+        tmp_path / "test_indices.csv", index=False
+    )
+    shutil.copyfile(tmp_path / "test_indices.csv", tmp_path / "train_indices.csv")
+
+    config = Config(
+        save_dir=str(tmp_path / "out"),
+        modelling_approach="1",
+        model=ModelConfig(num_classes=1, input_branches=["spatial"], hidden_features=[8, 16]),
+        optimizer=OptimizerConfig(loss="mse", name="Adam", lr=0.001),
+        training=TrainingConfig(max_epochs=1, log_every_n_epoch=1),
+        evaluation=EvaluationConfig(best_ckpt_metrics=["loss"], best_ckpt_metrics_mode=["min"]),
+        data=DataConfig(
+            root_dir=str(tmp_path),
+            raw_data_dir=str(tmp_path),
+            train_split="train_indices.csv",
+            val_split="val_indices.csv",
+            test_split="test_indices.csv",
+            input_sources=[DataSourceConfig(name="grid", params=GridParams(feature_names_list=["ignition_grid"], target_name="bp"))],
+        ),
+        logger=LoggerConfig(enabled=False, project_name="test", workspace="test", experiment_name="test"),
+        metrics=["mae"],
+        data_prep=DataPrepConfig(win_h=2, win_w=2),
+    )
+
+    monkeypatch.setattr(post_utils, "get_range_output", lambda *args, **kwargs: (2.0, 0.0))
+    monkeypatch.setattr(
+        post_utils,
+        "load_spatial_raster",
+        lambda *args, **kwargs: (np.full((2, 2), 0.3, dtype=np.float32), {"dtype": "float32", "marker": "raster"}),
+    )
+
+    hexels = list(
+        reconstruct_denormalized_hexels(
+            test_predictions=np.full((1, 1, 2, 2), 0.5, dtype=np.float32),
+            config=config,
+            out_norm="none",
+        )
+    )
+
+    assert len(hexels) == 1
+    hexel = hexels[0]
+    assert isinstance(hexel, StitchedHexel)
+    assert hexel.hex_id == "01"
+    assert hexel.target.name == "bp"
+    np.testing.assert_allclose(hexel.pred_grid, np.ones((2, 2), dtype=np.float32))
+    np.testing.assert_allclose(hexel.gt_grid, np.full((2, 2), 0.3, dtype=np.float32))
+    assert hexel.profile["marker"] == "raster"
+    assert hexel.actual_support_mask is None
+    assert hexel.buffer_support_mask is None
 
 
 def test_evaluate_and_visualize_hexels_metrics_only_skips_artifacts(tmp_path, monkeypatch):

@@ -448,6 +448,46 @@ def get_target_log_stats(grid_params: GridParams | None, target: TargetSpec) -> 
     return grid_params.target_log_mean, grid_params.target_log_std
 
 
+def get_target_postprocessing_settings(config: Config, out_norm: str) -> list[TargetPostprocessingSettings]:
+    data_dir = config.data.root_dir
+    raw_data_dir = config.data.raw_data_dir
+    train_hex_ids: set[int] | None = None
+    if data_dir and config.data.train_split:
+        train_hex_ids = read_split_hex_ids(os.path.join(data_dir, config.data.train_split))
+
+    grid_params = get_config_grid_params(config)
+    settings = []
+    for target in get_config_target_specs(config):
+        target_channel_index = get_target_channel_index(data_dir=data_dir, modelling_approach=config.modelling_approach, target=target)
+        max_target_val, min_target_val = get_range_output(
+            root_dir=raw_data_dir, output_type=target.output_type, allowed_hex_ids=train_hex_ids
+        )
+        max_target_val, min_target_val = apply_bp_nodata_zero_range(
+            target_name=target.name,
+            max_value=max_target_val,
+            min_value=min_target_val,
+            bp_nodata_as_zero=config.evaluation.bp_nodata_as_zero,
+        )
+        target_log_mean, target_log_std = get_target_log_stats(grid_params=grid_params, target=target)
+        target_out_norm = get_target_out_norm(grid_params=grid_params, target=target, fallback_out_norm=out_norm)
+        if target_out_norm == "log_standard" and (target_log_mean is None or target_log_std is None):
+            target_log_mean, target_log_std = get_output_log_stats_cached(
+                str(data_dir), target.output_type, allowed_hex_ids=train_hex_ids, raw_data_dir=raw_data_dir
+            )
+        settings.append(
+            TargetPostprocessingSettings(
+                target=target,
+                target_channel_index=target_channel_index,
+                max_target_val=max_target_val,
+                min_target_val=min_target_val,
+                out_norm=target_out_norm,
+                target_log_mean=target_log_mean,
+                target_log_std=target_log_std,
+            )
+        )
+    return settings
+
+
 def select_prediction_target_channel(
     predictions: np.ndarray,
     target_name: str,
@@ -545,262 +585,161 @@ def evaluate_and_visualize_hexels(
     A util function to re-construct predicted hexels out of test predictions, and visualize side-by-side with the Groundtruth.
     Also computes and aggregates stitched hexel-level metrics.
     """
-    data_dir = config.data.root_dir
-    raw_data_dir = config.data.raw_data_dir
-    modelling_approach = config.modelling_approach
-    valid_mask_threshold = config.data.valid_mask_threshold
-    targets = get_config_target_specs(config)
-    # Denormalization must use the same train-only normalization constants as training,
-    # so the inverse transform is consistent and never derived from held-out hexes.
-    train_hex_ids: set[int] | None = None
-    if data_dir and config.data.train_split:
-        train_hex_ids = read_split_hex_ids(os.path.join(data_dir, config.data.train_split))
-    grid_params = get_config_grid_params(config)
-    prediction_mask_channel_indices = get_prediction_mask_channel_indices(
-        data_dir=data_dir,
-        modelling_approach=modelling_approach,
-        grid_params=grid_params,
-        prediction_support_policy=config.evaluation.prediction_support_policy,
-    )
     prediction_support_label = "input support" if config.evaluation.prediction_support_policy == "input" else "target support"
     scope = normalize_mask_scope(mask_scope)
     show_prediction_support_outline = config.evaluation.prediction_support_policy == "input" and scope == "actual"
     artifacts_save_dir = get_mask_scope_save_dir(config.save_dir, scope)
 
-    if isinstance(test_predictions, str):
-        raise TypeError(f"Expected ndarray, but got string: {test_predictions}")
+    from src.datasets.postprocessing.hexel_reconstruction import reconstruct_denormalized_hexels
 
-    target_settings: list[TargetPostprocessingSettings] = []
-    for target in targets:
-        target_channel_index = get_target_channel_index(data_dir=data_dir, modelling_approach=modelling_approach, target=target)
-        max_target_val, min_target_val = get_range_output(
-            root_dir=raw_data_dir, output_type=target.output_type, allowed_hex_ids=train_hex_ids
-        )
-        max_target_val, min_target_val = apply_bp_nodata_zero_range(
-            target_name=target.name,
-            max_value=max_target_val,
-            min_value=min_target_val,
-            bp_nodata_as_zero=config.evaluation.bp_nodata_as_zero,
-        )
-        target_log_mean, target_log_std = get_target_log_stats(grid_params=grid_params, target=target)
-        target_out_norm = get_target_out_norm(grid_params=grid_params, target=target, fallback_out_norm=out_norm)
-        if target_out_norm == "log_standard" and (target_log_mean is None or target_log_std is None):
-            target_log_mean, target_log_std = get_output_log_stats_cached(
-                str(data_dir), target.output_type, allowed_hex_ids=train_hex_ids, raw_data_dir=raw_data_dir
-            )
-        target_settings.append(
-            TargetPostprocessingSettings(
-                target=target,
-                target_channel_index=target_channel_index,
-                max_target_val=max_target_val,
-                min_target_val=min_target_val,
-                out_norm=target_out_norm,
-                target_log_mean=target_log_mean,
-                target_log_std=target_log_std,
-            )
-        )
-
-    try:
-        test_df = pd.read_csv(os.path.join(data_dir, config.data.test_split))
-    except (FileNotFoundError, AttributeError):
-        raise ValueError("Test df file does not exist.")  # noqa: B904
-
-    # separate hexels by their IDs
-    test_df = test_df[test_df["valid_ratio"] > valid_mask_threshold].reset_index(drop=True)  # type: ignore
-    validate_patch_metadata_mask_scope(test_df, scope)
-    all_hex_ids = list(test_df["hex_id"].unique())
-
-    # init. hexel metrics
     all_hexel_metrics: list[tuple[str, str | None, str | None, dict[str, float]]] = []
+    current_hex_id: str | None = None
 
-    # loop over test hexels
-    for hex_id in all_hex_ids:
-        print(f"======Working with hex{hex_id}========")
-        one_hexel_df = test_df[test_df["hex_id"] == hex_id]
-        hexel_indices = test_df[test_df["hex_id"] == hex_id].index.tolist()
-        if len(str(hex_id)) != 2:
-            hex_id = "0" + str(hex_id)
+    for stitched_hexel in reconstruct_denormalized_hexels(
+        test_predictions=test_predictions,
+        config=config,
+        out_norm=out_norm,
+        stitch_mode=stitch_mode,
+        mask_scope=scope,
+    ):
+        if stitched_hexel.hex_id != current_hex_id:
+            if current_hex_id is not None and save_artifacts:
+                artifact_label = "subplots" if save_plots else "predicted rasters"
+                print(f"=======Saved {artifact_label} for hex{current_hex_id}==============")
+            current_hex_id = stitched_hexel.hex_id
+            print(f"======Working with hex{current_hex_id}========")
 
-        hex_test_predictions = test_predictions[hexel_indices]
-        for settings in target_settings:
-            target = settings.target
-            target_predictions = select_prediction_target_channel(
-                predictions=hex_test_predictions,
-                target_name=target.name,
-            )
-            target_name_for_artifacts = None
-            reconstructed_hexel_denorm, gt_elevation_grid_profile = get_predicted_hexel(
-                base_dir=data_dir,
-                raw_data_dir=raw_data_dir,
-                test_df=one_hexel_df,
-                predictions=target_predictions,
-                min_target_val=settings.min_target_val,
-                max_target_val=settings.max_target_val,
-                hex_id=hex_id,
-                modelling_approach=modelling_approach,
-                out_norm=settings.out_norm,
-                target_log_mean=settings.target_log_mean,
-                target_log_std=settings.target_log_std,
-                stitch_mode=stitch_mode,
-                target_channel_index=settings.target_channel_index,
-                prediction_mask_channel_indices=prediction_mask_channel_indices,
-                win_h=config.data_prep.win_h,
-                win_w=config.data_prep.win_w,
-                mask_scope=scope,
-            )
-            all_paths = Paths(hex_id=hex_id, root_dir=raw_data_dir)
-            grid_gt, reconstructed_hexel_denorm = load_target_grid_for_mask_scope(
-                paths=all_paths,
-                target=target,
-                pred_grid=reconstructed_hexel_denorm,
-                profile=gt_elevation_grid_profile,
-                mask_scope=scope,
-                hex_id=str(hex_id),
-                bp_nodata_as_zero=config.evaluation.bp_nodata_as_zero,
-            )
-            actual_support_mask = None
-            buffer_support_mask = None
-            if (
-                scope != "actual"
-                and gt_elevation_grid_profile.get("crs") is not None
-                and gt_elevation_grid_profile.get("transform") is not None
-            ):
-                buffer_support_mask = _actual_area_mask(
-                    mask_path=all_paths.mask_grid(hex_id=hex_id, mask_scope=scope),
-                    profile=gt_elevation_grid_profile,
-                    shape=reconstructed_hexel_denorm.shape,
-                )
-                actual_support_mask = _actual_area_mask(
-                    mask_path=all_paths.mask_grid_actual(hex_id=hex_id),
-                    profile=gt_elevation_grid_profile,
-                    shape=reconstructed_hexel_denorm.shape,
-                )
+        target = stitched_hexel.target
+        target_name_for_artifacts = None
+        grid_gt = stitched_hexel.gt_grid
+        reconstructed_hexel_denorm = stitched_hexel.pred_grid
+        actual_support_mask = stitched_hexel.actual_support_mask
+        buffer_support_mask = stitched_hexel.buffer_support_mask
 
-            if save_artifacts:
-                save_predicted_hexels(
-                    reconstructed_hexel_denorm,
-                    gt_elevation_grid_profile,
-                    hex_id,
-                    artifacts_save_dir,
+        if save_artifacts:
+            save_predicted_hexels(
+                reconstructed_hexel_denorm,
+                stitched_hexel.profile,
+                stitched_hexel.hex_id,
+                artifacts_save_dir,
+                target_name=target_name_for_artifacts,
+            )
+            if save_plots:
+                visualize_target_grids(
+                    gt_grid=grid_gt,
+                    pred_grid=reconstructed_hexel_denorm,
+                    hex_id=stitched_hexel.hex_id,
+                    save_dir=artifacts_save_dir,
+                    experiment_logger=experiment_logger,
+                    target_label=target.label,
                     target_name=target_name_for_artifacts,
+                    actual_support_mask=actual_support_mask,
+                    buffer_support_mask=buffer_support_mask,
+                    prediction_support_label=prediction_support_label,
+                    show_prediction_support_outline=show_prediction_support_outline,
                 )
-                if save_plots:
+                target_robust_plot_percentile = effective_robust_plot_percentile(
+                    target=target,
+                    robust_plot_percentile=robust_plot_percentile,
+                )
+                if target_robust_plot_percentile is not None:
                     visualize_target_grids(
                         gt_grid=grid_gt,
                         pred_grid=reconstructed_hexel_denorm,
-                        hex_id=hex_id,
+                        hex_id=stitched_hexel.hex_id,
                         save_dir=artifacts_save_dir,
                         experiment_logger=experiment_logger,
                         target_label=target.label,
                         target_name=target_name_for_artifacts,
+                        value_percentile=target_robust_plot_percentile,
+                        diff_percentile=target_robust_plot_percentile,
+                        filename_suffix=f"_p{target_robust_plot_percentile:g}",
                         actual_support_mask=actual_support_mask,
                         buffer_support_mask=buffer_support_mask,
                         prediction_support_label=prediction_support_label,
                         show_prediction_support_outline=show_prediction_support_outline,
                     )
-                    target_robust_plot_percentile = effective_robust_plot_percentile(
-                        target=target,
-                        robust_plot_percentile=robust_plot_percentile,
-                    )
-                    if target_robust_plot_percentile is not None:
-                        visualize_target_grids(
-                            gt_grid=grid_gt,
-                            pred_grid=reconstructed_hexel_denorm,
-                            hex_id=hex_id,
-                            save_dir=artifacts_save_dir,
-                            experiment_logger=experiment_logger,
-                            target_label=target.label,
-                            target_name=target_name_for_artifacts,
-                            value_percentile=target_robust_plot_percentile,
-                            diff_percentile=target_robust_plot_percentile,
-                            filename_suffix=f"_p{target_robust_plot_percentile:g}",
-                            actual_support_mask=actual_support_mask,
-                            buffer_support_mask=buffer_support_mask,
-                            prediction_support_label=prediction_support_label,
-                            show_prediction_support_outline=show_prediction_support_outline,
-                        )
-                    plot_hexbin_distribution(
-                        gt_grid=grid_gt,
-                        pred_grid=reconstructed_hexel_denorm,
-                        hex_id=hex_id,
-                        save_dir=artifacts_save_dir,
-                        experiment_logger=experiment_logger,
-                        target_label=target.label,
-                        probability_scale=target.probability_scale,
-                        target_name=target_name_for_artifacts,
-                    )
-                    plot_histogram_distribution(
-                        gt_grid=grid_gt,
-                        pred_grid=reconstructed_hexel_denorm,
-                        hex_id=hex_id,
-                        save_dir=artifacts_save_dir,
-                        experiment_logger=experiment_logger,
-                        target_label=target.label,
-                        probability_scale=target.probability_scale,
-                        target_name=target_name_for_artifacts,
-                    )
-
-            # compute per-hexel metrics
-            if metric_functions is not None:
-                hex_metrics = calculate_hexel_metrics_pytorch(
-                    gt_grid=grid_gt, pred_grid=reconstructed_hexel_denorm, device=device, metric_functions=metric_functions
+                plot_hexbin_distribution(
+                    gt_grid=grid_gt,
+                    pred_grid=reconstructed_hexel_denorm,
+                    hex_id=stitched_hexel.hex_id,
+                    save_dir=artifacts_save_dir,
+                    experiment_logger=experiment_logger,
+                    target_label=target.label,
+                    probability_scale=target.probability_scale,
+                    target_name=target_name_for_artifacts,
                 )
-                metric_scope: str | None = None if scope == "actual" else scope
-                all_hexel_metrics.append((str(hex_id).zfill(2), None, metric_scope, hex_metrics))
+                plot_histogram_distribution(
+                    gt_grid=grid_gt,
+                    pred_grid=reconstructed_hexel_denorm,
+                    hex_id=stitched_hexel.hex_id,
+                    save_dir=artifacts_save_dir,
+                    experiment_logger=experiment_logger,
+                    target_label=target.label,
+                    probability_scale=target.probability_scale,
+                    target_name=target_name_for_artifacts,
+                )
 
-                if scope == "buffer" and actual_support_mask is not None:
-                    actual_gt, actual_pred = mask_grids_by_support(
-                        gt_grid=grid_gt,
-                        pred_grid=reconstructed_hexel_denorm,
-                        support_mask=actual_support_mask,
-                    )
-                    buffer_only_gt, buffer_only_pred = mask_grids_by_support(
-                        gt_grid=grid_gt,
-                        pred_grid=reconstructed_hexel_denorm,
-                        support_mask=np.isfinite(reconstructed_hexel_denorm) & ~actual_support_mask,
-                    )
-                    actual_metrics = calculate_hexel_metrics_pytorch(
-                        gt_grid=actual_gt,
-                        pred_grid=actual_pred,
-                        device=device,
-                        metric_functions=metric_functions,
-                    )
-                    buffer_only_metrics = calculate_hexel_metrics_pytorch(
-                        gt_grid=buffer_only_gt,
-                        pred_grid=buffer_only_pred,
-                        device=device,
-                        metric_functions=metric_functions,
-                    )
-                    all_hexel_metrics.append((str(hex_id).zfill(2), None, "actual", actual_metrics))
-                    all_hexel_metrics.append((str(hex_id).zfill(2), None, "buffer_only", buffer_only_metrics))
+        # compute per-hexel metrics
+        if metric_functions is not None:
+            hex_metrics = calculate_hexel_metrics_pytorch(
+                gt_grid=grid_gt, pred_grid=reconstructed_hexel_denorm, device=device, metric_functions=metric_functions
+            )
+            metric_scope: str | None = None if scope == "actual" else scope
+            all_hexel_metrics.append((stitched_hexel.hex_id, None, metric_scope, hex_metrics))
 
-                # get top k perc. values dynamically
-                percentiles_to_plot = [
-                    fn.keywords["percentile"]
-                    for _, fn in metric_functions.items()
-                    if isinstance(fn, functools.partial) and "percentile" in fn.keywords
-                ]
+            if scope == "buffer" and actual_support_mask is not None:
+                actual_gt, actual_pred = mask_grids_by_support(
+                    gt_grid=grid_gt,
+                    pred_grid=reconstructed_hexel_denorm,
+                    support_mask=actual_support_mask,
+                )
+                buffer_only_gt, buffer_only_pred = mask_grids_by_support(
+                    gt_grid=grid_gt,
+                    pred_grid=reconstructed_hexel_denorm,
+                    support_mask=np.isfinite(reconstructed_hexel_denorm) & ~actual_support_mask,
+                )
+                actual_metrics = calculate_hexel_metrics_pytorch(
+                    gt_grid=actual_gt,
+                    pred_grid=actual_pred,
+                    device=device,
+                    metric_functions=metric_functions,
+                )
+                buffer_only_metrics = calculate_hexel_metrics_pytorch(
+                    gt_grid=buffer_only_gt,
+                    pred_grid=buffer_only_pred,
+                    device=device,
+                    metric_functions=metric_functions,
+                )
+                all_hexel_metrics.append((stitched_hexel.hex_id, None, "actual", actual_metrics))
+                all_hexel_metrics.append((stitched_hexel.hex_id, None, "buffer_only", buffer_only_metrics))
 
-                if save_artifacts and save_plots:
-                    for p in percentiles_to_plot:
-                        pred_bin, gt_bin = get_hexel_binary_maps(reconstructed_hexel_denorm, grid_gt, percentile=p)
-                        visualize_hexel_iou(
-                            grid_gt,
-                            reconstructed_hexel_denorm,
-                            gt_bin,
-                            pred_bin,
-                            hex_id,
-                            artifacts_save_dir,
-                            p,
-                            target_label=target.label,
-                            target_name=target_name_for_artifacts,
-                            actual_support_mask=actual_support_mask,
-                            buffer_support_mask=buffer_support_mask,
-                        )
+            percentiles_to_plot = [
+                fn.keywords["percentile"]
+                for _, fn in metric_functions.items()
+                if isinstance(fn, functools.partial) and "percentile" in fn.keywords
+            ]
 
-        if save_artifacts:
-            artifact_label = "subplots" if save_plots else "predicted rasters"
-            print(f"=======Saved {artifact_label} for hex{hex_id}==============")
+            if save_artifacts and save_plots:
+                for p in percentiles_to_plot:
+                    pred_bin, gt_bin = get_hexel_binary_maps(reconstructed_hexel_denorm, grid_gt, percentile=p)
+                    visualize_hexel_iou(
+                        grid_gt,
+                        reconstructed_hexel_denorm,
+                        gt_bin,
+                        pred_bin,
+                        stitched_hexel.hex_id,
+                        artifacts_save_dir,
+                        p,
+                        target_label=target.label,
+                        target_name=target_name_for_artifacts,
+                        actual_support_mask=actual_support_mask,
+                        buffer_support_mask=buffer_support_mask,
+                    )
+
+    if current_hex_id is not None and save_artifacts:
+        artifact_label = "subplots" if save_plots else "predicted rasters"
+        print(f"=======Saved {artifact_label} for hex{current_hex_id}==============")
 
     # aggregate final scores
     hexel_metrics = {}
