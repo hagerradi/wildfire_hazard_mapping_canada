@@ -14,6 +14,7 @@ from src.datasets.postprocessing.hexel_reconstruction import StitchedHexel
 from src.datasets.targets import get_target_spec
 from src.evaluate_hazard import (
     load_hazard_config,
+    parse_args,
     prepare_model_config_for_hazard,
     raw_ground_truth_denominator,
     read_reference_denominator,
@@ -63,6 +64,72 @@ def _hazard_config(**overrides):
     )
     base.update(overrides)
     return HazardEvalConfig(**base)
+
+
+class TestCliOverrides:
+    def _parse(self, monkeypatch, argv):
+        monkeypatch.setattr("sys.argv", ["evaluate_hazard", *argv])
+        return parse_args()
+
+    def _apply(self, hazard_config, args):
+        overrides = {
+            key: value
+            for key, value in (
+                ("mask_scope", args.mask_scope),
+                ("save_dir", args.save_dir),
+                ("stitch_mode", args.stitch_mode),
+            )
+            if value is not None
+        }
+        return hazard_config.model_copy(update=overrides) if overrides else hazard_config
+
+    def test_defaults_are_none(self, monkeypatch):
+        args = self._parse(monkeypatch, ["--config", str(HAZARD_EVAL_CONFIG)])
+        assert args.mask_scope is None
+        assert args.save_dir is None
+        assert args.stitch_mode is None
+
+    def test_no_overrides_returns_same_config(self, monkeypatch):
+        args = self._parse(monkeypatch, ["--config", str(HAZARD_EVAL_CONFIG)])
+        hazard_config = _hazard_config(mask_scope="actual", stitch_mode="mean")
+        assert self._apply(hazard_config, args) is hazard_config
+
+    def test_overrides_applied_and_other_fields_preserved(self, monkeypatch):
+        args = self._parse(
+            monkeypatch,
+            [
+                "--config",
+                str(HAZARD_EVAL_CONFIG),
+                "--mask_scope",
+                "buffer_only",
+                "--save_dir",
+                "experiments/hazard_eval/buffer_only",
+                "--stitch_mode",
+                "max",
+            ],
+        )
+        hazard_config = _hazard_config(mask_scope="actual", stitch_mode="mean", save_dir="experiments/original")
+        updated = self._apply(hazard_config, args)
+
+        assert updated.mask_scope == "buffer_only"
+        assert updated.save_dir == "experiments/hazard_eval/buffer_only"
+        assert updated.stitch_mode == "max"
+        assert updated.root_dir == hazard_config.root_dir
+        assert hazard_config.mask_scope == "actual"
+
+    def test_partial_override_only_touches_given_field(self, monkeypatch):
+        args = self._parse(monkeypatch, ["--config", str(HAZARD_EVAL_CONFIG), "--mask_scope", "buffer"])
+        hazard_config = _hazard_config(mask_scope="actual", stitch_mode="mean", save_dir="experiments/keep")
+        updated = self._apply(hazard_config, args)
+
+        assert updated.mask_scope == "buffer"
+        assert updated.save_dir == "experiments/keep"
+        assert updated.stitch_mode == "mean"
+
+    @pytest.mark.parametrize(("flag", "value"), [("--mask_scope", "invalid"), ("--stitch_mode", "median")])
+    def test_rejects_invalid_choices(self, monkeypatch, flag, value):
+        with pytest.raises(SystemExit):
+            self._parse(monkeypatch, ["--config", str(HAZARD_EVAL_CONFIG), flag, value])
 
 
 class TestLoadHazardConfig:

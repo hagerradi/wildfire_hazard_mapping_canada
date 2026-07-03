@@ -69,6 +69,26 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Override model-entry save_predictions flags and never write patch predictions.",
     )
+    parser.add_argument(
+        "--mask_scope",
+        type=str,
+        choices=["actual", "buffer", "buffer_only"],
+        default=None,
+        help="Override hazard_config.mask_scope for this run.",
+    )
+    parser.add_argument(
+        "--save_dir",
+        type=str,
+        default=None,
+        help="Override hazard_config.save_dir for this run (avoids output collisions).",
+    )
+    parser.add_argument(
+        "--stitch_mode",
+        type=str,
+        choices=["mean", "max"],
+        default=None,
+        help="Override hazard_config.stitch_mode for this run.",
+    )
     return parser.parse_args()
 
 
@@ -305,6 +325,18 @@ def main() -> None:
     args = parse_args()
     start_time = time.time()
     hazard_config = load_hazard_config(args.config)
+
+    overrides = {
+        key: value
+        for key, value in (
+            ("mask_scope", args.mask_scope),
+            ("save_dir", args.save_dir),
+            ("stitch_mode", args.stitch_mode),
+        )
+        if value is not None
+    }
+    if overrides:
+        hazard_config = hazard_config.model_copy(update=overrides)
 
     if hazard_config.self_normalized_prediction:
         raise NotImplementedError("self_normalized_prediction is not implemented yet; set it to false in the hazard config.")

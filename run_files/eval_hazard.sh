@@ -14,6 +14,9 @@ set -euo pipefail
 # Usage: sbatch run_files/eval_hazard.sh configs/<your_hazard_config>.yaml
 # Extra CLI args (e.g. --metrics_only --skip_plots) can be passed via EVAL_ARGS:
 #   EVAL_ARGS="--metrics_only" sbatch run_files/eval_hazard.sh configs/hazard_eval_common_input_pipeline.yaml
+# Override mask_scope/save_dir to run actual vs buffer variants from one config without output collisions:
+#   EVAL_ARGS="--mask_scope buffer_only --save_dir experiments/hazard_eval/buffer_only" \
+#     sbatch run_files/eval_hazard.sh configs/hazard_eval_common_input_pipeline.yaml
 CONFIG_FILE=${1:-configs/hazard_eval_common_input_pipeline.yaml}
 EVAL_ARGS=${EVAL_ARGS:-}
 
