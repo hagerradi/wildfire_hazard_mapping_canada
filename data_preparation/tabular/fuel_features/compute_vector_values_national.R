@@ -37,7 +37,7 @@ cat(out_dir, "\n\n")
 # ISI range
 # ------------------------------------------------------------
 
-isi_values <- seq(0, 85, by = 5)
+isi_values <- c(1e-6, seq(5, 85, by = 5))
 
 # ------------------------------------------------------------
 # Curve specs
@@ -149,8 +149,6 @@ fbp_input <- meta_df %>%
 
     # ISI supplied directly
     ISI = ISI,
-    LAT = 44.6648,
-    LONG = -63.5762,
     FFMC = 90,
     BUI = 60,
     WS = 0,
@@ -178,7 +176,6 @@ fbp_out <- cffdrs::fbp(
 # ------------------------------------------------------------
 # Join by ID, not row order
 # ------------------------------------------------------------
-
 plot_df <- meta_df %>%
   select(row_id, fbp_code, CurveLabel, FuelType, SeasonState, ISI) %>%
   left_join(
@@ -194,8 +191,11 @@ plot_df <- meta_df %>%
       ),
     by = c("row_id" = "ID")
   ) %>%
+  mutate(
+    ROS = tidyr::replace_na(ROS, 0),
+    HFI = tidyr::replace_na(HFI, 0)
+  ) %>%
   arrange(CurveLabel, ISI)
-
 # ------------------------------------------------------------
 # Check for duplicate points
 # ------------------------------------------------------------
@@ -340,14 +340,8 @@ if (length(missing_sizes) > 0) {
 # ------------------------------------------------------------
 # Clean plotting data
 # ------------------------------------------------------------
-
 plot_df_clean <- plot_df %>%
   filter(ISI > 0) %>%
-  bind_rows(
-    plot_df %>%
-      filter(ISI == 0) %>%
-      mutate(ROS = 0, HFI = 0)
-  ) %>%
   arrange(CurveLabel, ISI)
 
 # Optional green points on green / M-2 curves
@@ -462,7 +456,7 @@ print(p)
 # ------------------------------------------------------------
 
 png_path <- file.path(out_dir, "fbp_rosi_curves_national_fuel.png")
-csv_path <- file.path(out_dir, "fbp_rosi_curves_national_fuel.csv")
+csv_path <- file.path(out_dir, "fbp_curves_national_fuel.csv")
 
 ggsave(
   filename = png_path,
@@ -586,7 +580,6 @@ print(p_hfi)
 # ------------------------------------------------------------
 
 hfi_png_path <- file.path(out_dir, "fbp_hfi_curves_national_fuel.png")
-hfi_csv_path <- file.path(out_dir, "fbp_hfi_curves_national_fuel.csv")
 
 ggsave(
   filename = hfi_png_path,
@@ -596,16 +589,8 @@ ggsave(
   dpi = 300
 )
 
-write.csv(
-  plot_df_clean,
-  file = hfi_csv_path,
-  row.names = FALSE
-)
-
 cat("Saved HFI plot to:\n")
 cat(hfi_png_path, "\n\n")
 
-cat("Saved HFI CSV to:\n")
-cat(hfi_csv_path, "\n\n")
 
 cat("Done.\n")

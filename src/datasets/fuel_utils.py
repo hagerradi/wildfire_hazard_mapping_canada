@@ -10,10 +10,13 @@ from data_preparation.utils import find_hex_ids
 # or one-hot encodings).  Add new curve-based feature names here.
 FUEL_CURVE_ENCODINGS: frozenset[str] = frozenset({"iROS", "HFI"})
 
+# Single CSV produced by compute_vector_values_national.R containing all fuel curve columns.
+_FUEL_CURVES_CSV = "fbp_curves_national_fuel.csv"
+
 # Maps feature_name -> (csv_filename, value_column_name)
 _FEATURE_CSV: dict[str, tuple[str, str]] = {
-    "iROS": ("fbp_rosi_curves_national_fuel.csv", "ROS"),
-    "HFI": ("fbp_hfi_curves_national_fuel.csv", "HFI"),
+    "iROS": (_FUEL_CURVES_CSV, "ROS"),
+    "HFI": (_FUEL_CURVES_CSV, "HFI"),
 }
 
 
@@ -146,6 +149,13 @@ def read_curves(
             sort=False,
         ):
             curve = season_group.sort_values(isi_col).set_index(isi_col)[feature_col].astype(float)
+            nan_isi = curve.index[curve.isna()].tolist()
+            if nan_isi:
+                raise ValueError(
+                    f"Fuel curve CSV contains NaN {feature_col!r} values for "
+                    f"fbp_code={int(fbp_code)}, SeasonState={str(season_state)!r} "
+                    f"at ISI={nan_isi}. Regenerate the CSV from the R script."
+                )
 
             season_curves[str(season_state)] = curve
 
@@ -291,10 +301,13 @@ def _combine_season_curves(
     ).sort_index()
 
     if aligned_curves.isna().any().any():
+        isi_per_state = {s: sorted(season_curves[s].index.tolist()) for s in season_states}
         missing_isi = aligned_curves.index[aligned_curves.isna().any(axis=1)].tolist()
-
         raise ValueError(
-            "The SeasonState curves do not contain matching ISI " f"values for fbp_code={fbp_code}. " f"Missing values at ISI={missing_isi}"
+            f"SeasonState curves have mismatched ISI values for fbp_code={fbp_code}. "
+            f"ISI values per state: {isi_per_state}. "
+            f"ISI bins with at least one missing value: {missing_isi}. "
+            f"Regenerate the fuel curve CSV from the R script."
         )
 
     weighted_ros = np.zeros(

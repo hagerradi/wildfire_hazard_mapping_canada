@@ -57,7 +57,7 @@ Step 4 (necessary if fuel_grid_representation is '`raw`): Generate iROS values f
 Or do it locally and copy to the cluster (easier R support and we don't need access to all data to generate it)
 `python -m data_preparation.tabular.fuel_features.generate_fuel_vectors_national --output-dir /network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA/data_samples_v3`
 
-This saves csvs file in the root_dir called `fbp_rosi_curves_national_fuel.csv` and `fbp_hfi_curves_national_fuel.csv`
+This saves csv file in the root_dir called `fbp_curves_national_fuel.csv`
 
 Step 5 (optional): Precompute target log-stats for `log_standard` normalization (fire intensity / ROS)
 
