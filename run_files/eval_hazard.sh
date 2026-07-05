@@ -53,16 +53,54 @@ PY
     mkdir -p "$STAGE_PARENT"
     trap 'rm -rf "$STAGED_DATA_ROOT_DIR"' EXIT
 
-    echo "Staging root_dir:"
+    echo "Staging eval subset from root_dir:"
     echo "  from: ${ORIGINAL_DATA_ROOT_DIR}"
     echo "  to:   ${STAGED_DATA_ROOT_DIR}"
     df -h "$SLURM_TMPDIR" || true
 
+    STAGE_FILE_LIST="${SLURM_TMPDIR}/$(basename "$ORIGINAL_DATA_ROOT_DIR")_${SLURM_JOB_ID:-$$}_files.txt"
+    python - "$CONFIG_FILE" "$ORIGINAL_DATA_ROOT_DIR" "$STAGE_FILE_LIST" <<'PY'
+import csv
+import sys
+from pathlib import Path
+
+import yaml
+
+config_path = Path(sys.argv[1])
+root_dir = Path(sys.argv[2])
+file_list_path = Path(sys.argv[3])
+
+with config_path.open() as handle:
+    config = yaml.safe_load(handle)
+
+test_split = config.get("test_split", "test_indices.csv")
+relative_paths = {path.name for path in root_dir.iterdir() if path.is_file()}
+with (root_dir / test_split).open(newline="") as handle:
+    reader = csv.DictReader(handle)
+    if reader.fieldnames is None or "filename" not in reader.fieldnames:
+        raise ValueError(f"{root_dir / test_split} must contain a 'filename' column.")
+    relative_paths.update(row["filename"] for row in reader)
+
+missing_paths = sorted(path for path in relative_paths if not (root_dir / path).is_file())
+if missing_paths:
+    preview = ", ".join(missing_paths[:5])
+    raise FileNotFoundError(f"Missing {len(missing_paths)} staged input files under {root_dir}: {preview}")
+
+with file_list_path.open("w") as handle:
+    for path in sorted(relative_paths):
+        handle.write(f"{path}\n")
+
+print(f"Prepared staging list with {len(relative_paths)} files: {file_list_path}", flush=True)
+PY
+
     if command -v rsync >/dev/null 2>&1; then
-        rsync -a "${ORIGINAL_DATA_ROOT_DIR}/" "${STAGED_DATA_ROOT_DIR}/"
+        rsync -a --files-from="$STAGE_FILE_LIST" "${ORIGINAL_DATA_ROOT_DIR}/" "${STAGED_DATA_ROOT_DIR}/"
     else
         mkdir -p "$STAGED_DATA_ROOT_DIR"
-        cp -a "${ORIGINAL_DATA_ROOT_DIR}/." "$STAGED_DATA_ROOT_DIR/"
+        while IFS= read -r relative_path; do
+            mkdir -p "${STAGED_DATA_ROOT_DIR}/$(dirname "$relative_path")"
+            cp -a "${ORIGINAL_DATA_ROOT_DIR}/${relative_path}" "${STAGED_DATA_ROOT_DIR}/${relative_path}"
+        done <"$STAGE_FILE_LIST"
     fi
 
     echo "Staged dataset size:"
