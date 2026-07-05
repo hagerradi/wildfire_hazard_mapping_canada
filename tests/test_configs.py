@@ -11,10 +11,8 @@ BP_CONFIG = Path("configs/bp_common_input_pipeline.yaml")
 FI_CONFIG = Path("configs/fi_common_input_pipeline.yaml")
 ROS_CONFIG = Path("configs/ros_common_input_pipeline.yaml")
 HAZARD_EVAL_CONFIG = Path("configs/hazard_eval_common_input_pipeline.yaml")
-HAZARD_BP_CONFIG = Path("configs/archived/default_v1_full_data_bp_full_config_kl_ccc_hexpairrank.yaml")
-HAZARD_FI_CONFIG = Path(
-    "configs/archived/default_v1_full_data_fi_full_config_coordconv_spatialized_weather_fire_size_missing_mask_terrain.yaml"
-)
+HAZARD_BP_CONFIG = Path("configs/archived/bp_common_input_pipeline_checkpoint.yaml")
+HAZARD_FI_CONFIG = Path("configs/archived/fi_common_input_pipeline_checkpoint.yaml")
 COMMON_INPUT_PIPELINE_CONFIGS = [BP_CONFIG, FI_CONFIG, ROS_CONFIG]
 
 WEATHER_FEATURES = {
