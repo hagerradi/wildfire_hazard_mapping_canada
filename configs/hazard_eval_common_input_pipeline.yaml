@@ -5,7 +5,7 @@
 save_dir: "experiments/hazard_eval_common_input_pipeline"
 
 # Shared data root/raw/test split match the BP/FI common input pipeline configs.
-root_dir: "/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA/data_samples_v3"
+root_dir: "/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA/data_samples_v2"
 raw_data_dir: "/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA"
 test_split: "test_indices.csv"
 valid_mask_threshold: 0.01

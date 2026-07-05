@@ -114,7 +114,7 @@ def test_hazard_eval_config_parses_and_references_bp_fi_configs():
 
     assert config.bp.config_path == str(HAZARD_BP_CONFIG)
     assert config.fi.config_path == str(HAZARD_FI_CONFIG)
-    assert config.root_dir.endswith("data_samples_v3")
+    assert config.root_dir.endswith("data_samples_v2")
     assert config.test_split == "test_indices.csv"
     assert config.mask_scope == "actual"
     assert config.stitch_mode == "mean"
