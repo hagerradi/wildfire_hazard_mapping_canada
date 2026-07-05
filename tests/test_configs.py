@@ -11,6 +11,10 @@ BP_CONFIG = Path("configs/bp_common_input_pipeline.yaml")
 FI_CONFIG = Path("configs/fi_common_input_pipeline.yaml")
 ROS_CONFIG = Path("configs/ros_common_input_pipeline.yaml")
 HAZARD_EVAL_CONFIG = Path("configs/hazard_eval_common_input_pipeline.yaml")
+HAZARD_BP_CONFIG = Path("configs/archived/default_v1_full_data_bp_full_config_kl_ccc_hexpairrank.yaml")
+HAZARD_FI_CONFIG = Path(
+    "configs/archived/default_v1_full_data_fi_full_config_coordconv_spatialized_weather_fire_size_missing_mask_terrain.yaml"
+)
 COMMON_INPUT_PIPELINE_CONFIGS = [BP_CONFIG, FI_CONFIG, ROS_CONFIG]
 
 WEATHER_FEATURES = {
@@ -110,8 +114,8 @@ def test_fi_ros_common_input_pipeline_use_log_standard_regression_recipe():
 def test_hazard_eval_config_parses_and_references_bp_fi_configs():
     config = _load_hazard_eval_config(HAZARD_EVAL_CONFIG)
 
-    assert config.bp.config_path == str(BP_CONFIG)
-    assert config.fi.config_path == str(FI_CONFIG)
+    assert config.bp.config_path == str(HAZARD_BP_CONFIG)
+    assert config.fi.config_path == str(HAZARD_FI_CONFIG)
     assert config.root_dir.endswith("data_samples_v3")
     assert config.test_split == "test_indices.csv"
     assert config.mask_scope == "actual"

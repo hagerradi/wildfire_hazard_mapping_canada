@@ -23,6 +23,10 @@ from src.evaluate_hazard import (
 )
 
 BP_CONFIG = Path("configs/bp_common_input_pipeline.yaml")
+HAZARD_BP_CONFIG = Path("configs/archived/default_v1_full_data_bp_full_config_kl_ccc_hexpairrank.yaml")
+HAZARD_FI_CONFIG = Path(
+    "configs/archived/default_v1_full_data_fi_full_config_coordconv_spatialized_weather_fire_size_missing_mask_terrain.yaml"
+)
 HAZARD_EVAL_CONFIG = Path("configs/hazard_eval_common_input_pipeline.yaml")
 
 
@@ -77,6 +81,7 @@ class TestCliOverrides:
             for key, value in (
                 ("mask_scope", args.mask_scope),
                 ("save_dir", args.save_dir),
+                ("root_dir", args.root_dir),
                 ("stitch_mode", args.stitch_mode),
             )
             if value is not None
@@ -87,6 +92,7 @@ class TestCliOverrides:
         args = self._parse(monkeypatch, ["--config", str(HAZARD_EVAL_CONFIG)])
         assert args.mask_scope is None
         assert args.save_dir is None
+        assert args.root_dir is None
         assert args.stitch_mode is None
 
     def test_no_overrides_returns_same_config(self, monkeypatch):
@@ -104,6 +110,8 @@ class TestCliOverrides:
                 "buffer_only",
                 "--save_dir",
                 "experiments/hazard_eval/buffer_only",
+                "--root_dir",
+                "/tmp/buffer-root",
                 "--stitch_mode",
                 "max",
             ],
@@ -113,8 +121,8 @@ class TestCliOverrides:
 
         assert updated.mask_scope == "buffer_only"
         assert updated.save_dir == "experiments/hazard_eval/buffer_only"
+        assert updated.root_dir == "/tmp/buffer-root"
         assert updated.stitch_mode == "max"
-        assert updated.root_dir == hazard_config.root_dir
         assert hazard_config.mask_scope == "actual"
 
     def test_partial_override_only_touches_given_field(self, monkeypatch):
@@ -124,6 +132,7 @@ class TestCliOverrides:
 
         assert updated.mask_scope == "buffer"
         assert updated.save_dir == "experiments/keep"
+        assert updated.root_dir == hazard_config.root_dir
         assert updated.stitch_mode == "mean"
 
     @pytest.mark.parametrize(("flag", "value"), [("--mask_scope", "invalid"), ("--stitch_mode", "median")])
@@ -136,8 +145,8 @@ class TestLoadHazardConfig:
     def test_loads_real_yaml(self):
         config = load_hazard_config(str(HAZARD_EVAL_CONFIG))
         assert isinstance(config, HazardEvalConfig)
-        assert config.bp.config_path == str(BP_CONFIG)
-        assert config.fi.config_path.endswith("fi_common_input_pipeline.yaml")
+        assert config.bp.config_path == str(HAZARD_BP_CONFIG)
+        assert config.fi.config_path == str(HAZARD_FI_CONFIG)
 
 
 class TestPrepareModelConfigForHazard:

@@ -83,6 +83,12 @@ def parse_args() -> argparse.Namespace:
         help="Override hazard_config.save_dir for this run (avoids output collisions).",
     )
     parser.add_argument(
+        "--root_dir",
+        type=str,
+        default=None,
+        help="Override hazard_config.root_dir for this run.",
+    )
+    parser.add_argument(
         "--stitch_mode",
         type=str,
         choices=["mean", "max"],
@@ -331,6 +337,7 @@ def main() -> None:
         for key, value in (
             ("mask_scope", args.mask_scope),
             ("save_dir", args.save_dir),
+            ("root_dir", args.root_dir),
             ("stitch_mode", args.stitch_mode),
         )
         if value is not None

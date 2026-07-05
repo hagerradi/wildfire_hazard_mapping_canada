@@ -14,8 +14,8 @@ set -euo pipefail
 # Usage: sbatch run_files/eval_hazard.sh configs/<your_hazard_config>.yaml
 # Extra CLI args (e.g. --metrics_only --skip_plots) can be passed via EVAL_ARGS:
 #   EVAL_ARGS="--metrics_only" sbatch run_files/eval_hazard.sh configs/hazard_eval_common_input_pipeline.yaml
-# Override mask_scope/save_dir to run actual vs buffer variants from one config without output collisions:
-#   EVAL_ARGS="--mask_scope buffer_only --save_dir experiments/hazard_eval/buffer_only" \
+# Override mask_scope/save_dir/root_dir to run actual vs buffer variants from one config without output collisions:
+#   EVAL_ARGS="--mask_scope buffer_only --root_dir /path/to/buffer_root --save_dir experiments/hazard_eval/buffer_only" \
 #     sbatch run_files/eval_hazard.sh configs/hazard_eval_common_input_pipeline.yaml
 CONFIG_FILE=${1:-configs/hazard_eval_common_input_pipeline.yaml}
 EVAL_ARGS=${EVAL_ARGS:-}
@@ -29,14 +29,22 @@ RUN_CONFIG_FILE="$CONFIG_FILE"
 if [[ -n "${SLURM_TMPDIR:-}" ]]; then
     echo "Using SLURM_TMPDIR for staged dataset: ${SLURM_TMPDIR}"
 
-    ORIGINAL_DATA_ROOT_DIR=$(python - "$CONFIG_FILE" <<'PY'
+    ORIGINAL_DATA_ROOT_DIR=$(python - "$CONFIG_FILE" "$EVAL_ARGS" <<'PY'
+import shlex
 import sys
 from pathlib import Path
 import yaml
 config_path = Path(sys.argv[1])
+eval_args = shlex.split(sys.argv[2])
 with config_path.open() as handle:
     config = yaml.safe_load(handle)
-print(Path(config["root_dir"]).resolve())
+root_dir = config["root_dir"]
+for idx, arg in enumerate(eval_args):
+    if arg == "--root_dir" and idx + 1 < len(eval_args):
+        root_dir = eval_args[idx + 1]
+    elif arg.startswith("--root_dir="):
+        root_dir = arg.split("=", 1)[1]
+print(Path(root_dir).resolve())
 PY
 )
 
@@ -82,4 +90,7 @@ fi
 
 echo "Running hazard evaluation with config: $RUN_CONFIG_FILE"
 read -r -a EVAL_ARG_ARRAY <<< "$EVAL_ARGS"
+if [[ -n "${STAGED_DATA_ROOT_DIR:-}" ]]; then
+    EVAL_ARG_ARRAY+=(--root_dir "$STAGED_DATA_ROOT_DIR")
+fi
 python -m src.evaluate_hazard --config="$RUN_CONFIG_FILE" "${EVAL_ARG_ARRAY[@]}"

@@ -13,12 +13,12 @@ mask_scope: "actual" # actual | buffer | buffer_only
 stitch_mode: "mean" # mean | max
 
 bp:
-  config_path: "configs/bp_common_input_pipeline.yaml"
+  config_path: "configs/archived/default_v1_full_data_bp_full_config_kl_ccc_hexpairrank.yaml"
   checkpoint_filename: "best.pth"
   save_predictions: false
 
 fi:
-  config_path: "configs/fi_common_input_pipeline.yaml"
+  config_path: "configs/archived/default_v1_full_data_fi_full_config_coordconv_spatialized_weather_fire_size_missing_mask_terrain.yaml"
   checkpoint_filename: "best.pth"
   save_predictions: false
 
