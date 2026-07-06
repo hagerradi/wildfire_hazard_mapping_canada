@@ -3,6 +3,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from src.datasets.postprocessing.hazard import DEFAULT_HAZARD_BIN_THRESHOLDS, validate_bin_thresholds
+
 
 class LoggerConfig(BaseModel):
     enabled: bool = True
@@ -185,8 +187,6 @@ class Config(BaseModel):
     data_prep: DataPrepConfig = Field(default_factory=DataPrepConfig)
 
 
-DEFAULT_HAZARD_BIN_THRESHOLDS = [0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 25.0, 50.0]
-
 DenominatorSource = Literal[
     "reference_file",
     "all_raw_ground_truth",
@@ -234,13 +234,7 @@ class HazardEvalConfig(BaseModel):
     @field_validator("bin_thresholds")
     @classmethod
     def _validate_bin_thresholds(cls, thresholds: list[float]) -> list[float]:
-        if not thresholds:
-            raise ValueError("bin_thresholds must be non-empty")
-        if any(t <= 0 for t in thresholds):
-            raise ValueError("bin_thresholds must be strictly positive")
-        if any(nxt <= cur for cur, nxt in zip(thresholds, thresholds[1:], strict=False)):
-            raise ValueError("bin_thresholds must be strictly increasing")
-        return thresholds
+        return validate_bin_thresholds(thresholds, name="bin_thresholds").tolist()
 
     @model_validator(mode="after")
     def _require_reference_denominator_path(self) -> "HazardEvalConfig":

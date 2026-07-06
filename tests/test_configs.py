@@ -168,6 +168,17 @@ def test_hazard_eval_config_rejects_non_increasing_bin_thresholds():
         )
 
 
+def test_hazard_eval_config_rejects_non_finite_bin_thresholds():
+    with pytest.raises(ValidationError):
+        HazardEvalConfig(
+            root_dir="root",
+            raw_data_dir="raw",
+            bp={"config_path": "bp.yaml"},
+            fi={"config_path": "fi.yaml"},
+            bin_thresholds=[0.1, float("nan"), 0.2],
+        )
+
+
 def test_hazard_eval_config_reference_file_requires_denominator_or_path():
     kwargs = {
         "root_dir": "root",

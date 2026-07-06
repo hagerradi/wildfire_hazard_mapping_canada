@@ -6,10 +6,9 @@ from collections.abc import Sequence
 
 import numpy as np
 
-from src.config import DEFAULT_HAZARD_BIN_THRESHOLDS
-
 DEFAULT_FI_CAP = 10000.0
 DEFAULT_SCALE_TO = 100.0
+DEFAULT_HAZARD_BIN_THRESHOLDS = [0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 25.0, 50.0]
 
 
 def _validate_positive(value: float, name: str) -> float:
@@ -19,16 +18,16 @@ def _validate_positive(value: float, name: str) -> float:
     return numeric
 
 
-def _validate_thresholds(thresholds: Sequence[float]) -> np.ndarray:
+def validate_bin_thresholds(thresholds: Sequence[float], name: str = "thresholds") -> np.ndarray:
     arr = np.asarray(thresholds, dtype=float)
     if arr.ndim != 1 or arr.size == 0:
-        raise ValueError("thresholds must be a non-empty 1D sequence")
+        raise ValueError(f"{name} must be a non-empty 1D sequence")
     if not np.all(np.isfinite(arr)):
-        raise ValueError("thresholds must all be finite")
+        raise ValueError(f"{name} must all be finite")
     if np.any(arr <= 0.0):
-        raise ValueError("thresholds must be strictly positive")
+        raise ValueError(f"{name} must be strictly positive")
     if np.any(np.diff(arr) <= 0.0):
-        raise ValueError("thresholds must be strictly increasing")
+        raise ValueError(f"{name} must be strictly increasing")
     return arr
 
 
@@ -83,7 +82,7 @@ def bin_scaled_hazard(
     """
     if thresholds is None:
         thresholds = DEFAULT_HAZARD_BIN_THRESHOLDS
-    edges = _validate_thresholds(thresholds)
+    edges = validate_bin_thresholds(thresholds)
 
     scaled = np.asarray(scaled_hazard, dtype=float)
     classes = np.searchsorted(edges, scaled, side="right") + 1

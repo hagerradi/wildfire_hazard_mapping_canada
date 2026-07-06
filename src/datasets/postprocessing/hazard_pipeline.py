@@ -10,8 +10,7 @@ import numpy as np
 import rasterio
 from rasterio.profiles import Profile
 
-from src.config import DEFAULT_HAZARD_BIN_THRESHOLDS
-from src.datasets.postprocessing.hazard import bin_scaled_hazard, compute_raw_hazard, scale_hazard
+from src.datasets.postprocessing.hazard import DEFAULT_HAZARD_BIN_THRESHOLDS, bin_scaled_hazard, compute_raw_hazard, scale_hazard
 from src.datasets.postprocessing.hazard_metrics import calculate_hazard_class_metrics
 from src.datasets.postprocessing.hexel_reconstruction import StitchedHexel
 from src.datasets.postprocessing.visualize_predictions import visualize_target_grids
