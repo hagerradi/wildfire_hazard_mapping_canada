@@ -28,7 +28,6 @@ from src.datasets.dataset import get_test_dataloader
 from src.datasets.postprocessing.hazard import compute_raw_hazard, max_finite_hazard
 from src.datasets.postprocessing.hazard_metrics import flatten_hazard_class_metrics
 from src.datasets.postprocessing.hazard_pipeline import (
-    HazardHexelResult,
     compute_hazard_hexel,
     pair_stitched_hexels,
     save_hazard_hexel_artifacts,
@@ -361,30 +360,6 @@ def _write_hazard_metric_summaries_from_records(
         json.dump(summary, handle, indent=2, allow_nan=False)
 
     return csv_path, json_path, aggregate
-
-
-def write_hazard_metric_summaries(
-    results: Sequence[HazardHexelResult],
-    save_dir: str,
-    denominator: float,
-    denominator_metadata: dict[str, Any],
-    prediction_denominator: float | None = None,
-    prediction_denominator_metadata: dict[str, Any] | None = None,
-) -> tuple[str, str, dict[str, float]]:
-    """Write per-hex CSV and aggregate JSON summaries; return their paths and the aggregate dict."""
-    metric_records = [{"hex_id": result.hex_id, **flatten_hazard_class_metrics(result.metrics)} for result in results]
-    confusion_matrices = [
-        np.asarray(result.metrics["confusion_matrix"], dtype=np.int64) for result in results if "confusion_matrix" in result.metrics
-    ]
-    return _write_hazard_metric_summaries_from_records(
-        metric_records,
-        confusion_matrices,
-        save_dir,
-        denominator,
-        denominator_metadata,
-        prediction_denominator=prediction_denominator,
-        prediction_denominator_metadata=prediction_denominator_metadata,
-    )
 
 
 def write_confusion_matrix_csv(confusion_matrix: np.ndarray, save_dir: str) -> str:

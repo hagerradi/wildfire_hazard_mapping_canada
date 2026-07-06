@@ -1,7 +1,6 @@
 """Tests for src/evaluate_hazard.py that avoid real model inference."""
 
 import json
-import types
 from pathlib import Path
 
 import numpy as np
@@ -13,6 +12,7 @@ from src.config import Config, HazardEvalConfig, HazardModelEntry
 from src.datasets.postprocessing.hexel_reconstruction import StitchedHexel
 from src.datasets.targets import get_target_spec
 from src.evaluate_hazard import (
+    _write_hazard_metric_summaries_from_records,
     load_hazard_config,
     parse_args,
     prepare_model_config_for_hazard,
@@ -20,7 +20,6 @@ from src.evaluate_hazard import (
     read_reference_denominator,
     resolve_hazard_denominator,
     row_normalized_confusion_percentages,
-    write_hazard_metric_summaries,
 )
 
 BP_CONFIG = Path("configs/bp_common_input_pipeline.yaml")
@@ -336,9 +335,6 @@ class TestRawGroundTruthDenominator:
 
 
 class TestWriteHazardMetricSummaries:
-    def _fake_result(self, hex_id, metrics):
-        return types.SimpleNamespace(hex_id=hex_id, metrics=metrics)
-
     def test_row_normalizes_confusion_matrix_percentages(self):
         confusion = np.array([[3, 1], [0, 0]])
         percentages = row_normalized_confusion_percentages(confusion)
@@ -347,12 +343,16 @@ class TestWriteHazardMetricSummaries:
         assert np.isnan(percentages[1]).all()
 
     def test_writes_per_hex_csv_and_aggregate_json(self, tmp_path):
-        results = [
-            self._fake_result("01", {"exact_accuracy": 0.8, "per_class_iou": np.array([0.5, np.nan])}),
-            self._fake_result("02", {"exact_accuracy": 0.6, "per_class_iou": np.array([0.7, 0.3])}),
+        metric_records = [
+            {"hex_id": "01", "exact_accuracy": 0.8, "per_class_iou_1": 0.5, "per_class_iou_2": np.nan},
+            {"hex_id": "02", "exact_accuracy": 0.6, "per_class_iou_1": 0.7, "per_class_iou_2": 0.3},
         ]
-        csv_path, json_path, aggregate = write_hazard_metric_summaries(
-            results, str(tmp_path), denominator=50.0, denominator_metadata={"source": "prediction", "value": 50.0}
+        csv_path, json_path, aggregate = _write_hazard_metric_summaries_from_records(
+            metric_records,
+            [],
+            str(tmp_path),
+            denominator=50.0,
+            denominator_metadata={"source": "prediction", "value": 50.0},
         )
 
         import pandas as pd
@@ -371,12 +371,9 @@ class TestWriteHazardMetricSummaries:
         assert summary["metrics"]["per_class_iou_1"] == pytest.approx(0.6)
 
     def test_writes_confusion_matrix_outputs(self, tmp_path):
-        results = [
-            self._fake_result("01", {"exact_accuracy": 0.8, "confusion_matrix": np.array([[2, 1], [0, 3]])}),
-            self._fake_result("02", {"exact_accuracy": 0.6, "confusion_matrix": np.array([[1, 0], [2, 4]])}),
-        ]
-        _, json_path, _ = write_hazard_metric_summaries(
-            results,
+        _, json_path, _ = _write_hazard_metric_summaries_from_records(
+            [{"hex_id": "01", "exact_accuracy": 0.8}, {"hex_id": "02", "exact_accuracy": 0.6}],
+            [np.array([[2, 1], [0, 3]]), np.array([[1, 0], [2, 4]])],
             str(tmp_path),
             denominator=50.0,
             denominator_metadata={"source": "all_raw_ground_truth", "value": 50.0},
@@ -391,12 +388,12 @@ class TestWriteHazardMetricSummaries:
         assert Path(summary["confusion_matrix_plot"]).is_file()
 
     def test_all_nan_aggregate_becomes_null(self, tmp_path):
-        results = [
-            self._fake_result("01", {"exact_accuracy": np.nan}),
-            self._fake_result("02", {"exact_accuracy": np.nan}),
-        ]
-        _, json_path, aggregate = write_hazard_metric_summaries(
-            results, str(tmp_path), denominator=1.0, denominator_metadata={"source": "prediction"}
+        _, json_path, aggregate = _write_hazard_metric_summaries_from_records(
+            [{"hex_id": "01", "exact_accuracy": np.nan}, {"hex_id": "02", "exact_accuracy": np.nan}],
+            [],
+            str(tmp_path),
+            denominator=1.0,
+            denominator_metadata={"source": "prediction"},
         )
 
         assert np.isnan(aggregate["exact_accuracy"])
