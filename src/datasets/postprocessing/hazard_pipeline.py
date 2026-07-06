@@ -1,8 +1,12 @@
-"""Hazard operations on paired reconstructed BP/FI hexels.
+"""Hazard pipeline operations on paired reconstructed BP/FI hexels.
 
-This layer validates BP/FI alignment, applies the hazard math, and writes
-hazard artifacts. Model inference and hexel reconstruction stay in separate
-modules so the same reconstructed grids can support non-hazard evaluators.
+The hazard pipeline starts after model inference and hexel reconstruction:
+
+1. Pair reconstructed BP and FI hexels and validate that their hex IDs align.
+2. Compute predicted and ground-truth raw hazard as ``BP * min(FI, fi_cap)``.
+3. Scale raw hazard with the resolved denominator and ``scale_to`` value.
+4. Bin scaled hazard into hazard classes.
+5. Compute class metrics and write hazard rasters/plots.
 """
 
 from __future__ import annotations
