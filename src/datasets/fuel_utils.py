@@ -205,6 +205,12 @@ def _read_hex_season_weights(
 
     distribution_df = pd.read_csv(distribution_path)
 
+    if "Season" not in distribution_df.columns:
+        raise ValueError(
+            f"Ignition distribution CSV is missing a 'Season' column: {distribution_path}. "
+            f"Found columns: {list(distribution_df.columns)}"
+        )
+
     distribution_df["Season"] = distribution_df["Season"].astype(str).str.strip()
 
     distribution_df["RelativeLikelihood"] = pd.to_numeric(
@@ -213,6 +219,18 @@ def _read_hex_season_weights(
     )
 
     ignition_weights = distribution_df.groupby("Season")["RelativeLikelihood"].sum().to_dict()
+
+    # Validate that all seasons in the ignition distribution are covered by the mapping.
+    # A mismatch here means the GreenUp table uses different season names than the
+    # ignition distribution (e.g. "s1"/"s2" vs "Spring"/"Summer-Fall").
+    unmapped_seasons = set(ignition_weights) - set(season_mapping)
+    if unmapped_seasons:
+        raise ValueError(
+            f"Ignition distribution {distribution_path} contains season(s) "
+            f"{sorted(unmapped_seasons)} that have no entry in the GreenUp table. "
+            f"GreenUp table maps: {sorted(season_mapping)}. "
+            f"Ensure the GreenUp table uses the same season names as the ignition distribution."
+        )
 
     season_state_weights: dict[str, float] = {}
 
