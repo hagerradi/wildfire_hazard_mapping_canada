@@ -19,6 +19,7 @@ from src.evaluate_hazard import (
     raw_ground_truth_denominator,
     read_reference_denominator,
     resolve_hazard_denominator,
+    row_normalized_confusion_percentages,
     write_hazard_metric_summaries,
 )
 
@@ -337,6 +338,13 @@ class TestRawGroundTruthDenominator:
 class TestWriteHazardMetricSummaries:
     def _fake_result(self, hex_id, metrics):
         return types.SimpleNamespace(hex_id=hex_id, metrics=metrics)
+
+    def test_row_normalizes_confusion_matrix_percentages(self):
+        confusion = np.array([[3, 1], [0, 0]])
+        percentages = row_normalized_confusion_percentages(confusion)
+
+        np.testing.assert_allclose(percentages[0], [75.0, 25.0])
+        assert np.isnan(percentages[1]).all()
 
     def test_writes_per_hex_csv_and_aggregate_json(self, tmp_path):
         results = [
