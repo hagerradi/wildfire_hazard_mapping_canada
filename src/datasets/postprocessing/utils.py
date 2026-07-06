@@ -442,6 +442,7 @@ def get_target_log_stats(grid_params: GridParams | None, target: TargetSpec) -> 
 
 
 def get_target_postprocessing_settings(config: Config, out_norm: str) -> list[TargetPostprocessingSettings]:
+    """Build per-target channel, range, and normalization settings for postprocessing."""
     data_dir = config.data.root_dir
     raw_data_dir = config.data.raw_data_dir
     train_hex_ids: set[int] | None = None
