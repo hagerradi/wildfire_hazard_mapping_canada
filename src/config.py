@@ -166,6 +166,9 @@ class DataPrepConfig(BaseModel):
     win_h: int = 256
     win_w: int = 256
     overlap_ratio: float = 0.2
+    ignition_weighting: str = "distribution"  # ("max", "distribution")
+    fuel_representation: str = "raw"  # ("raw", "group")
+    scenario_name: str | None = None
 
 
 class Config(BaseModel):

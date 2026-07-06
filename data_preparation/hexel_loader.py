@@ -39,9 +39,10 @@ def load_spatial_features_per_hexel(
     hex_id: str,
     feature_channel_map_path: str,
     modelling_approach: int = 1,
-    mask_scope: str = "actual",
+    mask_scope: str | None = None,
     ignition_weighting: str = "distribution",
     fuel_representation: str = "raw",
+    scenario_name: str | None = None,
 ) -> tuple[np.ndarray | None, np.ndarray | None, dict[int, tuple[int, int]] | None]:
     """
     Load all data (features and output) per hexel
@@ -112,14 +113,19 @@ def load_spatial_features_per_hexel(
         return stacked, input_mask
 
     # identify all seasons and causes first
-    scope = normalize_mask_scope(mask_scope)
+    scope = normalize_mask_scope(mask_scope) if mask_scope is not None else None
     all_paths = Paths(hex_id=hex_id, root_dir=root_dir)
-    scope_mask_path = all_paths.mask_grid(hex_id=hex_id, mask_scope=scope)
+    scope_mask_path = all_paths.mask_grid(hex_id=hex_id, mask_scope=scope) if scope is not None else None
 
     elevation_grid, reference_profile = load_spatial_raster(path=all_paths.elevation_grid(hex_id=hex_id), mask_path=scope_mask_path)
     # load all common grids on the elevation reference grid
     fuel_grid = load_fuel_grid(
-        root_dir=root_dir, hex_id=hex_id, reference_profile=reference_profile, fuel_representation=fuel_representation, mask_scope=scope
+        root_dir=root_dir,
+        hex_id=hex_id,
+        reference_profile=reference_profile,
+        fuel_representation=fuel_representation,
+        mask_scope=scope,
+        scenario_name=scenario_name,
     )
 
     firezones_grid, _ = load_spatial_raster(
@@ -142,17 +148,17 @@ def load_spatial_features_per_hexel(
             ignition_grid = load_ignition_grid(root_dir=root_dir, hex_id=hex_id, reference_profile=reference_profile, mask_scope=scope)
 
         bp_out_grid, _ = load_spatial_raster(
-            all_paths.output_burn_prob(),
+            all_paths.output_burn_prob(scenario_name=scenario_name),
             mask_path=scope_mask_path,
             reference_profile=reference_profile,
         )
         fi_out_grid, _ = load_spatial_raster(
-            all_paths.output_fire_intensity(),
+            all_paths.output_fire_intensity(scenario_name=scenario_name),
             mask_path=scope_mask_path,
             reference_profile=reference_profile,
         )
         ros_out_grid, _ = load_spatial_raster(
-            all_paths.output_ros(),
+            all_paths.output_ros(scenario_name=scenario_name),
             mask_path=scope_mask_path,
             reference_profile=reference_profile,
         )

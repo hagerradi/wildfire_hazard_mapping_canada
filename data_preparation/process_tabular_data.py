@@ -11,11 +11,27 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from data_preparation.tabular.weather import load_weather_list, preprocess_weather_list
+from data_preparation.tabular.weather import preprocess_weather_list
 from data_preparation.utils import aggregate_csv_by_pattern, find_file_path, process_fire_size_df
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+
+
+_WEATHER_COLUMN_ALIASES: dict[str, str] = {
+    "FRU": "WeatherZone",
+    "temp": "Temperature",
+    "rh": "RelativeHumidity",
+    "ws": "WindSpeed",
+    "wd": "WindDirection",
+    "prec": "Precipitation",
+    "ffmc": "FineFuelMoistureCode",
+    "dmc": "DuffMoistureCode",
+    "dc": "DroughtCode",
+    "isi": "InitialSpreadIndex",
+    "bui": "BuildupIndex",
+    "fwi": "FireWeatherIndex",
+}
 
 
 def _hex_id_from_weather_path(path: Path) -> str:
@@ -23,7 +39,15 @@ def _hex_id_from_weather_path(path: Path) -> str:
 
 
 def _load_raw_weather_with_hex_id(path: Path) -> pd.DataFrame:
-    df = load_weather_list(str(path), normalize_weatherlist=False)
+    df = pd.read_csv(path)
+    # Rename old-style column names to expected names where the expected name is absent.
+    rename_map = {src: dst for src, dst in _WEATHER_COLUMN_ALIASES.items() if src in df.columns and dst not in df.columns}
+    if rename_map:
+        logger.info("Renaming weather columns in %s: %s", path.name, rename_map)
+        df = df.rename(columns=rename_map)
+    from data_preparation.tabular.utils import check_weather_list
+
+    df = check_weather_list(df)
     df.insert(0, "__hex_id", _hex_id_from_weather_path(path))
     return df
 
