@@ -9,18 +9,25 @@ from pathlib import Path
 def run_r_script(
     r_script_path: str | Path,
     output_dir: str | Path,
+    fuel_types_path: str | Path | None = None,
 ) -> None:
     """
-    Run the R script and pass the output directory as its first argument.
+    Run the R script and pass the output directory as its first argument,
+    and optionally the curve specs CSV as the second argument.
 
     Equivalent command:
-        Rscript compute_vector_values_national.R <output_dir>
+        Rscript compute_vector_values_national.R <output_dir> [<fuel_types_path>]
     """
     r_script_path = Path(r_script_path).resolve()
     output_dir = Path(output_dir).resolve()
 
     if not r_script_path.is_file():
         raise FileNotFoundError(f"R script not found: {r_script_path}")
+
+    if fuel_types_path is not None:
+        fuel_types_path = Path(fuel_types_path).resolve()
+        if not fuel_types_path.is_file():
+            raise FileNotFoundError(f"Curve specs CSV not found: {fuel_types_path}")
 
     rscript_executable = shutil.which("Rscript")
 
@@ -34,6 +41,8 @@ def run_r_script(
         str(r_script_path),
         str(output_dir),
     ]
+    if fuel_types_path is not None:
+        command.append(str(fuel_types_path))
 
     print("Running command:")
     print(" ".join(command))
@@ -68,11 +77,19 @@ def main() -> None:
         help="Folder where the R script should save its outputs.",
     )
 
+    parser.add_argument(
+        "--fuel_types",
+        type=Path,
+        default=None,
+        help=("Path to the fuel types CSV. " "Defaults to Fuel_Types.csv in the same directory as the R script."),
+    )
+
     args = parser.parse_args()
 
     run_r_script(
         r_script_path=args.r_script,
         output_dir=args.output_dir,
+        fuel_types_path=args.fuel_types if args.fuel_types is not None else args.r_script.parent / "Fuel_Types.csv",
     )
 
 

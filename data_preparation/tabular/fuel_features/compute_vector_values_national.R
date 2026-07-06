@@ -19,10 +19,25 @@ out_dir <- if (length(args) >= 1) {
   file.path(getwd(), "fbp_outputs")
 }
 
+curve_specs_path <- if (length(args) >= 2) {
+  args[2]
+} else {
+  # Fallback for interactive use (source()); won't be reached when called via Rscript
+  # from generate_fuel_vectors_national.py which always passes the path explicitly.
+  script_dir <- tryCatch(dirname(sys.frame(1)$ofile), error = function(e) getwd())
+  file.path(script_dir, "Fuel_Types.csv")
+}
+
 out_dir <- normalizePath(
   out_dir,
   winslash = "/",
   mustWork = FALSE
+)
+
+curve_specs_path <- normalizePath(
+  curve_specs_path,
+  winslash = "/",
+  mustWork = TRUE
 )
 
 if (!dir.exists(out_dir)) {
@@ -33,6 +48,9 @@ if (!dir.exists(out_dir)) {
 cat("Output directory:\n")
 cat(out_dir, "\n\n")
 
+cat("Curve specs file:\n")
+cat(curve_specs_path, "\n\n")
+
 # ------------------------------------------------------------
 # ISI range
 # ------------------------------------------------------------
@@ -40,83 +58,34 @@ cat(out_dir, "\n\n")
 isi_values <- c(1e-6, seq(5, 85, by = 5))
 
 # ------------------------------------------------------------
-# Curve specs
+# Curve specs  (read from CSV)
 # ------------------------------------------------------------
 
-curve_specs <- tibble::tribble(
-  ~fbp_code, ~CurveLabel,                 ~FuelType, ~SeasonState, ~PC, ~PDF, ~cc, ~GFL,
+curve_specs <- read.csv(curve_specs_path, stringsAsFactors = FALSE)
 
-  # ------------------------------------------------------------
-  # Conifer fuel types
-  # ------------------------------------------------------------
-  1,         "C-1",                       "C-1",     "direct",     NA,  NA,   NA,  NA,
-  2,         "C-2",                       "C-2",     "direct",     NA,  NA,   NA,  NA,
-  3,         "C-3",                       "C-3",     "direct",     NA,  NA,   NA,  NA,
-  4,         "C-4",                       "C-4",     "direct",     NA,  NA,   NA,  NA,
-  5,         "C-5",                       "C-5",     "direct",     NA,  NA,   NA,  NA,
-  7,         "C-7",                       "C-7",     "direct",     NA,  NA,   NA,  NA,
+required_cols <- c("fbp_code", "CurveLabel", "FuelType", "SeasonState")
+missing_cols  <- setdiff(required_cols, names(curve_specs))
+if (length(missing_cols) > 0) {
+  stop("Fuel types CSV is missing required columns: ", paste(missing_cols, collapse = ", "))
+}
 
-  # ------------------------------------------------------------
-  # Deciduous fuel types
-  # ------------------------------------------------------------
-  11,        "D-1 leafless",              "D-1",     "leafless",   NA,  NA,   NA,  NA,
-  12,        "D-2 green",                 "D-2",     "green",      NA,  NA,   NA,  NA,
-
-  # Raster class 13 is D-1/D-2, not a direct FBP fuel type.
-  # Represent it as two phenology scenarios.
-  13,        "D-1/D-2 leafless as D-1",   "D-1",     "leafless",   NA,  NA,   NA,  NA,
-  13,        "D-1/D-2 green as D-2",      "D-2",     "green",      NA,  NA,   NA,  NA,
-
-  # ------------------------------------------------------------
-  # Grass fuel types
-  # cc = percent curing.
-  # GFL = grass fuel load in kg/m².
-  # 0.35 kg/m² = 3.5 t/ha standard assumption.
-  # ------------------------------------------------------------
-  31,        "O-1a 90%c, GFL 0.35",       "O-1a",    "direct",     NA,  NA,   90,  0.35,
-  32,        "O-1b 90%c, GFL 0.35",       "O-1b",    "direct",     NA,  NA,   90,  0.35,
-
-  # non-burning classes
-  101, "Non-fuel", "NF", "nonfuel", NA, NA, NA, NA,
-  102, "Water",    "WA", "water",   NA, NA, NA, NA,
-  # ------------------------------------------------------------
-  # Explicit M-1 / M-2 classes from your rasters
-  # PC = percent conifer.
-  # ------------------------------------------------------------
-  420,       "M-1 20%C leafless",         "M-1",     "leafless",   20,  NA,   NA,  NA,
-  450,       "M-1 50%C leafless",         "M-1",     "leafless",   50,  NA,   NA,  NA,
-
-  535,       "M-2 35%C green",            "M-2",     "green",      35,  NA,   NA,  NA,
-
-  # ------------------------------------------------------------
-  # Combined M-1/M-2 raster classes.
-  # Represent each as two seasonal scenarios.
-  # ------------------------------------------------------------
-  610,       "M-1/M-2 10%C leafless",     "M-1",     "leafless",   10,  NA,   NA,  NA,
-  610,       "M-1/M-2 10%C green",        "M-2",     "green",      10,  NA,   NA,  NA,
-
-  620,       "M-1/M-2 20%C leafless",     "M-1",     "leafless",   20,  NA,   NA,  NA,
-  620,       "M-1/M-2 20%C green",        "M-2",     "green",      20,  NA,   NA,  NA,
-
-  635,       "M-1/M-2 35%C leafless",     "M-1",     "leafless",   35,  NA,   NA,  NA,
-  635,       "M-1/M-2 35%C green",        "M-2",     "green",      35,  NA,   NA,  NA,
-
-  650,       "M-1/M-2 50%C leafless",     "M-1",     "leafless",   50,  NA,   NA,  NA,
-  650,       "M-1/M-2 50%C green",        "M-2",     "green",      50,  NA,   NA,  NA,
-
-  665,       "M-1/M-2 65%C leafless",     "M-1",     "leafless",   65,  NA,   NA,  NA,
-  665,       "M-1/M-2 65%C green",        "M-2",     "green",      65,  NA,   NA,  NA
-)
+# Ensure optional numeric columns exist (NA when absent).
+for (col in c("PC", "PDF", "cc", "GFL")) {
+  if (!col %in% names(curve_specs)) {
+    curve_specs[[col]] <- NA_real_
+  }
+}
 
 curve_specs <- curve_specs %>%
   mutate(
+    fbp_code = as.integer(fbp_code),
     PC  = as.numeric(PC),
     PDF = as.numeric(PDF),
     cc  = as.numeric(cc),
     GFL = as.numeric(GFL)
   )
 
-curve_order <- curve_specs$CurveLabel
+curve_order <- unique(curve_specs$CurveLabel)
 
 # ------------------------------------------------------------
 # Build metadata table for plotting
@@ -235,8 +204,8 @@ curve_colors <- c(
   "D-1/D-2 green as D-2" = "#00BFC4",
 
   # Grass fuel types
-  "O-1a 90%c, GFL 0.35" = "#F0E442",
-  "O-1b 90%c, GFL 0.35" = "#B79F00",
+  "O-1a 90%c" = "#F0E442",
+  "O-1b 90%c" = "#B79F00",
 
   # Explicit M-1 / M-2 classes
   "M-1 20%C leafless" = "#A6CEE3",
@@ -280,8 +249,8 @@ curve_linetypes <- c(
   "D-1/D-2 green as D-2" = "dashed",
 
   # Grass fuel types
-  "O-1a 90%c, GFL 0.35" = "longdash",
-  "O-1b 90%c, GFL 0.35" = "solid",
+  "O-1a 90%c" = "longdash",
+  "O-1b 90%c" = "solid",
 
   # Explicit M-1 / M-2 classes
   "M-1 20%C leafless" = "solid",
