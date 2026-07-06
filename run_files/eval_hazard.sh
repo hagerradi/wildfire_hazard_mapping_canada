@@ -134,7 +134,17 @@ else
 fi
 
 echo "Running hazard evaluation with config: $RUN_CONFIG_FILE"
-read -r -a EVAL_ARG_ARRAY <<< "$EVAL_ARGS"
+EVAL_ARG_ARRAY=()
+while IFS= read -r -d '' arg; do
+    EVAL_ARG_ARRAY+=("$arg")
+done < <(python - "$EVAL_ARGS" <<'PY'
+import shlex
+import sys
+
+for arg in shlex.split(sys.argv[1]):
+    sys.stdout.write(arg + "\0")
+PY
+)
 if [[ -n "${STAGED_DATA_ROOT_DIR:-}" ]]; then
     EVAL_ARG_ARRAY+=(--root_dir "$STAGED_DATA_ROOT_DIR")
 fi
