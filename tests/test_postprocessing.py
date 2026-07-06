@@ -60,8 +60,6 @@ def test_get_stitched_windows_uses_prediction_mask_when_provided(tmp_path):
         gt_shape=(2, 2),
         target_channel_index=5,
         prediction_mask_channel_indices=[0],
-        win_h=2,
-        win_w=2,
     )
 
     assert stitched[0, 0] == 1.0
@@ -86,8 +84,6 @@ def test_get_stitched_windows_falls_back_to_target_mask(tmp_path):
         start_idx=0,
         gt_shape=(2, 2),
         target_channel_index=5,
-        win_h=2,
-        win_w=2,
     )
 
     assert stitched[0, 0] == 1.0
@@ -111,8 +107,6 @@ def test_get_stitched_windows_infers_patch_shape(tmp_path):
         start_idx=0,
         gt_shape=(2, 3),
         target_channel_index=0,
-        win_h=256,
-        win_w=256,
     )
 
     np.testing.assert_array_equal(stitched, predictions[0])

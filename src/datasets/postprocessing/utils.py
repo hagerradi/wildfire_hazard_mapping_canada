@@ -228,8 +228,6 @@ def get_stitched_windows(
     target_channel_index: int = 0,
     prediction_mask_channel_indices: list[int] | None = None,
     stitch_mode: str = "mean",
-    win_h: int = 128,
-    win_w: int = 128,
 ) -> np.ndarray:
     """
     Accumulate and stitch all the windows together to build the hexel
@@ -278,8 +276,6 @@ def get_predicted_hexel(
     stitch_mode: str = "mean",
     target_channel_index: int = 0,
     prediction_mask_channel_indices: list[int] | None = None,
-    win_h: int = 128,
-    win_w: int = 128,
     mask_scope: str = "actual",
 ) -> tuple[np.ndarray, Profile]:
     """
@@ -308,8 +304,6 @@ def get_predicted_hexel(
             target_channel_index=target_channel_index,
             stitch_mode=stitch_mode,
             prediction_mask_channel_indices=prediction_mask_channel_indices,
-            win_h=win_h,
-            win_w=win_w,
         )
         reconstructed_hexel_denorm = denormalize_model_target(
             data=reconstructed_hexel,
@@ -334,8 +328,6 @@ def get_predicted_hexel(
                 target_channel_index=target_channel_index,
                 stitch_mode=stitch_mode,
                 prediction_mask_channel_indices=prediction_mask_channel_indices,
-                win_h=win_h,
-                win_w=win_w,
             )
             reconstructed_season_cause_hexel_denorm = denormalize_burn_count(
                 data=reconstructed_season_cause_hexel, min_val=min_target_val, max_val=max_target_val

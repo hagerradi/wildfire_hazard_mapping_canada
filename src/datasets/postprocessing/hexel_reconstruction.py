@@ -96,8 +96,6 @@ def reconstruct_denormalized_hexels(
                 stitch_mode=stitch_mode,
                 target_channel_index=settings.target_channel_index,
                 prediction_mask_channel_indices=prediction_mask_channel_indices,
-                win_h=config.data_prep.win_h,
-                win_w=config.data_prep.win_w,
                 mask_scope=scope,
             )
             paths = Paths(hex_id=hex_id, root_dir=config.data.raw_data_dir)
