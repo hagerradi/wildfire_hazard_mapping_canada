@@ -52,6 +52,7 @@ def compute_hazard_hexel(
     fi_hexel: StitchedHexel,
     *,
     denominator: float,
+    pred_denominator: float | None = None,
     fi_cap: float | None = 10000.0,
     scale_to: float = 100.0,
     bin_thresholds: list[float] | None = None,
@@ -85,7 +86,7 @@ def compute_hazard_hexel(
 
     pred_raw = compute_raw_hazard(bp_hexel.pred_grid, fi_hexel.pred_grid, fi_cap)
     gt_raw = compute_raw_hazard(bp_hexel.gt_grid, fi_hexel.gt_grid, fi_cap)
-    pred_scaled = scale_hazard(pred_raw, denominator, scale_to)
+    pred_scaled = scale_hazard(pred_raw, pred_denominator if pred_denominator is not None else denominator, scale_to)
     gt_scaled = scale_hazard(gt_raw, denominator, scale_to)
     pred_binned = bin_scaled_hazard(pred_scaled, bin_thresholds, invalid_class)
     gt_binned = bin_scaled_hazard(gt_scaled, bin_thresholds, invalid_class)

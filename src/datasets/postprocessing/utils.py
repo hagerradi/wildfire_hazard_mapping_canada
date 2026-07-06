@@ -249,9 +249,10 @@ def get_stitched_windows(
             if invalid_indices:
                 raise ValueError(f"prediction mask channel indices {invalid_indices} are out of bounds for patch with shape {array.shape}.")
             mask = np.logical_and.reduce([np.isfinite(array[:, :, index]) for index in prediction_mask_channel_indices])
-        all_data_points.append(predictions[start_idx + i].reshape((win_h, win_w)))
+        patch_h, patch_w = array.shape[:2]
+        all_data_points.append(predictions[start_idx + i].reshape((patch_h, patch_w)))
         all_locations.append((data[5], data[6]))
-        all_masks.append(mask.reshape((win_h, win_w)))
+        all_masks.append(mask.reshape((patch_h, patch_w)))
     reconstructed_hexel = stitch_windows(
         all_data_points,
         all_locations,

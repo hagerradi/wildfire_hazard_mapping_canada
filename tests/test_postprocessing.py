@@ -96,6 +96,28 @@ def test_get_stitched_windows_falls_back_to_target_mask(tmp_path):
     assert stitched[1, 1] == 4.0
 
 
+def test_get_stitched_windows_infers_patch_shape(tmp_path):
+    patch = np.ones((2, 3, 7), dtype=np.float32)
+    patch[:, :, 0] = 1.0
+    np.save(tmp_path / "sample.npy", patch)
+
+    df = pd.DataFrame([["sample.npy", None, None, None, None, 0, 0]])
+    predictions = np.array([[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]], dtype=np.float32)
+
+    stitched = get_stitched_windows(
+        base_dir=str(tmp_path),
+        df=df,
+        predictions=predictions,
+        start_idx=0,
+        gt_shape=(2, 3),
+        target_channel_index=0,
+        win_h=256,
+        win_w=256,
+    )
+
+    np.testing.assert_array_equal(stitched, predictions[0])
+
+
 def test_bp_target_nodata_is_zero_inside_prediction_support():
     gt = np.array([[np.nan, 0.2], [np.nan, np.nan]], dtype=np.float32)
     pred = np.array([[0.1, 0.3], [np.nan, 0.4]], dtype=np.float32)

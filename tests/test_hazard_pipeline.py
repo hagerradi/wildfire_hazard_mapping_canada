@@ -93,6 +93,20 @@ class TestComputeHazardHexel:
         assert result.metrics["within_1_accuracy"] == 1.0
         assert result.metrics["mean_absolute_class_error"] == 0.5
 
+    def test_prediction_denominator_only_scales_prediction(self):
+        bp, fi = _paired_hexels()
+        result = compute_hazard_hexel(
+            bp,
+            fi,
+            denominator=50.0,
+            pred_denominator=100.0,
+            scale_to=100.0,
+            bin_thresholds=[10.0, 50.0],
+        )
+
+        np.testing.assert_array_equal(result.pred_scaled_hazard, np.array([[50.0, 0.0], [np.nan, np.nan]]))
+        np.testing.assert_array_equal(result.gt_scaled_hazard, np.array([[64.0, 24.0], [36.0, 0.0]]))
+
     def test_hex_id_mismatch_raises(self):
         bp = _hexel("bp", [[0.1]], [[0.1]], hex_id="01")
         fi = _hexel("fi", [[1.0]], [[1.0]], hex_id="02")

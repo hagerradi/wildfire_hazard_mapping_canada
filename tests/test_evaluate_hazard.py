@@ -81,6 +81,7 @@ class TestCliOverrides:
                 ("save_dir", args.save_dir),
                 ("root_dir", args.root_dir),
                 ("stitch_mode", args.stitch_mode),
+                ("self_normalized_prediction", True if args.self_normalized_prediction else None),
             )
             if value is not None
         }
@@ -92,6 +93,7 @@ class TestCliOverrides:
         assert args.save_dir is None
         assert args.root_dir is None
         assert args.stitch_mode is None
+        assert args.self_normalized_prediction is False
 
     def test_no_overrides_returns_same_config(self, monkeypatch):
         args = self._parse(monkeypatch, ["--config", str(HAZARD_EVAL_CONFIG)])
@@ -122,6 +124,13 @@ class TestCliOverrides:
         assert updated.root_dir == "/tmp/buffer-root"
         assert updated.stitch_mode == "max"
         assert hazard_config.mask_scope == "actual"
+
+    def test_self_normalized_prediction_override(self, monkeypatch):
+        args = self._parse(monkeypatch, ["--config", str(HAZARD_EVAL_CONFIG), "--self_normalized_prediction"])
+        hazard_config = _hazard_config(self_normalized_prediction=False)
+        updated = self._apply(hazard_config, args)
+
+        assert updated.self_normalized_prediction is True
 
     def test_partial_override_only_touches_given_field(self, monkeypatch):
         args = self._parse(monkeypatch, ["--config", str(HAZARD_EVAL_CONFIG), "--mask_scope", "buffer"])
@@ -352,6 +361,26 @@ class TestWriteHazardMetricSummaries:
         assert aggregate["exact_accuracy"] == pytest.approx(0.7)
         assert aggregate["per_class_iou_2"] == pytest.approx(0.3)
         assert summary["metrics"]["per_class_iou_1"] == pytest.approx(0.6)
+
+    def test_writes_confusion_matrix_outputs(self, tmp_path):
+        results = [
+            self._fake_result("01", {"exact_accuracy": 0.8, "confusion_matrix": np.array([[2, 1], [0, 3]])}),
+            self._fake_result("02", {"exact_accuracy": 0.6, "confusion_matrix": np.array([[1, 0], [2, 4]])}),
+        ]
+        _, json_path, _ = write_hazard_metric_summaries(
+            results,
+            str(tmp_path),
+            denominator=50.0,
+            denominator_metadata={"source": "all_raw_ground_truth", "value": 50.0},
+            prediction_denominator=25.0,
+            prediction_denominator_metadata={"source": "prediction", "value": 25.0},
+        )
+
+        summary = json.loads(Path(json_path).read_text())
+        assert summary["prediction_denominator"] == 25.0
+        assert summary["confusion_matrix"] == [[3, 1], [2, 7]]
+        assert Path(summary["confusion_matrix_csv"]).is_file()
+        assert Path(summary["confusion_matrix_plot"]).is_file()
 
     def test_all_nan_aggregate_becomes_null(self, tmp_path):
         results = [

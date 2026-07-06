@@ -44,6 +44,8 @@ from src.utils import seed_everything
 DENOMINATOR_JSON_FILENAME = "hazard_scale_denominator.json"
 PER_HEX_CSV_FILENAME = "hazard_metrics_per_hex.csv"
 SUMMARY_JSON_FILENAME = "hazard_metrics_summary.json"
+CONFUSION_MATRIX_CSV_FILENAME = "hazard_confusion_matrix.csv"
+CONFUSION_MATRIX_PNG_FILENAME = "hazard_confusion_matrix.png"
 
 
 def parse_args() -> argparse.Namespace:
@@ -68,6 +70,11 @@ def parse_args() -> argparse.Namespace:
         "--no_save_predictions",
         action="store_true",
         help="Override model-entry save_predictions flags and never write patch predictions.",
+    )
+    parser.add_argument(
+        "--self_normalized_prediction",
+        action="store_true",
+        help="Scale predicted hazard by the max raw hazard over this run's predictions; ground truth keeps the configured denominator.",
     )
     parser.add_argument(
         "--mask_scope",
@@ -296,6 +303,8 @@ def write_hazard_metric_summaries(
     save_dir: str,
     denominator: float,
     denominator_metadata: dict[str, Any],
+    prediction_denominator: float | None = None,
+    prediction_denominator_metadata: dict[str, Any] | None = None,
 ) -> tuple[str, str, dict[str, float]]:
     """Write per-hex CSV and aggregate JSON summaries; return their paths and the aggregate dict."""
     if not results:
@@ -313,18 +322,80 @@ def write_hazard_metric_summaries(
         finite = values[np.isfinite(values)]
         aggregate[column] = float(finite.mean()) if finite.size else float("nan")
 
+    confusion_matrices = [
+        np.asarray(result.metrics["confusion_matrix"], dtype=np.int64) for result in results if "confusion_matrix" in result.metrics
+    ]
+    confusion_matrix = np.sum(confusion_matrices, axis=0) if confusion_matrices else None
+    confusion_csv_path = None
+    confusion_png_path = None
+    if confusion_matrix is not None:
+        confusion_csv_path = write_confusion_matrix_csv(confusion_matrix, save_dir)
+        confusion_png_path = write_confusion_matrix_plot(confusion_matrix, save_dir)
+
     json_metrics = {key: (value if np.isfinite(value) else None) for key, value in aggregate.items()}
-    summary = {
+    summary: dict[str, Any] = {
         "num_hexels": len(results),
         "denominator": float(denominator),
         "denominator_metadata": denominator_metadata,
         "metrics": json_metrics,
     }
+    if prediction_denominator is not None:
+        summary["prediction_denominator"] = float(prediction_denominator)
+        summary["prediction_denominator_metadata"] = prediction_denominator_metadata or {
+            "source": "prediction",
+            "value": float(prediction_denominator),
+        }
+    if confusion_matrix is not None:
+        summary["confusion_matrix"] = confusion_matrix.tolist()
+        summary["confusion_matrix_csv"] = confusion_csv_path
+        summary["confusion_matrix_plot"] = confusion_png_path
     json_path = os.path.join(save_dir, SUMMARY_JSON_FILENAME)
     with open(json_path, "w") as handle:
         json.dump(summary, handle, indent=2, allow_nan=False)
 
     return csv_path, json_path, aggregate
+
+
+def write_confusion_matrix_csv(confusion_matrix: np.ndarray, save_dir: str) -> str:
+    """Write an aggregate hazard confusion matrix with rows=GT class and columns=predicted class."""
+    class_labels = [str(index) for index in range(1, confusion_matrix.shape[0] + 1)]
+    confusion_df = pd.DataFrame(confusion_matrix, index=class_labels, columns=class_labels)
+    confusion_df.index.name = "gt_class"
+    csv_path = os.path.join(save_dir, CONFUSION_MATRIX_CSV_FILENAME)
+    confusion_df.to_csv(csv_path)
+    return csv_path
+
+
+def write_confusion_matrix_plot(confusion_matrix: np.ndarray, save_dir: str) -> str:
+    """Write an aggregate hazard confusion matrix plot with rows=GT class and columns=predicted class."""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    fig, ax = plt.subplots(figsize=(8, 7), constrained_layout=True)
+    image = ax.imshow(confusion_matrix, cmap="Blues")
+    labels = np.arange(1, confusion_matrix.shape[0] + 1)
+    ax.set_xticks(np.arange(confusion_matrix.shape[1]), labels=labels)
+    ax.set_yticks(np.arange(confusion_matrix.shape[0]), labels=labels)
+    ax.set_xlabel("Predicted hazard class")
+    ax.set_ylabel("Ground-truth hazard class")
+    ax.set_title("Hazard class confusion matrix")
+    fig.colorbar(image, ax=ax, label="Pixel count")
+
+    max_value = float(np.max(confusion_matrix)) if confusion_matrix.size else 0.0
+    if confusion_matrix.shape[0] <= 15 and confusion_matrix.shape[1] <= 15:
+        threshold = max_value / 2.0
+        for row in range(confusion_matrix.shape[0]):
+            for col in range(confusion_matrix.shape[1]):
+                value = int(confusion_matrix[row, col])
+                color = "white" if value > threshold else "black"
+                ax.text(col, row, str(value), ha="center", va="center", color=color, fontsize=7)
+
+    png_path = os.path.join(save_dir, CONFUSION_MATRIX_PNG_FILENAME)
+    fig.savefig(png_path, dpi=200)
+    plt.close(fig)
+    return png_path
 
 
 def main() -> None:
@@ -339,14 +410,12 @@ def main() -> None:
             ("save_dir", args.save_dir),
             ("root_dir", args.root_dir),
             ("stitch_mode", args.stitch_mode),
+            ("self_normalized_prediction", True if args.self_normalized_prediction else None),
         )
         if value is not None
     }
     if overrides:
         hazard_config = hazard_config.model_copy(update=overrides)
-
-    if hazard_config.self_normalized_prediction:
-        raise NotImplementedError("self_normalized_prediction is not implemented yet; set it to false in the hazard config.")
 
     os.makedirs(hazard_config.save_dir, exist_ok=True)
 
@@ -387,6 +456,12 @@ def main() -> None:
         hazard_config, pairs, bp_model_config=bp_model_config, save_dir=hazard_config.save_dir
     )
     print(f"[Hazard] Resolved scale denominator={denominator} (source={denominator_metadata['source']})")
+    prediction_denominator = None
+    prediction_denominator_metadata = None
+    if hazard_config.self_normalized_prediction:
+        prediction_denominator = _pairs_raw_hazard_denominator(pairs, hazard_config.fi_cap, use_prediction=True)
+        prediction_denominator_metadata = {"source": "prediction", "value": prediction_denominator}
+        print(f"[Hazard] Resolved prediction denominator={prediction_denominator} (source=prediction)")
 
     results: list[HazardHexelResult] = []
     for bp_hexel, fi_hexel in pairs:
@@ -394,6 +469,7 @@ def main() -> None:
             bp_hexel,
             fi_hexel,
             denominator=denominator,
+            pred_denominator=prediction_denominator,
             fi_cap=hazard_config.fi_cap,
             scale_to=hazard_config.scale_to,
             bin_thresholds=hazard_config.bin_thresholds,
@@ -402,10 +478,19 @@ def main() -> None:
         if not args.metrics_only and hazard_config.save_hazard_map:
             save_hazard_hexel_artifacts(result, hazard_config.save_dir, save_plots=not args.skip_plots)
 
-    _, _, aggregate = write_hazard_metric_summaries(results, hazard_config.save_dir, denominator, denominator_metadata)
+    _, _, aggregate = write_hazard_metric_summaries(
+        results,
+        hazard_config.save_dir,
+        denominator,
+        denominator_metadata,
+        prediction_denominator=prediction_denominator,
+        prediction_denominator_metadata=prediction_denominator_metadata,
+    )
 
     print("\n===== Hazard Evaluation Summary =====")
     print(f"Scale denominator: {denominator} (source={denominator_metadata['source']})")
+    if prediction_denominator is not None:
+        print(f"Prediction denominator: {prediction_denominator} (source=prediction)")
     print(f"Number of hexels:  {len(results)}")
     print("Aggregate metrics:")
     for key, value in aggregate.items():
