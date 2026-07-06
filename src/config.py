@@ -225,10 +225,8 @@ class HazardEvalConfig(BaseModel):
     scale_denominator: float | None = Field(default=None, gt=0.0)
     scale_denominator_source: DenominatorSource = "all_raw_ground_truth"
     reference_denominator_path: str | None = None
-    on_missing_reference_denominator: Literal["error"] = "error"
     self_normalized_prediction: bool = False
 
-    metrics: list[str] = Field(default_factory=lambda: ["spearman", "auc_iou_full"])
     save_hazard_map: bool = True
 
     @field_validator("bin_thresholds")

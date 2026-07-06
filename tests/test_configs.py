@@ -132,7 +132,6 @@ def test_hazard_eval_config_defaults():
     assert config.scale_denominator_source == "all_raw_ground_truth"
     assert config.self_normalized_prediction is False
     assert config.fi_cap == 10000.0
-    assert config.on_missing_reference_denominator == "error"
 
 
 def test_hazard_eval_config_rejects_non_positive_fi_cap():
