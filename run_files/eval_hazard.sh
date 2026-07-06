@@ -73,13 +73,20 @@ file_list_path = Path(sys.argv[3])
 with config_path.open() as handle:
     config = yaml.safe_load(handle)
 
+def safe_relative_path(value, source):
+    raw_value = str(value or "").strip()
+    path = Path(raw_value)
+    if not raw_value or path.is_absolute() or ".." in path.parts or "\n" in raw_value or "\r" in raw_value:
+        raise ValueError(f"Unsafe staged path from {source}: {raw_value!r}")
+    return path.as_posix()
+
 test_split = config.get("test_split", "test_indices.csv")
-relative_paths = {path.name for path in root_dir.iterdir() if path.is_file()}
+relative_paths = {safe_relative_path(path.name, "root_dir") for path in root_dir.iterdir() if path.is_file()}
 with (root_dir / test_split).open(newline="") as handle:
     reader = csv.DictReader(handle)
     if reader.fieldnames is None or "filename" not in reader.fieldnames:
         raise ValueError(f"{root_dir / test_split} must contain a 'filename' column.")
-    relative_paths.update(row["filename"] for row in reader)
+    relative_paths.update(safe_relative_path(row["filename"], f"{root_dir / test_split}:filename") for row in reader)
 
 missing_paths = sorted(path for path in relative_paths if not (root_dir / path).is_file())
 if missing_paths:
