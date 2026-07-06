@@ -37,11 +37,26 @@ def pair_stitched_hexels(
     fi_hexels: Iterable[StitchedHexel],
 ) -> Iterator[tuple[StitchedHexel, StitchedHexel]]:
     """Yield aligned (bp, fi) hexels, validating identical hex-id sequences."""
-    bp_list = list(bp_hexels)
-    fi_list = list(fi_hexels)
-    if len(bp_list) != len(fi_list):
-        raise ValueError(f"BP/FI hexel counts differ: {len(bp_list)} vs {len(fi_list)}")
-    for bp_hexel, fi_hexel in zip(bp_list, fi_list, strict=True):
+    bp_iter = iter(bp_hexels)
+    fi_iter = iter(fi_hexels)
+    index = 0
+    while True:
+        try:
+            bp_hexel = next(bp_iter)
+            bp_done = False
+        except StopIteration:
+            bp_done = True
+        try:
+            fi_hexel = next(fi_iter)
+            fi_done = False
+        except StopIteration:
+            fi_done = True
+
+        if bp_done and fi_done:
+            return
+        index += 1
+        if bp_done or fi_done:
+            raise ValueError(f"BP/FI hexel counts differ before pair {index}")
         if bp_hexel.hex_id != fi_hexel.hex_id:
             raise ValueError(f"BP/FI hexel sequence mismatch: {bp_hexel.hex_id} vs {fi_hexel.hex_id}")
         yield bp_hexel, fi_hexel

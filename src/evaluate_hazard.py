@@ -9,7 +9,7 @@ import argparse
 import json
 import os
 import time
-from collections.abc import Collection, Sequence
+from collections.abc import Collection, Iterable, Sequence
 from typing import Any
 
 import numpy as np
@@ -232,27 +232,29 @@ def raw_ground_truth_denominator(
 
 
 def _pairs_raw_hazard_denominator(
-    pairs: Sequence[tuple[StitchedHexel, StitchedHexel]],
+    pairs: Iterable[tuple[StitchedHexel, StitchedHexel]],
     fi_cap: float | None,
     use_prediction: bool,
 ) -> float:
     """Max raw hazard over reconstructed GT (or prediction) BP/FI hexel pairs."""
-    if not pairs:
-        raise ValueError("No BP/FI hexel pairs available to compute a denominator.")
-    raw_grids = [
-        compute_raw_hazard(
+    denominator = float("-inf")
+    saw_pair = False
+    for bp_hexel, fi_hexel in pairs:
+        saw_pair = True
+        raw_grid = compute_raw_hazard(
             bp_hexel.pred_grid if use_prediction else bp_hexel.gt_grid,
             fi_hexel.pred_grid if use_prediction else fi_hexel.gt_grid,
             fi_cap,
         )
-        for bp_hexel, fi_hexel in pairs
-    ]
-    return max_finite_hazard(*raw_grids)
+        denominator = max(denominator, max_finite_hazard(raw_grid))
+    if not saw_pair:
+        raise ValueError("No BP/FI hexel pairs available to compute a denominator.")
+    return denominator
 
 
 def resolve_hazard_denominator(
     hazard_config: HazardEvalConfig,
-    pairs: Sequence[tuple[StitchedHexel, StitchedHexel]],
+    pairs: Iterable[tuple[StitchedHexel, StitchedHexel]] | None = None,
     *,
     bp_model_config: Config | None = None,
     save_dir: str | None = None,
@@ -287,8 +289,12 @@ def resolve_hazard_denominator(
         denominator = raw_ground_truth_denominator(hazard_config.raw_data_dir, hazard_config.fi_cap, read_split_hex_ids(train_split_path))
         meta["train_split"] = train_split_path
     elif hazard_config.scale_denominator_source == "eval_ground_truth":
+        if pairs is None:
+            raise ValueError("BP/FI hexel pairs are required for scale_denominator_source='eval_ground_truth'.")
         denominator = _pairs_raw_hazard_denominator(pairs, hazard_config.fi_cap, use_prediction=False)
     elif hazard_config.scale_denominator_source == "prediction":
+        if pairs is None:
+            raise ValueError("BP/FI hexel pairs are required for scale_denominator_source='prediction'.")
         denominator = _pairs_raw_hazard_denominator(pairs, hazard_config.fi_cap, use_prediction=True)
     else:  # pragma: no cover - guarded by config validation
         raise ValueError(f"Unsupported scale_denominator_source={hazard_config.scale_denominator_source!r}.")
@@ -298,20 +304,20 @@ def resolve_hazard_denominator(
     return denominator, meta
 
 
-def write_hazard_metric_summaries(
-    results: Sequence[HazardHexelResult],
+def _write_hazard_metric_summaries_from_records(
+    metric_records: Sequence[dict[str, Any]],
+    confusion_matrices: Sequence[np.ndarray],
     save_dir: str,
     denominator: float,
     denominator_metadata: dict[str, Any],
     prediction_denominator: float | None = None,
     prediction_denominator_metadata: dict[str, Any] | None = None,
 ) -> tuple[str, str, dict[str, float]]:
-    """Write per-hex CSV and aggregate JSON summaries; return their paths and the aggregate dict."""
-    if not results:
+    if not metric_records:
         raise ValueError("No hazard hexel results to summarize.")
     os.makedirs(save_dir, exist_ok=True)
 
-    per_hex_df = pd.DataFrame([{"hex_id": result.hex_id, **flatten_hazard_class_metrics(result.metrics)} for result in results])
+    per_hex_df = pd.DataFrame(metric_records)
     csv_path = os.path.join(save_dir, PER_HEX_CSV_FILENAME)
     per_hex_df.to_csv(csv_path, index=False)
 
@@ -322,9 +328,6 @@ def write_hazard_metric_summaries(
         finite = values[np.isfinite(values)]
         aggregate[column] = float(finite.mean()) if finite.size else float("nan")
 
-    confusion_matrices = [
-        np.asarray(result.metrics["confusion_matrix"], dtype=np.int64) for result in results if "confusion_matrix" in result.metrics
-    ]
     confusion_matrix = np.sum(confusion_matrices, axis=0) if confusion_matrices else None
     confusion_csv_path = None
     confusion_png_path = None
@@ -334,7 +337,7 @@ def write_hazard_metric_summaries(
 
     json_metrics = {key: (value if np.isfinite(value) else None) for key, value in aggregate.items()}
     summary: dict[str, Any] = {
-        "num_hexels": len(results),
+        "num_hexels": len(metric_records),
         "denominator": float(denominator),
         "denominator_metadata": denominator_metadata,
         "metrics": json_metrics,
@@ -354,6 +357,30 @@ def write_hazard_metric_summaries(
         json.dump(summary, handle, indent=2, allow_nan=False)
 
     return csv_path, json_path, aggregate
+
+
+def write_hazard_metric_summaries(
+    results: Sequence[HazardHexelResult],
+    save_dir: str,
+    denominator: float,
+    denominator_metadata: dict[str, Any],
+    prediction_denominator: float | None = None,
+    prediction_denominator_metadata: dict[str, Any] | None = None,
+) -> tuple[str, str, dict[str, float]]:
+    """Write per-hex CSV and aggregate JSON summaries; return their paths and the aggregate dict."""
+    metric_records = [{"hex_id": result.hex_id, **flatten_hazard_class_metrics(result.metrics)} for result in results]
+    confusion_matrices = [
+        np.asarray(result.metrics["confusion_matrix"], dtype=np.int64) for result in results if "confusion_matrix" in result.metrics
+    ]
+    return _write_hazard_metric_summaries_from_records(
+        metric_records,
+        confusion_matrices,
+        save_dir,
+        denominator,
+        denominator_metadata,
+        prediction_denominator=prediction_denominator,
+        prediction_denominator_metadata=prediction_denominator_metadata,
+    )
 
 
 def write_confusion_matrix_csv(confusion_matrix: np.ndarray, save_dir: str) -> str:
@@ -436,35 +463,45 @@ def main() -> None:
     if hazard_config.fi.save_predictions and not args.no_save_predictions:
         np.save(os.path.join(hazard_config.save_dir, "fi_test_predictions.npy"), fi_predictions)
 
-    bp_hexels = reconstruct_denormalized_hexels(
-        test_predictions=bp_predictions,
-        config=bp_model_config,
-        out_norm=bp_out_norm,
-        stitch_mode=hazard_config.stitch_mode,
-        mask_scope=hazard_config.mask_scope,
-    )
-    fi_hexels = reconstruct_denormalized_hexels(
-        test_predictions=fi_predictions,
-        config=fi_model_config,
-        out_norm=fi_out_norm,
-        stitch_mode=hazard_config.stitch_mode,
-        mask_scope=hazard_config.mask_scope,
-    )
-    pairs = list(pair_stitched_hexels(bp_hexels, fi_hexels))
+    def make_pairs() -> Iterable[tuple[StitchedHexel, StitchedHexel]]:
+        bp_hexels = reconstruct_denormalized_hexels(
+            test_predictions=bp_predictions,
+            config=bp_model_config,
+            out_norm=bp_out_norm,
+            stitch_mode=hazard_config.stitch_mode,
+            mask_scope=hazard_config.mask_scope,
+        )
+        fi_hexels = reconstruct_denormalized_hexels(
+            test_predictions=fi_predictions,
+            config=fi_model_config,
+            out_norm=fi_out_norm,
+            stitch_mode=hazard_config.stitch_mode,
+            mask_scope=hazard_config.mask_scope,
+        )
+        return pair_stitched_hexels(bp_hexels, fi_hexels)
 
+    denominator_pairs = None
+    if hazard_config.scale_denominator_source in {"eval_ground_truth", "prediction"}:
+        denominator_pairs = make_pairs()
     denominator, denominator_metadata = resolve_hazard_denominator(
-        hazard_config, pairs, bp_model_config=bp_model_config, save_dir=hazard_config.save_dir
+        hazard_config,
+        denominator_pairs,
+        bp_model_config=bp_model_config,
+        save_dir=hazard_config.save_dir,
     )
     print(f"[Hazard] Resolved scale denominator={denominator} (source={denominator_metadata['source']})")
     prediction_denominator = None
     prediction_denominator_metadata = None
     if hazard_config.self_normalized_prediction:
-        prediction_denominator = _pairs_raw_hazard_denominator(pairs, hazard_config.fi_cap, use_prediction=True)
+        print("[Hazard] Resolving prediction denominator from reconstructed predictions...", flush=True)
+        prediction_denominator = _pairs_raw_hazard_denominator(make_pairs(), hazard_config.fi_cap, use_prediction=True)
         prediction_denominator_metadata = {"source": "prediction", "value": prediction_denominator}
         print(f"[Hazard] Resolved prediction denominator={prediction_denominator} (source=prediction)")
 
-    results: list[HazardHexelResult] = []
-    for bp_hexel, fi_hexel in pairs:
+    metric_records: list[dict[str, Any]] = []
+    confusion_matrices: list[np.ndarray] = []
+    for index, (bp_hexel, fi_hexel) in enumerate(make_pairs(), start=1):
+        print(f"[Hazard] Computing hazard hex {bp_hexel.hex_id} ({index})...", flush=True)
         result = compute_hazard_hexel(
             bp_hexel,
             fi_hexel,
@@ -474,12 +511,15 @@ def main() -> None:
             scale_to=hazard_config.scale_to,
             bin_thresholds=hazard_config.bin_thresholds,
         )
-        results.append(result)
         if not args.metrics_only and hazard_config.save_hazard_map:
             save_hazard_hexel_artifacts(result, hazard_config.save_dir, save_plots=not args.skip_plots)
+        metric_records.append({"hex_id": result.hex_id, **flatten_hazard_class_metrics(result.metrics)})
+        if "confusion_matrix" in result.metrics:
+            confusion_matrices.append(np.asarray(result.metrics["confusion_matrix"], dtype=np.int64))
 
-    _, _, aggregate = write_hazard_metric_summaries(
-        results,
+    _, _, aggregate = _write_hazard_metric_summaries_from_records(
+        metric_records,
+        confusion_matrices,
         hazard_config.save_dir,
         denominator,
         denominator_metadata,
@@ -491,7 +531,7 @@ def main() -> None:
     print(f"Scale denominator: {denominator} (source={denominator_metadata['source']})")
     if prediction_denominator is not None:
         print(f"Prediction denominator: {prediction_denominator} (source=prediction)")
-    print(f"Number of hexels:  {len(results)}")
+    print(f"Number of hexels:  {len(metric_records)}")
     print("Aggregate metrics:")
     for key, value in aggregate.items():
         print(f"  {key}: {value:.6f}")

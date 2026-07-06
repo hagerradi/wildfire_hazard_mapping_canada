@@ -64,6 +64,10 @@ def reconstruct_denormalized_hexels(
         hex_test_predictions = test_predictions[hexel_indices]
 
         for settings in settings_list:
+            print(
+                f"[Postprocess] Reconstructing {settings.target.name.upper()} hex {hex_id} " f"from {len(one_hexel_df)} {scope} patches...",
+                flush=True,
+            )
             target_predictions = post_utils.select_prediction_target_channel(
                 predictions=hex_test_predictions,
                 target_name=settings.target.name,
