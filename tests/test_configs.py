@@ -5,6 +5,7 @@ import yaml
 from pydantic import ValidationError
 
 from src.config import Config, GridParams, HazardEvalConfig, HazardModelEntry, SpatializedTabularParams
+from src.datasets.postprocessing.hazard import DEFAULT_FI_CAP, DEFAULT_SCALE_TO
 from src.utils import AVAILABLE_METRICS, build_single_loss
 
 BP_CONFIG = Path("configs/bp_common_input_pipeline.yaml")
@@ -131,7 +132,8 @@ def test_hazard_eval_config_defaults():
     assert len(config.bin_thresholds) == 12
     assert config.scale_denominator_source == "all_raw_ground_truth"
     assert config.self_normalized_prediction is False
-    assert config.fi_cap == 10000.0
+    assert config.fi_cap == DEFAULT_FI_CAP
+    assert config.scale_to == DEFAULT_SCALE_TO
 
 
 def test_hazard_eval_config_rejects_non_positive_fi_cap():

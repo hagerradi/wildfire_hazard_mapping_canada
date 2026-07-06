@@ -3,7 +3,12 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from src.datasets.postprocessing.hazard import DEFAULT_HAZARD_BIN_THRESHOLDS, validate_bin_thresholds
+from src.datasets.postprocessing.hazard import (
+    DEFAULT_FI_CAP,
+    DEFAULT_HAZARD_BIN_THRESHOLDS,
+    DEFAULT_SCALE_TO,
+    validate_bin_thresholds,
+)
 
 
 class LoggerConfig(BaseModel):
@@ -219,8 +224,8 @@ class HazardEvalConfig(BaseModel):
     bp: HazardModelEntry
     fi: HazardModelEntry
 
-    fi_cap: float | None = Field(default=10000.0, gt=0.0)
-    scale_to: float = Field(default=100.0, gt=0.0)
+    fi_cap: float | None = Field(default=DEFAULT_FI_CAP, gt=0.0)
+    scale_to: float = Field(default=DEFAULT_SCALE_TO, gt=0.0)
     bin_thresholds: list[float] = Field(default_factory=lambda: list(DEFAULT_HAZARD_BIN_THRESHOLDS))
     scale_denominator: float | None = Field(default=None, gt=0.0)
     scale_denominator_source: DenominatorSource = "all_raw_ground_truth"

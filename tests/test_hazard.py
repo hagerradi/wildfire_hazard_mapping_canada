@@ -1,8 +1,8 @@
 import numpy as np
 import pytest
 
-from src.config import DEFAULT_HAZARD_BIN_THRESHOLDS
 from src.datasets.postprocessing.hazard import (
+    DEFAULT_HAZARD_BIN_THRESHOLDS,
     bin_scaled_hazard,
     cap_fire_intensity,
     compute_raw_hazard,

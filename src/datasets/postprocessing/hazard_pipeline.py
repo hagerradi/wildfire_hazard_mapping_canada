@@ -15,7 +15,14 @@ import numpy as np
 import rasterio
 from rasterio.profiles import Profile
 
-from src.datasets.postprocessing.hazard import DEFAULT_HAZARD_BIN_THRESHOLDS, bin_scaled_hazard, compute_raw_hazard, scale_hazard
+from src.datasets.postprocessing.hazard import (
+    DEFAULT_FI_CAP,
+    DEFAULT_HAZARD_BIN_THRESHOLDS,
+    DEFAULT_SCALE_TO,
+    bin_scaled_hazard,
+    compute_raw_hazard,
+    scale_hazard,
+)
 from src.datasets.postprocessing.hazard_metrics import calculate_hazard_class_metrics
 from src.datasets.postprocessing.hexel_reconstruction import StitchedHexel
 from src.datasets.postprocessing.visualize_predictions import visualize_target_grids
@@ -72,8 +79,8 @@ def compute_hazard_hexel(
     *,
     denominator: float,
     pred_denominator: float | None = None,
-    fi_cap: float | None = 10000.0,
-    scale_to: float = 100.0,
+    fi_cap: float | None = DEFAULT_FI_CAP,
+    scale_to: float = DEFAULT_SCALE_TO,
     bin_thresholds: list[float] | None = None,
     invalid_class: int = 0,
 ) -> HazardHexelResult:
