@@ -1,3 +1,9 @@
+"""Reusable reconstruction of patch predictions into denormalized hexel rasters.
+
+The producer yields one target/hexel at a time so callers can stream large
+buffer extents instead of materializing every reconstructed raster at once.
+"""
+
 from __future__ import annotations
 
 import os
@@ -16,6 +22,8 @@ from src.datasets.targets import TargetSpec
 
 @dataclass(frozen=True)
 class StitchedHexel:
+    """Denormalized prediction and target grids for one target on one hexel."""
+
     hex_id: str
     target: TargetSpec
     gt_grid: np.ndarray
@@ -44,6 +52,7 @@ def reconstruct_denormalized_hexels(
     stitch_mode: str = "mean",
     mask_scope: str = "actual",
 ) -> Iterator[StitchedHexel]:
+    """Yield stitched, denormalized hexel grids using the same settings as training/evaluation."""
     if isinstance(test_predictions, str):
         raise TypeError(f"Expected ndarray, but got string: {test_predictions}")
 

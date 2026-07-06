@@ -1,4 +1,9 @@
-"""Orchestration over paired BP/FI stitched hexels and hazard artifact writing."""
+"""Hazard operations on paired reconstructed BP/FI hexels.
+
+This layer validates BP/FI alignment, applies the hazard math, and writes
+hazard artifacts. Model inference and hexel reconstruction stay in separate
+modules so the same reconstructed grids can support non-hazard evaluators.
+"""
 
 from __future__ import annotations
 
@@ -72,7 +77,12 @@ def compute_hazard_hexel(
     bin_thresholds: list[float] | None = None,
     invalid_class: int = 0,
 ) -> HazardHexelResult:
-    """Build a hazard result from one paired BP/FI stitched hexel."""
+    """Build a hazard result from one paired BP/FI stitched hexel.
+
+    ``pred_denominator`` is only for self-normalized prediction diagnostics;
+    ground truth always uses ``denominator`` so reference-scaled outputs remain
+    comparable across runs.
+    """
     if bp_hexel.hex_id != fi_hexel.hex_id:
         raise ValueError(f"hex_id mismatch: {bp_hexel.hex_id!r} vs {fi_hexel.hex_id!r}")
     if bp_hexel.target.name != "bp":

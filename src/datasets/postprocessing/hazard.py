@@ -1,4 +1,8 @@
-"""Pure-NumPy NRCan-style hazard computations (no I/O, no config)."""
+"""Array-level NRCan-style hazard math.
+
+The functions here avoid file paths and model config objects so the same rules
+can be reused by config validation, tests, and evaluation pipelines.
+"""
 
 from __future__ import annotations
 

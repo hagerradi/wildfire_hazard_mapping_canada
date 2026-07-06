@@ -1,4 +1,8 @@
-"""End-to-end hazard evaluation combining trained BP and FI checkpoints.
+"""Hazard evaluation CLI for paired BP/FI checkpoints.
+
+This entrypoint reuses the standard model inference stack and shared hexel
+reconstruction, then applies the hazard-specific denominator, raster, and
+class-metric logic.
 
 python -m src.evaluate_hazard --config configs/hazard_eval_common_input_pipeline.yaml
 """
@@ -488,6 +492,7 @@ def main() -> None:
         np.save(os.path.join(hazard_config.save_dir, "fi_test_predictions.npy"), fi_predictions)
 
     def make_pairs() -> Iterable[tuple[StitchedHexel, StitchedHexel]]:
+        """Return a fresh streamed BP/FI reconstruction pass."""
         bp_hexels = reconstruct_denormalized_hexels(
             test_predictions=bp_predictions,
             config=bp_model_config,
@@ -504,6 +509,8 @@ def main() -> None:
         )
         return pair_stitched_hexels(bp_hexels, fi_hexels)
 
+    # Denominator passes consume the streamed reconstructions. Rebuilding them
+    # is slower than caching full rasters, but keeps buffer-scale runs within memory.
     denominator_pairs = None
     if hazard_config.scale_denominator_source in {"eval_ground_truth", "prediction"}:
         denominator_pairs = make_pairs()
