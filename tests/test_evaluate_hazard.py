@@ -57,6 +57,17 @@ def _paired_hexels():
     return [(bp, fi)]
 
 
+def _pair(hex_id, bp_pred, fi_pred, bp_gt=None, fi_gt=None):
+    if bp_gt is None:
+        bp_gt = bp_pred
+    if fi_gt is None:
+        fi_gt = fi_pred
+    return (
+        _hexel("bp", pred_grid=bp_pred, gt_grid=bp_gt, hex_id=hex_id),
+        _hexel("fi", pred_grid=fi_pred, gt_grid=fi_gt, hex_id=hex_id),
+    )
+
+
 def _hazard_config(**overrides):
     base = dict(
         root_dir="placeholder/root",
@@ -240,6 +251,28 @@ class TestResolveHazardDenominator:
         hazard_config = _hazard_config(scale_denominator_source="prediction")
         denom, _ = resolve_hazard_denominator(hazard_config, _paired_hexels())
         assert denom == 50.0
+
+    def test_eval_ground_truth_skips_empty_or_non_positive_hexels(self):
+        hazard_config = _hazard_config(scale_denominator_source="eval_ground_truth")
+        pairs = [
+            _pair("01", bp_pred=[[0.0]], fi_pred=[[0.0]]),
+            _pair("02", bp_pred=[[np.nan]], fi_pred=[[1.0]]),
+            _pair("03", bp_pred=[[0.5]], fi_pred=[[20.0]]),
+        ]
+
+        denom, _ = resolve_hazard_denominator(hazard_config, pairs)
+
+        assert denom == 10.0
+
+    def test_prediction_denominator_raises_only_when_no_positive_hazard_exists(self):
+        hazard_config = _hazard_config(scale_denominator_source="prediction")
+        pairs = [
+            _pair("01", bp_pred=[[0.0]], fi_pred=[[100.0]]),
+            _pair("02", bp_pred=[[np.nan]], fi_pred=[[100.0]]),
+        ]
+
+        with pytest.raises(ValueError, match="maximum finite hazard must be > 0|no finite hazard"):
+            resolve_hazard_denominator(hazard_config, pairs)
 
     def test_all_raw_ground_truth_writes_json(self, tmp_path, monkeypatch):
         monkeypatch.setattr(

@@ -249,10 +249,12 @@ def _pairs_raw_hazard_denominator(
             fi_hexel.pred_grid if use_prediction else fi_hexel.gt_grid,
             fi_cap,
         )
-        denominator = max(denominator, max_finite_hazard(raw_grid))
+        finite = raw_grid[np.isfinite(raw_grid)]
+        if finite.size:
+            denominator = max(denominator, float(finite.max()))
     if not saw_pair:
         raise ValueError("No BP/FI hexel pairs available to compute a denominator.")
-    return denominator
+    return max_finite_hazard(np.asarray([denominator]))
 
 
 def resolve_hazard_denominator(
