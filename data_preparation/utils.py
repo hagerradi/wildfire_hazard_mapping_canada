@@ -33,14 +33,46 @@ def find_file_path(filename: str, *search_dirs: Path) -> Path:
     raise FileNotFoundError(f"Could not find {filename} in {', '.join(str(d) for d in search_dirs)}")
 
 
-def process_fire_size_df(df_fire_size: pd.DataFrame, train_firezone_ids: set[int] | None = None) -> pd.DataFrame:
+def save_fire_size_normalization_params(min_val: float, max_val: float, path: str | Path) -> None:
+    """Save fire size normalization parameters to a JSON file."""
+    import json
+
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w") as f:
+        json.dump({"log_size_min": float(min_val), "log_size_max": float(max_val)}, f, indent=2)
+
+
+def load_fire_size_normalization_params(path: str | Path) -> tuple[float, float]:
+    """Load fire size normalization parameters from a JSON file. Returns (min_val, max_val)."""
+    import json
+
+    path = Path(path)
+    if not path.exists():
+        raise FileNotFoundError(f"Fire size normalization params not found: {path}")
+    with open(path) as f:
+        raw = json.load(f)
+    return float(raw["log_size_min"]), float(raw["log_size_max"])
+
+
+def process_fire_size_df(
+    df_fire_size: pd.DataFrame,
+    train_firezone_ids: set[int] | None = None,
+    norm_params_path: str | Path | None = None,
+) -> pd.DataFrame:
     """Log-transform and min-max normalize per-zone fire sizes.
 
     Args:
         df_fire_size: Raw fire-size distribution table (must contain the FIRE_SIZE_FEATURE_COLS).
         train_firezone_ids: GRIDCODE (fire-zone) values of the training split. When provided, the
             normalization min/max are fit only on rows from these zones to avoid leaking val/test
-            statistics; when None, they are fit on all rows.
+            statistics; when None, they are fit on all rows. Ignored when ``norm_params_path``
+            points to an existing file.
+        norm_params_path:
+            Path to a JSON file for normalization parameters.
+            - If the file exists: parameters are loaded and applied (inference mode).
+            - If the file does not exist: parameters are fitted and saved for reuse.
+            - If None: parameters are fitted but not saved.
     """
     # Validate that required columns are present before selecting them
     missing_cols = [col for col in FIRE_SIZE_FEATURE_COLS if col not in df_fire_size.columns]
@@ -50,7 +82,7 @@ def process_fire_size_df(df_fire_size: pd.DataFrame, train_firezone_ids: set[int
             f"Expected columns: {FIRE_SIZE_FEATURE_COLS}. "
             f"Available columns: {list(df_fire_size.columns)}"
         )
-    df_fire_size = df_fire_size[FIRE_SIZE_FEATURE_COLS]  # Remove unnamed column
+    df_fire_size = df_fire_size[FIRE_SIZE_FEATURE_COLS].copy()
     zone_36 = {"GRIDCODE": 36, "SIZE_HA": 0}  # Consulted with experts and concluded that imputing with 0 is most reasonable
     if 36 not in df_fire_size["GRIDCODE"].values:
         df_fire_size = pd.concat(
@@ -59,15 +91,23 @@ def process_fire_size_df(df_fire_size: pd.DataFrame, train_firezone_ids: set[int
         )  # Only append synthetic zone 36 if it is not already present, and avoid duplicate indices
 
     df_fire_size["LOG_SIZE_HA"] = np.log10(df_fire_size["SIZE_HA"] + 1)
-    fit_rows = np.ones(len(df_fire_size), dtype=bool)
-    if train_firezone_ids is not None:
-        fit_rows = df_fire_size["GRIDCODE"].astype(int).isin(train_firezone_ids).to_numpy(dtype=bool)
-        if not fit_rows.any():
-            raise ValueError(f"No fire-size rows match train split GRIDCODE values: {sorted(train_firezone_ids)[:20]}")
-    min_val = df_fire_size.loc[fit_rows, "LOG_SIZE_HA"].min()
-    max_val = df_fire_size.loc[fit_rows, "LOG_SIZE_HA"].max()
+
+    if norm_params_path is not None and Path(norm_params_path).exists():
+        # ── Apply pre-fitted parameters (inference / reuse mode) ──────────────
+        min_val, max_val = load_fire_size_normalization_params(norm_params_path)
+    else:
+        # ── Fit normalization parameters ──────────────────────────────────────
+        fit_rows = np.ones(len(df_fire_size), dtype=bool)
+        if train_firezone_ids is not None:
+            fit_rows = df_fire_size["GRIDCODE"].astype(int).isin(train_firezone_ids).to_numpy(dtype=bool)
+            if not fit_rows.any():
+                raise ValueError(f"No fire-size rows match train split GRIDCODE values: {sorted(train_firezone_ids)[:20]}")
+        min_val = float(df_fire_size.loc[fit_rows, "LOG_SIZE_HA"].min())
+        max_val = float(df_fire_size.loc[fit_rows, "LOG_SIZE_HA"].max())
+        if norm_params_path is not None:
+            save_fire_size_normalization_params(min_val, max_val, norm_params_path)
+
     if max_val == min_val:
-        # Avoid division by zero when all LOG_SIZE_HA values are identical
         df_fire_size["NORM_LOG_SIZE_HA"] = 0.0
     else:
         df_fire_size["NORM_LOG_SIZE_HA"] = (df_fire_size["LOG_SIZE_HA"] - min_val) / ((max_val - min_val) + 1e-5)
