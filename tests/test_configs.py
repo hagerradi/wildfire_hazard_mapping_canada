@@ -1,13 +1,19 @@
 from pathlib import Path
 
+import pytest
 import yaml
+from pydantic import ValidationError
 
-from src.config import Config, GridParams, SpatializedTabularParams
+from src.config import Config, GridParams, HazardEvalConfig, HazardModelEntry, SpatializedTabularParams
+from src.datasets.postprocessing.hazard import DEFAULT_FI_CAP, DEFAULT_SCALE_TO
 from src.utils import AVAILABLE_METRICS, build_single_loss
 
 BP_CONFIG = Path("configs/bp_common_input_pipeline.yaml")
 FI_CONFIG = Path("configs/fi_common_input_pipeline.yaml")
 ROS_CONFIG = Path("configs/ros_common_input_pipeline.yaml")
+HAZARD_EVAL_CONFIG = Path("configs/hazard_eval_common_input_pipeline.yaml")
+HAZARD_BP_CONFIG = Path("configs/archived/bp_common_input_pipeline_checkpoint.yaml")
+HAZARD_FI_CONFIG = Path("configs/archived/fi_common_input_pipeline_checkpoint.yaml")
 COMMON_INPUT_PIPELINE_CONFIGS = [BP_CONFIG, FI_CONFIG, ROS_CONFIG]
 
 WEATHER_FEATURES = {
@@ -28,6 +34,11 @@ WEATHER_FEATURES = {
 def _load_config(path: Path) -> Config:
     with path.open() as f:
         return Config(**yaml.safe_load(f))
+
+
+def _load_hazard_eval_config(path: Path) -> HazardEvalConfig:
+    with path.open() as f:
+        return HazardEvalConfig(**yaml.safe_load(f))
 
 
 def test_common_input_pipeline_configs_share_unified_input_pipeline():
@@ -97,3 +108,115 @@ def test_fi_ros_common_input_pipeline_use_log_standard_regression_recipe():
         assert grid.out_norm == "log_standard"
         assert config.optimizer.loss == ["huber", "raw_pearson"]
         assert config.evaluation.robust_plot_percentile == 99.0
+
+
+def test_hazard_eval_config_parses_and_references_bp_fi_configs():
+    config = _load_hazard_eval_config(HAZARD_EVAL_CONFIG)
+
+    assert config.bp.config_path == str(HAZARD_BP_CONFIG)
+    assert config.fi.config_path == str(HAZARD_FI_CONFIG)
+    assert config.root_dir.endswith("data_samples_v2")
+    assert config.test_split == "test_indices.csv"
+    assert config.mask_scope == "actual"
+    assert config.stitch_mode == "mean"
+
+
+def test_hazard_eval_config_defaults():
+    config = HazardEvalConfig(
+        root_dir="root",
+        raw_data_dir="raw",
+        bp=HazardModelEntry(config_path="bp.yaml"),
+        fi=HazardModelEntry(config_path="fi.yaml"),
+    )
+
+    assert len(config.bin_thresholds) == 12
+    assert config.scale_denominator_source == "all_raw_ground_truth"
+    assert config.self_normalized_prediction is False
+    assert config.fi_cap == DEFAULT_FI_CAP
+    assert config.scale_to == DEFAULT_SCALE_TO
+
+
+def test_hazard_eval_config_rejects_non_positive_fi_cap():
+    with pytest.raises(ValidationError):
+        HazardEvalConfig(
+            root_dir="root",
+            raw_data_dir="raw",
+            bp={"config_path": "bp.yaml"},
+            fi={"config_path": "fi.yaml"},
+            fi_cap=0.0,
+        )
+
+
+def test_hazard_eval_config_rejects_non_positive_scale_denominator():
+    with pytest.raises(ValidationError):
+        HazardEvalConfig(
+            root_dir="root",
+            raw_data_dir="raw",
+            bp={"config_path": "bp.yaml"},
+            fi={"config_path": "fi.yaml"},
+            scale_denominator=-1.0,
+        )
+
+
+def test_hazard_eval_config_rejects_non_increasing_bin_thresholds():
+    with pytest.raises(ValidationError):
+        HazardEvalConfig(
+            root_dir="root",
+            raw_data_dir="raw",
+            bp={"config_path": "bp.yaml"},
+            fi={"config_path": "fi.yaml"},
+            bin_thresholds=[0.1, 0.1, 0.2],
+        )
+
+
+def test_hazard_eval_config_rejects_non_finite_bin_thresholds():
+    with pytest.raises(ValidationError):
+        HazardEvalConfig(
+            root_dir="root",
+            raw_data_dir="raw",
+            bp={"config_path": "bp.yaml"},
+            fi={"config_path": "fi.yaml"},
+            bin_thresholds=[0.1, float("nan"), 0.2],
+        )
+
+
+def test_hazard_eval_config_reference_file_requires_denominator_or_path():
+    kwargs = {
+        "root_dir": "root",
+        "raw_data_dir": "raw",
+        "bp": {"config_path": "bp.yaml"},
+        "fi": {"config_path": "fi.yaml"},
+        "scale_denominator_source": "reference_file",
+    }
+
+    with pytest.raises(ValidationError):
+        HazardEvalConfig(**kwargs)
+
+    config = HazardEvalConfig(**kwargs, scale_denominator=42.0)
+    assert config.scale_denominator == 42.0
+
+
+def test_hazard_eval_config_parses_uncapped_fi_cap():
+    config = HazardEvalConfig(
+        root_dir="root",
+        raw_data_dir="raw",
+        bp={"config_path": "bp.yaml"},
+        fi={"config_path": "fi.yaml"},
+        fi_cap=None,
+    )
+
+    assert config.fi_cap is None
+
+
+def test_hazard_eval_config_reference_file_with_path_parses():
+    config = HazardEvalConfig(
+        root_dir="root",
+        raw_data_dir="raw",
+        bp={"config_path": "bp.yaml"},
+        fi={"config_path": "fi.yaml"},
+        scale_denominator_source="reference_file",
+        reference_denominator_path="denominator.tif",
+    )
+
+    assert config.scale_denominator_source == "reference_file"
+    assert config.reference_denominator_path == "denominator.tif"
