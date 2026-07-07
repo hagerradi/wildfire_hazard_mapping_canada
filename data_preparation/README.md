@@ -50,6 +50,8 @@ python -m data_preparation.process_tabular_data \
 	--modelling_approach=1
 ```
 
+For new evaluation data, pass `--fire_size_norm_params_file` and `--weather_norm_params_file` to read train-only normalization parameters previously computed from national study
+
 Notes: If you used modelling approach 2, set `--save_dir` to `data_samples_approach_2`. The `process_tabular_data` script will look for the fire-size file in `--root_dir` first, then in `--save_dir`; ensure `df_fire_fru.csv` is present in one of those places.
 
 Step 4 (necessary if fuel_grid_representation is '`raw`): Generate iROS values from the FBP package
