@@ -1,3 +1,4 @@
+import logging
 import os
 import time
 from typing import Any, cast
@@ -9,7 +10,7 @@ from torch.optim.lr_scheduler import LRScheduler, ReduceLROnPlateau
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from data_preparation.spatial.utils import get_output_log_stats_cached, get_range_output, read_split_hex_ids
+from data_preparation.spatial.utils import get_output_log_stats_cached, get_range_output_cached, read_split_hex_ids
 from src.config import Config, GridParams
 from src.datasets.fuel_utils import FUEL_CURVE_ENCODINGS
 from src.datasets.targets import get_target_specs
@@ -20,6 +21,8 @@ from src.models.factory import build_model, resolve_model_architecture
 from src.models.utils import get_nbr_model_parameters
 from src.schedulers import build_lr_scheduler
 from src.utils import AVAILABLE_METRICS, build_single_loss, set_device
+
+logger = logging.getLogger(__name__)
 
 
 class Trainer:
@@ -178,7 +181,14 @@ class Trainer:
         # held-out hexes never leak into target normalization constants.
         train_hex_ids: set[int] | None = None
         if self.config.data.root_dir and self.config.data.train_split:
-            train_hex_ids = read_split_hex_ids(os.path.join(self.config.data.root_dir, self.config.data.train_split))
+            split_path = os.path.join(self.config.data.root_dir, self.config.data.train_split)
+            if os.path.exists(split_path):
+                train_hex_ids = read_split_hex_ids(split_path)
+            else:
+                logger.warning(
+                    "Train split file %r not found — normalization stats will use all hexels.",
+                    split_path,
+                )
 
         for target in self._target_specs:
             out_norm = self._target_out_norm(target.name)
@@ -188,7 +198,7 @@ class Trainer:
 
             if out_norm == "min_max":
                 if self.config.data.raw_data_dir:
-                    target_max, target_min = get_range_output(
+                    target_max, target_min = get_range_output_cached(
                         root_dir=self.config.data.raw_data_dir,
                         output_type=target.output_type,
                         allowed_hex_ids=train_hex_ids,

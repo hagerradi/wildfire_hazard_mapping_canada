@@ -513,3 +513,51 @@ def get_fuel_curve_from_lookup(
         return fuel_vector.copy()
 
     return fuel_vector
+
+
+def compute_fuel_curve_norm_stats(
+    root_dir: str | Path,
+    raw_data_dir: str | Path,
+    feature_name: str,
+    allowed_hex_ids: set[int] | None = None,
+) -> tuple[float, float]:
+    """Compute log1p mean and std of fuel curve vectors for offline caching.
+
+    Parameters
+    ----------
+    root_dir
+        Prepared patch dataset directory (contains fuel curve CSV and ignition
+        distribution tables used by ``build_fuel_curve_lookup``).
+    raw_data_dir
+        Raw per-hex raster directory (used by ``build_fuel_curve_lookup`` to
+        locate per-hex ignition distribution files).
+    feature_name
+        Curve feature key, e.g. ``"iROS"`` or ``"HFI"``.
+    allowed_hex_ids
+        If provided, only hex-specific vectors from these hexels contribute to
+        the stats (hex-independent vectors always contribute).
+
+    Returns
+    -------
+    (mean, std) of log1p-transformed curve values.
+    """
+    lookup = build_fuel_curve_lookup(
+        root_dir=root_dir,
+        raw_data_dir=raw_data_dir,
+        feature_name=feature_name,
+    )
+
+    if allowed_hex_ids is not None:
+        train_hex_strs = {str(hid).zfill(2) for hid in allowed_hex_ids}
+        vectors = [vec for (_, hex_id), vec in lookup.items() if hex_id is None or hex_id in train_hex_strs]
+    else:
+        vectors = list(lookup.values())
+
+    if not vectors:
+        raise ValueError(
+            f"No fuel curve vectors found for feature_name={feature_name!r}. "
+            "Check root_dir and raw_data_dir point to the correct dataset."
+        )
+
+    log_vecs = np.log1p(np.clip(np.stack(vectors, axis=0), 0, None))
+    return float(log_vecs.mean()), float(log_vecs.std())
