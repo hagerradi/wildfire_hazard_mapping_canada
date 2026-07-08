@@ -56,6 +56,55 @@ To visualize predictions and/or save visualizations, add the optional flags `--v
 
 ```python -m src.evaluate_hexels --config=configs/default_v1.yaml```
 
+### Hazard evaluation
+
+Hazard evaluation combines a trained burn probability (BP) checkpoint and a trained fire intensity (FI) checkpoint over the same test hexels, then computes:
+
+- raw hazard: `BP * min(FI, fi_cap)`
+- scaled hazard: `raw_hazard * scale_to / denominator`
+- binned hazard classes from the scaled hazard thresholds
+
+To reproduce hazard results, provide a hazard config plus compatible BP/FI model configs and checkpoints. The default example is `configs/hazard_eval_common_input_pipeline.yaml`, which points to archived checkpoint-compatible BP/FI configs:
+
+- `configs/archived/bp_common_input_pipeline_checkpoint.yaml`
+- `configs/archived/fi_common_input_pipeline_checkpoint.yaml`
+
+Each model config's `save_dir` and the hazard config's `checkpoint_filename` determine where the checkpoint is loaded from, e.g. `experiments/bp_common_input_pipeline/best.pth` and `experiments/fi_common_input_pipeline/best.pth`. To evaluate newer checkpoints, update the hazard config's `bp.config_path`, `fi.config_path`, and checkpoint filenames as needed. The BP config must target `bp`, the FI config must target `fi`, and both are evaluated with the hazard config's shared `root_dir`, `raw_data_dir`, and `test_split`.
+
+Run locally with:
+
+```bash
+uv run python -m src.evaluate_hazard --config configs/hazard_eval_common_input_pipeline.yaml
+```
+
+On the cluster, use the SLURM wrapper:
+
+```bash
+sbatch run_files/eval_hazard.sh configs/hazard_eval_common_input_pipeline.yaml
+```
+
+Extra CLI arguments can be passed through `EVAL_ARGS`. For example, to run a buffer-only evaluation from a different data root and keep outputs separate:
+
+```bash
+EVAL_ARGS="--mask_scope buffer_only --root_dir /network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA/data_samples_v2_buffer_test --save_dir experiments/hazard_eval_common_input_pipeline_buffer_only --skip_plots" \
+  sbatch run_files/eval_hazard.sh configs/hazard_eval_common_input_pipeline.yaml
+```
+
+The denominator policy controls how scaled and binned hazard are normalized:
+
+| Policy | Meaning | Typical use |
+| --- | --- | --- |
+| `scale_denominator` | Use an explicit numeric denominator from the config. | Most reproducible when a fixed reference denominator is known. |
+| `reference_file` | Read the denominator from `reference_denominator_path`. | Reusing a previously computed denominator. |
+| `all_raw_ground_truth` | Compute the max raw hazard over all raw BP/FI rasters. | Default full-data reference for evaluation. |
+| `train_ground_truth` | Compute the max raw hazard over train-split raw rasters. | Leak-safe model comparison. |
+| `eval_ground_truth` | Compute the max raw hazard over the evaluated hexels' ground truth. | Self-contained test-subset reports. |
+| `prediction` | Compute the max raw hazard over model predictions. | Relative/model-dependent scaling when no reference exists. |
+
+With `--self_normalized_prediction`, ground truth keeps the configured/reference denominator, while predictions are also scaled by the prediction max for diagnostic relative-hazard evaluation.
+
+When `save_hazard_map: true`, hazard raster artifacts are written as a bundle for raw, scaled, and binned hazard. Use `--metrics_only` to skip raster/plot artifacts entirely, or `--skip_plots` to keep GeoTIFFs but skip per-hexel PNG plots. The default output directory is the hazard config's `save_dir`; key outputs include `hazard_scale_denominator.json`, `hazard_metrics_per_hex.csv`, `hazard_metrics_summary.json`, `hazard_confusion_matrix.csv`, `hazard_confusion_matrix.png`, and per-hexel GeoTIFFs under `hazard_hexels/`.
+
 ### Generate full Canada map of hexels
 
 To generate the full Canada hexel map of targets and/or predictions, run the following script (see --help for more args. information):
