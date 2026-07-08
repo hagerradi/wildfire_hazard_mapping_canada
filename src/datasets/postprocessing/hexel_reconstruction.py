@@ -33,14 +33,15 @@ class StitchedHexel:
     buffer_support_mask: np.ndarray | None = None
 
 
-def load_filtered_test_metadata(config: Config, mask_scope: str) -> pd.DataFrame:
+def load_filtered_test_metadata(config: Config, mask_scope: str | None) -> pd.DataFrame:
     try:
         test_df = pd.read_csv(os.path.join(config.data.root_dir, config.data.test_split))
     except (FileNotFoundError, AttributeError):
         raise ValueError("Test df file does not exist.")  # noqa: B904
 
     test_df = test_df[test_df["valid_ratio"] > config.data.valid_mask_threshold].reset_index(drop=True)  # type: ignore
-    post_utils.validate_patch_metadata_mask_scope(test_df, mask_scope)
+    if mask_scope is not None:
+        post_utils.validate_patch_metadata_mask_scope(test_df, mask_scope)
     return test_df
 
 
@@ -50,13 +51,14 @@ def reconstruct_denormalized_hexels(
     config: Config,
     out_norm: str,
     stitch_mode: str = "mean",
-    mask_scope: str = "actual",
+    mask_scope: str | None = None,
 ) -> Iterator[StitchedHexel]:
     """Yield stitched, denormalized hexel grids using the same settings as training/evaluation."""
     if isinstance(test_predictions, str):
         raise TypeError(f"Expected ndarray, but got string: {test_predictions}")
 
-    scope = normalize_mask_scope(mask_scope)
+    _raw_scope = mask_scope or config.data_prep.mask_scope
+    scope = normalize_mask_scope(_raw_scope) if _raw_scope is not None else None
     settings_list = post_utils.get_target_postprocessing_settings(config=config, out_norm=out_norm)
     test_df = load_filtered_test_metadata(config=config, mask_scope=scope)
     prediction_mask_channel_indices = post_utils.get_prediction_mask_channel_indices(
@@ -74,7 +76,8 @@ def reconstruct_denormalized_hexels(
 
         for settings in settings_list:
             print(
-                f"[Postprocess] Reconstructing {settings.target.name.upper()} hex {hex_id} " f"from {len(one_hexel_df)} {scope} patches...",
+                f"[Postprocess] Reconstructing {settings.target.name.upper()} hex {hex_id} "
+                f"from {len(one_hexel_df)} {scope or 'unmasked'} patches...",
                 flush=True,
             )
             target_predictions = post_utils.select_prediction_target_channel(
@@ -107,20 +110,22 @@ def reconstruct_denormalized_hexels(
                 mask_scope=scope,
                 hex_id=hex_id,
                 bp_nodata_as_zero=config.evaluation.bp_nodata_as_zero,
+                scenario_name=config.data_prep.scenario_name,
             )
             actual_support_mask = None
             buffer_support_mask = None
-            if scope != "actual" and profile.get("crs") is not None and profile.get("transform") is not None:
-                buffer_support_mask = post_utils._actual_area_mask(
-                    mask_path=paths.mask_grid(hex_id=hex_id, mask_scope=scope),
-                    profile=profile,
-                    shape=pred_grid.shape,
-                )
+            if scope is not None and profile.get("crs") is not None and profile.get("transform") is not None:
                 actual_support_mask = post_utils._actual_area_mask(
                     mask_path=paths.mask_grid_actual(hex_id=hex_id),
                     profile=profile,
                     shape=pred_grid.shape,
                 )
+                if scope is not None:
+                    buffer_support_mask = post_utils._actual_area_mask(
+                        mask_path=paths.mask_grid(hex_id=hex_id, mask_scope=scope),
+                        profile=profile,
+                        shape=pred_grid.shape,
+                    )
             yield StitchedHexel(
                 hex_id=hex_id,
                 target=settings.target,

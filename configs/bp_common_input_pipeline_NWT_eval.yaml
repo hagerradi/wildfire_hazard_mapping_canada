@@ -169,3 +169,4 @@ data_prep:
   ignition_weighting: "distribution" # ("max", "distribution")
   fuel_representation: "raw" # ("raw", "group")
   scenario_name: "FireSpotting"
+  mask_scope: None

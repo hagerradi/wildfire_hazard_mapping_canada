@@ -326,6 +326,7 @@ def run_single_hexel_pipeline(
         profile=gt_elevation_grid_profile,
         mask_scope=scope,
         hex_id=hex_id,
+        scenario_name=data_config.get("scenario_name"),
     )
     save_predicted_hexels(
         predicted_hexel=reconstructed_hexel_denorm,

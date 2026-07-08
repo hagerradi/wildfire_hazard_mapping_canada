@@ -73,8 +73,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--mask_scope",
         choices=MASK_SCOPE_CHOICES,
-        default="actual",
-        help="Mask scope for stitched evaluation/inference artifacts. Non-actual scopes require matching patch metadata.",
+        default=None,
+        help="Mask scope for stitched evaluation/inference artifacts. Defaults to config.data_prep.mask_scope. Non-actual scopes require matching patch metadata.",
     )
     return parser.parse_args()
 
@@ -182,7 +182,7 @@ def main() -> None:
             robust_plot_percentile=args.robust_plot_percentile
             if args.robust_plot_percentile is not None
             else config.evaluation.robust_plot_percentile,
-            mask_scope=args.mask_scope,
+            mask_scope=args.mask_scope or config.data_prep.mask_scope or None,
         )
 
         # print metrics in terminal and log into comet

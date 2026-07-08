@@ -176,6 +176,7 @@ class DataPrepConfig(BaseModel):
     ignition_weighting: str = "distribution"  # ("max", "distribution")
     fuel_representation: str = "raw"  # ("raw", "group")
     scenario_name: str | None = None
+    mask_scope: str | None = None
 
 
 class Config(BaseModel):

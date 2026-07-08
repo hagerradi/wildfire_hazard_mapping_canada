@@ -50,7 +50,9 @@ class TargetPostprocessingSettings:
     target_log_std: float | None
 
 
-def get_mask_scope_save_dir(save_dir: str, mask_scope: str) -> str:
+def get_mask_scope_save_dir(save_dir: str, mask_scope: str | None) -> str:
+    if mask_scope is None:
+        return save_dir
     scope = normalize_mask_scope(mask_scope)
     if scope == "actual":
         return save_dir
@@ -89,11 +91,14 @@ def validate_patch_metadata_mask_scope(metadata: pd.DataFrame, mask_scope: str) 
     return scope
 
 
-def _actual_area_mask(mask_path: Path, profile: dict[str, Any], shape: tuple[int, int]) -> np.ndarray:
+def _actual_area_mask(mask_path: Path, profile: dict[str, Any], shape: tuple[int, int]) -> np.ndarray | None:
     crs = profile.get("crs")
     transform = profile.get("transform")
     if crs is None or transform is None:
         raise ValueError("buffer_only masking requires a geospatial profile with 'crs' and 'transform'.")
+
+    if not Path(mask_path).exists():
+        return None
 
     actual_gdf = gpd.read_file(mask_path)
     if actual_gdf.empty:
@@ -123,6 +128,8 @@ def apply_mask_scope_to_grids(
         )
 
     actual_mask = _actual_area_mask(mask_path=mask_path, profile=profile, shape=gt_arr.shape)
+    if actual_mask is None:
+        raise ValueError(f"mask_scope='buffer_only' requires an actual mask file at {mask_path}, but the file was not found.")
     gt_arr = np.where(actual_mask, np.nan, gt_arr)
     pred_arr = np.where(actual_mask, np.nan, pred_arr)
     if not np.any(np.isfinite(gt_arr) & np.isfinite(pred_arr)):
@@ -174,25 +181,29 @@ def load_target_grid_for_mask_scope(
     target: TargetSpec,
     pred_grid: np.ndarray,
     profile: dict[str, Any],
-    mask_scope: str,
+    mask_scope: str | None,
     hex_id: str,
     bp_nodata_as_zero: bool = True,
+    scenario_name: str | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
-    scope = normalize_mask_scope(mask_scope)
-    target_path = getattr(paths, target.path_method)()
+    scope = normalize_mask_scope(mask_scope) if mask_scope is not None else None
+    target_path = getattr(paths, target.path_method)(scenario_name=scenario_name)
     loaded_target_grid, _ = load_spatial_raster(
         path=target_path,
-        mask_path=paths.mask_grid(hex_id=hex_id, mask_scope=scope),
+        mask_path=paths.mask_grid(hex_id=hex_id, mask_scope=scope) if scope is not None else None,
         reference_profile=profile,
     )
-    target_grid, pred_grid = apply_mask_scope_to_grids(
-        gt_grid=as_float_array_with_nan(loaded_target_grid),
-        pred_grid=pred_grid,
-        profile=profile,
-        mask_path=paths.mask_grid_actual(hex_id=hex_id),
-        mask_scope=scope,
-        hex_id=hex_id,
-    )
+    if scope is not None:
+        target_grid, pred_grid = apply_mask_scope_to_grids(
+            gt_grid=as_float_array_with_nan(loaded_target_grid),
+            pred_grid=pred_grid,
+            profile=profile,
+            mask_path=paths.mask_grid_actual(hex_id=hex_id),
+            mask_scope=scope,
+            hex_id=hex_id,
+        )
+    else:
+        target_grid = as_float_array_with_nan(loaded_target_grid)
     if bp_nodata_as_zero:
         return fill_bp_target_nodata_as_zero(gt_grid=target_grid, pred_grid=pred_grid, target=target)
     return target_grid, pred_grid
@@ -279,7 +290,7 @@ def get_predicted_hexel(
     stitch_mode: str = "mean",
     target_channel_index: int = 0,
     prediction_mask_channel_indices: list[int] | None = None,
-    mask_scope: str = "actual",
+    mask_scope: str | None = None,
 ) -> tuple[np.ndarray, Profile]:
     """
     Returns the reconstructed hexel
@@ -287,11 +298,11 @@ def get_predicted_hexel(
     start_idx = 0
 
     all_paths = Paths(hex_id=hex_id, root_dir=raw_data_dir)
-    scope = normalize_mask_scope(mask_scope)
+    scope = normalize_mask_scope(mask_scope) if mask_scope is not None else None
 
     gt_elevation_grid, gt_elevation_grid_profile = load_spatial_raster(
         path=all_paths.elevation_grid(hex_id=hex_id),
-        mask_path=all_paths.mask_grid(hex_id=hex_id, mask_scope=scope),
+        mask_path=all_paths.mask_grid(hex_id=hex_id, mask_scope=scope) if scope is not None else None,
     )
 
     if out_norm in {"min_max", "log"}:
@@ -586,15 +597,16 @@ def evaluate_and_visualize_hexels(
     save_artifacts: bool = True,
     save_plots: bool = True,
     robust_plot_percentile: float | None = None,
-    mask_scope: str = "actual",
+    mask_scope: str | None = None,
 ) -> dict[str, float]:
     """
     A util function to re-construct predicted hexels out of test predictions, and visualize side-by-side with the Groundtruth.
     Also computes and aggregates stitched hexel-level metrics.
     """
     prediction_support_label = "input support" if config.evaluation.prediction_support_policy == "input" else "target support"
-    scope = normalize_mask_scope(mask_scope)
-    show_prediction_support_outline = config.evaluation.prediction_support_policy == "input" and scope == "actual"
+    _raw_scope = mask_scope or config.data_prep.mask_scope
+    scope = normalize_mask_scope(_raw_scope) if _raw_scope is not None else None
+    show_prediction_support_outline = config.evaluation.prediction_support_policy == "input" and scope in (None, "actual")
     artifacts_save_dir = get_mask_scope_save_dir(config.save_dir, scope)
 
     from src.datasets.postprocessing.hexel_reconstruction import reconstruct_denormalized_hexels
