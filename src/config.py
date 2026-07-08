@@ -178,6 +178,13 @@ class DataPrepConfig(BaseModel):
     scenario_name: str | None = None
     mask_scope: str | None = None
 
+    @field_validator("mask_scope", mode="before")
+    @classmethod
+    def normalize_mask_scope(cls, v: object) -> object:
+        if isinstance(v, str) and v.lower() == "none":
+            return None
+        return v
+
 
 class Config(BaseModel):
     save_dir: str = "experiments/default"
@@ -222,7 +229,7 @@ class HazardEvalConfig(BaseModel):
     raw_data_dir: str
     test_split: str = "test_indices.csv"
     valid_mask_threshold: float = 0.01
-    mask_scope: Literal["actual", "buffer", "buffer_only"] = "actual"
+    mask_scope: str | None = None
     stitch_mode: Literal["mean", "max"] = "mean"
 
     bp: HazardModelEntry
@@ -237,6 +244,13 @@ class HazardEvalConfig(BaseModel):
     self_normalized_prediction: bool = False
 
     save_hazard_map: bool = True
+
+    @field_validator("mask_scope", mode="before")
+    @classmethod
+    def _normalize_mask_scope(cls, v: object) -> object:
+        if isinstance(v, str) and v.lower() == "none":
+            return None
+        return v
 
     @field_validator("bin_thresholds")
     @classmethod
