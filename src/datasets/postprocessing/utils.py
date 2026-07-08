@@ -11,8 +11,6 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 import rasterio
-
-logger = logging.getLogger(__name__)
 import torch
 from rasterio.features import geometry_mask
 from rasterio.profiles import Profile
@@ -37,6 +35,8 @@ from src.datasets.postprocessing.visualize_predictions import (
 from src.datasets.targets import TargetSpec, get_target_specs
 from src.datasets.utils import apply_bp_nodata_zero_range, denormalize_output_target
 from src.logger import CometLogger
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -450,13 +450,20 @@ def get_target_postprocessing_settings(config: Config, out_norm: str) -> list[Ta
     raw_data_dir = config.data.raw_data_dir
     train_hex_ids: set[int] | None = None
     if data_dir and config.data.train_split:
-        train_hex_ids = read_split_hex_ids(os.path.join(data_dir, config.data.train_split))
+        split_path = os.path.join(data_dir, config.data.train_split)
+        if os.path.exists(split_path):
+            train_hex_ids = read_split_hex_ids(split_path)
+        else:
+            logger.warning(
+                "Train split file %r not found — denormalization will use all hexels.",
+                split_path,
+            )
 
     grid_params = get_config_grid_params(config)
     settings = []
     for target in get_config_target_specs(config):
         target_channel_index = get_target_channel_index(data_dir=data_dir, modelling_approach=config.modelling_approach, target=target)
-        max_target_val, min_target_val = get_range_output(
+        max_target_val, min_target_val = get_range_output_cached(
             root_dir=raw_data_dir, output_type=target.output_type, allowed_hex_ids=train_hex_ids
         )
         max_target_val, min_target_val = apply_bp_nodata_zero_range(
