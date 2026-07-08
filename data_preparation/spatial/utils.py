@@ -282,7 +282,7 @@ def reproject_raster(
         resampling=resampling,
     )
 
-    dst_masked = np.ma.masked_equal(dst, src_nodata) if src_nodata is not None else np.ma.masked_invalid(dst)
+    dst_masked = np.ma.masked_equal(dst, src_nodata) if src_nodata is not None and not np.isnan(src_nodata) else np.ma.masked_invalid(dst)
 
     out_profile = profile.copy()
     out_profile.update(
