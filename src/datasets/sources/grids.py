@@ -120,7 +120,9 @@ class GridSource(DataSource):
                 if self._target_out_norm(target.name) != "min_max":
                     continue
                 try:
-                    target_max, target_min = get_range_output_cached(self.raw_data_dir, target.output_type, self._train_hex_ids)
+                    target_max, target_min = get_range_output_cached(
+                        self.root_dir, target.output_type, self._train_hex_ids, raw_data_dir=self.raw_data_dir
+                    )
                 except ValueError:
                     if self._validate_raw_ranges:
                         raise
@@ -212,7 +214,9 @@ class GridSource(DataSource):
                 self.elevation_input_channel_index = self.input_channel_indices.index(elev_feat_encoded_index)
         # 3. normalization for elevation grid
         try:
-            self.ELEVATION_MAX, self.ELEVATION_MIN = get_range_elevation_cached(self.raw_data_dir, self._train_hex_ids)
+            self.ELEVATION_MAX, self.ELEVATION_MIN = get_range_elevation_cached(
+                self.root_dir, self._train_hex_ids, raw_data_dir=self.raw_data_dir
+            )
         except ValueError:
             if self._validate_raw_ranges:
                 raise
