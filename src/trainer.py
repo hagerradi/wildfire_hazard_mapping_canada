@@ -182,7 +182,7 @@ class Trainer:
         train_hex_ids: set[int] | None = None
         if self.config.data.root_dir and self.config.data.train_split:
             split_path = os.path.join(self.config.data.root_dir, self.config.data.train_split)
-            if os.path.exists(split_path):
+            if os.path.isfile(split_path):
                 train_hex_ids = read_split_hex_ids(split_path)
             else:
                 logger.warning(

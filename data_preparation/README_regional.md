@@ -8,7 +8,7 @@ Step 1: Process hexel data into multiple square patches, which will be our data 
 
 You can run the following on an interactive node:
 ```bash
-python -m data_preparation.process_hexels_into_grids --root_dir="/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/NWT_data"  --save_dir="/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/NWT_data/NWT_data_baselineNWT_data_scenario_baseline_FireSpotting" --modelling_approach=1 --win_h=256 --win_w=256 --overlap_ratio=0.2 --ignition_weighting="distribution" --fuel_grid_representation="raw" --scenario_name="FireSpotting"
+python -m data_preparation.process_hexels_into_grids --root_dir="/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/NWT_data"  --save_dir="/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/NWT_data/NWT_data_scenario_baseline_FireSpotting" --modelling_approach=1 --win_h=256 --win_w=256 --overlap_ratio=0.2 --ignition_weighting="distribution" --fuel_grid_representation="raw" --scenario_name="FireSpotting"
 ```
 
 `--mask_scope="actual"` is not be used for non-national data as masks are not available.
@@ -33,11 +33,12 @@ For fire size data, you should download "df_fire_fru.csv" from drive project fol
 
 To build the tabular files, run the following:
 
+First copy `fire_size_norm_params.json` and `weather_norm_params.json` from save_dir of the national data to root_dir, then run:
 
 ```bash
 python -m data_preparation.process_tabular_data \
 	--root_dir="/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/NWT_data" \
-	--save_dir="/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/NWT_data NWT_data_baselineNWT_data_scenario_baseline_FireSpotting" \
+	--save_dir="/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/NWT_data/NWT_data_scenario_baseline_FireSpotting" \
 	--weather_output_file="weather_table_processed.csv" \
 	--fire_size_input_file="ObservedFiresizedistribution_FortSimpson.csv" \
 	--fire_size_output_file="ObservedFiresizedistribution_FortSimpson_processed.csv" \
@@ -45,8 +46,6 @@ python -m data_preparation.process_tabular_data \
     --fire_size_norm_params_file="fire_size_norm_params.json" \
     --weather_norm_params_file="weather_norm_params.json"
 ```
-
-Copy `fire_size_norm_params.json` and `weather_norm_params.json` from save_dir of the national data.
 
 Notes: If you used modelling approach 2, set `--save_dir` to `data_samples_approach_2`. The `process_tabular_data` script will look for the fire-size file in `--root_dir` first, then in `--save_dir`; ensure `df_fire_fru.csv` is present in one of those places.
 

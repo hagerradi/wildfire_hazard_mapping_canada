@@ -451,7 +451,7 @@ def get_target_postprocessing_settings(config: Config, out_norm: str) -> list[Ta
     train_hex_ids: set[int] | None = None
     if data_dir and config.data.train_split:
         split_path = os.path.join(data_dir, config.data.train_split)
-        if os.path.exists(split_path):
+        if os.path.isfile(split_path):
             train_hex_ids = read_split_hex_ids(split_path)
         else:
             logger.warning(
