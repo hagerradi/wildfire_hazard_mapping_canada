@@ -268,7 +268,7 @@ def reproject_raster(
     if src_nodata is not None:
         dst = np.full((dst_height, dst_width), src_nodata, dtype=src_filled.dtype)
     else:
-        dst = np.empty((dst_height, dst_width), dtype=src_filled.dtype)
+        dst = np.full((dst_height, dst_width), np.nan, dtype=np.float32)
 
     reproject(
         source=src_filled,
@@ -282,7 +282,7 @@ def reproject_raster(
         resampling=resampling,
     )
 
-    dst_masked = np.ma.masked_equal(dst, src_nodata) if src_nodata is not None else np.ma.masked_array(dst)
+    dst_masked = np.ma.masked_equal(dst, src_nodata) if src_nodata is not None else np.ma.masked_invalid(dst)
 
     out_profile = profile.copy()
     out_profile.update(

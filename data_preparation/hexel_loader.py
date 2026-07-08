@@ -107,9 +107,28 @@ def load_spatial_features_per_hexel(
         ignition_mask = np.any(raw_ign_mask, axis=-1) if raw_ign_mask.ndim == 3 else raw_ign_mask
         input_mask = fuel_mask | elevation_mask | ignition_mask | firezones_mask
 
+        # Check 4: all input grids must have the same spatial shape after reprojection.
+        grids_by_name = {"fuel": fuel_grid, "elevation": elevation_grid, "firezones": firezones_grid}
+        shapes = {name: g.shape[:2] for name, g in grids_by_name.items()}
+        if len(set(shapes.values())) > 1:
+            raise ValueError(f"Grid shape mismatch after reprojection for hex {hex_id}: {shapes}")
+
         stacked_ma = np.ma.concatenate(features_list, axis=-1)
         stacked = stacked_ma.filled(NODATA).astype(np.float32)
         stacked[input_mask, :] = NODATA
+
+        # Check 5: warn if the vast majority of pixels are masked (misaligned or empty data).
+        masked_frac = input_mask.mean()
+        if masked_frac > 0.9:
+            import warnings
+
+            warnings.warn(
+                f"Over 90% of pixels are masked for hex {hex_id} (masked_frac={masked_frac:.2f}) "
+                "— check grid alignment or nodata coverage.",
+                UserWarning,
+                stacklevel=2,
+            )
+
         return stacked, input_mask
 
     # identify all seasons and causes first

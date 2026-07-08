@@ -134,6 +134,13 @@ class GridSource(DataSource):
                     bp_nodata_as_zero=self.bp_nodata_as_zero,
                 )
                 self.target_ranges[target.name] = (target_max, target_min)
+                if target_max <= target_min:
+                    logger.warning(
+                        "Target %r normalization range is degenerate: max=%.4f <= min=%.4f",
+                        target.name,
+                        target_max,
+                        target_min,
+                    )
                 if self._validate_raw_ranges:
                     self._validate_range(
                         max_value=target_max,
@@ -221,6 +228,12 @@ class GridSource(DataSource):
             if self._validate_raw_ranges:
                 raise
             self.ELEVATION_MAX, self.ELEVATION_MIN = 1.0, 0.0
+        if self.ELEVATION_MAX <= self.ELEVATION_MIN:
+            logger.warning(
+                "Elevation normalization range is degenerate: max=%.4f <= min=%.4f",
+                self.ELEVATION_MAX,
+                self.ELEVATION_MIN,
+            )
         if self._validate_raw_ranges:
             self._validate_range(
                 max_value=self.ELEVATION_MAX,
@@ -459,6 +472,17 @@ class GridSource(DataSource):
 
         # 4. Mean Imputation
         input_arr = fill_nan_channel_mean_numpy(input_arr)
+        assert not np.any(np.isnan(input_arr)), (
+            f"NaN remains in input_arr after mean imputation for patch "
+            f"{patch_info.get('hex_id', '?')} — at least one channel may be entirely NaN."
+        )
+
+        # Warn if no valid pixels remain in the patch.
+        if not mask.any():
+            logger.warning(
+                "Patch %s has zero valid pixels (entirely masked) — it will contribute nothing to loss.",
+                patch_info.get("hex_id", "?"),
+            )
 
         # 6. Filter to just chosen input channel indices or if no features selected just return None
         if self.input_channel_indices is not None:
