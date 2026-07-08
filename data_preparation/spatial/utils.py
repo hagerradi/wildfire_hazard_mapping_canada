@@ -352,14 +352,16 @@ def get_range_elevation(root_dir: str, allowed_hex_ids: Collection[int] | None =
 def get_range_elevation_cached(
     root_dir: str,
     allowed_hex_ids: Collection[int] | None = None,
+    raw_data_dir: str | None = None,
 ) -> tuple[float, float]:
     """Return (max, min) for elevation, reading from ``dataset_norm_stats.json`` if available.
 
-    Falls back to scanning raw rasters via ``get_range_elevation``.
+    Falls back to scanning raw rasters via ``get_range_elevation``.  ``raw_data_dir`` is the
+    raster tree location used for the fallback scan; defaults to ``root_dir`` if not provided.
     """
     import json as _json
 
-    cache_path = os.path.join(root_dir, "dataset_norm_stats.json")
+    cache_path = os.path.join(root_dir, NORM_STATS_JSON)
     if os.path.exists(cache_path):
         with open(cache_path) as f:
             cached = _json.load(f)
@@ -370,7 +372,7 @@ def get_range_elevation_cached(
             logger.debug("Elevation range loaded from %s: min=%.4f, max=%.4f", cache_path, min_val, max_val)
             return float(max_val), float(min_val)
     logger.warning("Elevation range not found in cache — scanning raw rasters (allowed_hex_ids=%s).", allowed_hex_ids)
-    return get_range_elevation(root_dir, allowed_hex_ids)
+    return get_range_elevation(raw_data_dir if raw_data_dir is not None else root_dir, allowed_hex_ids)
 
 
 def get_range_output(root_dir: str, output_type: str, allowed_hex_ids: Collection[int] | None = None) -> tuple[float, float]:
@@ -450,16 +452,18 @@ def get_range_output_cached(
     root_dir: str,
     output_type: str,
     allowed_hex_ids: Collection[int] | None = None,
+    raw_data_dir: str | None = None,
 ) -> tuple[float, float]:
     """Return (max, min) for a target, reading from ``dataset_norm_stats.json`` if available.
 
-    Falls back to scanning raw rasters via ``get_range_output``.  The cached JSON is
-    produced by ``compute_dataset_norm_stats`` and stores ``min``/``max`` for
-    ``fire_burn_probability``.
+    Falls back to scanning raw rasters via ``get_range_output``.  ``raw_data_dir`` is the
+    raster tree location used for the fallback scan; defaults to ``root_dir`` if not provided.
+    The cached JSON is produced by ``compute_dataset_norm_stats`` and stores ``min``/``max``
+    for ``fire_burn_probability``.
     """
     import json as _json
 
-    cache_path = os.path.join(root_dir, "dataset_norm_stats.json")
+    cache_path = os.path.join(root_dir, NORM_STATS_JSON)
     if os.path.exists(cache_path):
         with open(cache_path) as f:
             cached = _json.load(f)
@@ -470,7 +474,7 @@ def get_range_output_cached(
             logger.debug("Range for %r loaded from %s: min=%.4f, max=%.4f", output_type, cache_path, min_val, max_val)
             return float(max_val), float(min_val)
     logger.warning("Range for %r not found in cache — scanning raw rasters (allowed_hex_ids=%s).", output_type, allowed_hex_ids)
-    return get_range_output(root_dir, output_type, allowed_hex_ids)
+    return get_range_output(raw_data_dir if raw_data_dir is not None else root_dir, output_type, allowed_hex_ids)
 
 
 def get_output_log_stats(

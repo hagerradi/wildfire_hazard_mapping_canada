@@ -282,7 +282,9 @@ def run_single_hexel_pipeline(
     logger.info("Step 7: Post-processing prediction patches into denormalized hexel...")
     target = get_target_spec_from_data_config(data_config)
     grid_params = get_grid_params_from_data_config(data_config)
-    max_target_val, min_target_val = get_range_output_cached(root_dir=str(data_dir), output_type=target.output_type)
+    max_target_val, min_target_val = get_range_output_cached(
+        root_dir=str(processed_data_dir), output_type=target.output_type, raw_data_dir=str(data_dir)
+    )
     target_channel_index = get_target_channel_index(
         data_dir=str(processed_data_dir),
         modelling_approach=str(data_prep_config["modelling_approach"]),
