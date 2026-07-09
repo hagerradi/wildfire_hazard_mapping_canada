@@ -234,6 +234,7 @@ class Trainer:
                         output_type=target.output_type,
                         allowed_hex_ids=train_hex_ids,
                         raw_data_dir=self.config.data.raw_data_dir,
+                        scenario_name=self.config.data_prep.scenario_name,
                     )
                     target_max, target_min = apply_bp_nodata_zero_range(
                         target_name=target.name,
@@ -248,6 +249,7 @@ class Trainer:
                         output_type=target.output_type,
                         allowed_hex_ids=train_hex_ids,
                         raw_data_dir=self.config.data.raw_data_dir,
+                        scenario_name=self.config.data_prep.scenario_name,
                     )
                 if target_log_mean is None or target_log_std is None:
                     raise ValueError(f"target_log_mean/std are required for target={target.name!r} with out_norm='log_standard'.")

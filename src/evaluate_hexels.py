@@ -101,7 +101,7 @@ def main() -> None:
     deterministic = getattr(config, "deterministic", True)
     seed_everything(seed=seed, deterministic=deterministic)
 
-    config.logger.enabled = False
+    config.logger.enabled = True
 
     print("\n[Evaluation] Loading test set...")
     # NOTE: If we need the stats on a particular hexel then modify the test_indices.csv in the config file with
@@ -174,7 +174,7 @@ def main() -> None:
             config=config,
             out_norm=out_norm,
             device=trainer.device,
-            experiment_logger=None,
+            experiment_logger=trainer.logger,
             metric_functions=trainer.metric_functions,
             stitch_mode=args.stitch_mode,
             save_artifacts=not args.metrics_only,
