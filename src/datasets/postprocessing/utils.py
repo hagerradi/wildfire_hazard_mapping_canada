@@ -280,8 +280,8 @@ def get_predicted_hexel(
     raw_data_dir: str,
     test_df: pd.DataFrame,
     predictions: np.ndarray,
-    min_target_val: float,
-    max_target_val: float,
+    min_target_val: float | None,
+    max_target_val: float | None,
     hex_id: str,
     modelling_approach: str = "1",
     out_norm: str = "min_max",
@@ -329,6 +329,8 @@ def get_predicted_hexel(
         )
         gt_elevation_grid_profile.update(dtype="float32", compress="lzw", nodata=-9999)  # type: ignore
     else:
+        if min_target_val is None or max_target_val is None:
+            raise ValueError("min_target_val and max_target_val are required for modelling_approach != '1'.")
         unique_season_cause = list(set(zip(test_df["season"], test_df["cause"], strict=False)))
         season_cause_hexels = []
         for season, cause in unique_season_cause:
@@ -382,8 +384,8 @@ def get_config_grid_params(config: Config) -> GridParams | None:
 
 def denormalize_model_target(
     data: np.ndarray,
-    min_val: float,
-    max_val: float,
+    min_val: float | None,
+    max_val: float | None,
     out_norm: str,
     target_log_mean: float | None = None,
     target_log_std: float | None = None,
@@ -395,7 +397,13 @@ def denormalize_model_target(
             raise ValueError(f"target_log_std must be positive for out_norm='log_standard', got {target_log_std}.")
         return np.clip(np.expm1(data.astype("float32") * target_log_std + target_log_mean), 0.0, None).astype("float32")
 
-    return denormalize_output_target(data=data, target_min=min_val, target_max=max_val, out_norm=out_norm)
+    if out_norm == "min_max":
+        if min_val is None or max_val is None:
+            raise ValueError("min_val and max_val are required for out_norm='min_max'.")
+        return denormalize_output_target(data=data, target_min=min_val, target_max=max_val, out_norm=out_norm)
+    return denormalize_output_target(
+        data=data, target_min=min_val if min_val is not None else 0.0, target_max=max_val if max_val is not None else 0.0, out_norm=out_norm
+    )
 
 
 def get_target_channel_index(data_dir: str, modelling_approach: str, target: TargetSpec) -> int:
