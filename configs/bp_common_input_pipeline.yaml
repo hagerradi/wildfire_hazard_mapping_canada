@@ -10,7 +10,7 @@
 # Unlike the previous BP best model (non-spatialized tabular fed through an auxiliary MLP
 # branch), BP now consumes the spatialized tabular channels on the spatial branch, matching
 # FI/ROS. Spatialized input is heavier, so batch_size is 32 (was 64 for the auxiliary variant).
-save_dir: "experiments/bp_common_input_pipeline_fuel_HFI"
+save_dir: "experiments/bp_common_input_pipeline_fuel_iROS"
 
 modelling_approach: "1"
 
@@ -66,7 +66,7 @@ data:
         feature_names_list: ["ignition_grid_human", "ignition_grid_lightning", "fuel_grid", "elevation_grid"]
         target_name: "bp"
         out_norm: "min_max"
-        fuel_feats_encoding: "HFI"
+        fuel_feats_encoding: "iROS"
         normalize_fuel_feats_ordinal: false # set to true if using ordinal
         transforms_list: []
         augmentation_prob: 0.0
@@ -118,7 +118,7 @@ logger:
   enabled: true
   project_name: "nrcan05-wildfireriskmapping"
   workspace: "mila-amlrt"
-  experiment_name: "bp_common_input_pipeline_fuel_HFI"
+  experiment_name: "bp_common_input_pipeline_fuel_iROS"
   tags:
     - "full_data"
     - "modelling_approach=1"
