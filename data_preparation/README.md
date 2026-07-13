@@ -55,7 +55,7 @@ Notes: If you used modelling approach 2, set `--save_dir` to `data_samples_appro
 Step 4 (necessary if fuel_grid_representation is '`raw`): Generate iROS values from the FBP package
 
 Or do it locally and copy to the cluster (easier R support and we don't need access to all data to generate it)
-`python -m data_preparation.tabular.fuel_features.generate_fuel_vectors_national --output-dir /network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA/data_samples_v3 --fuel_types data_preparation/tabular/fuel_features/generate_fuel_vectors_national/Fuel_Types.csv`, you can modify `Fuel_Types.csv` to include more fuel types.
+`python -m data_preparation.tabular.fuel_features.generate_fuel_vectors_national --output-dir /network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA/data_samples_v3 --fuel_types data_preparation/tabular/fuel_features/Fuel_Types.csv`, you can modify `Fuel_Types.csv` to include more fuel types.
 
 This saves csv file in the root_dir called `fbp_curves_national_fuel.csv`
 
