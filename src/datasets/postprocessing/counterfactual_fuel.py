@@ -16,6 +16,7 @@ FUEL_EDIT_MODES = (
     "nonfuel_to_burnable_adjacent_modal",
     "nonfuel_to_burnable_local_adjacent_modal",
     "burnable_to_nonfuel",
+    "burnable_components_to_nonfuel_random",
 )
 
 
@@ -352,6 +353,94 @@ def replace_burnable_with_nonfuel(
     return edited, selected, report
 
 
+def replace_random_burnable_components_with_nonfuel(
+    fuel: np.ndarray,
+    nonfuel_ids: list[int] | tuple[int, ...],
+    *,
+    replacement_nonfuel_id: int,
+    target_burnable_area_fraction: float,
+    seed: int,
+    scenario_name: str = "random_barrier_insertion",
+    nodata_value: int = FUEL_NODATA,
+) -> tuple[np.ndarray, np.ndarray, FuelEditReport, pd.DataFrame]:
+    """Replace area-weighted random same-fuel components up to an area target."""
+
+    if not 0.0 < target_burnable_area_fraction <= 1.0:
+        raise ValueError("target_burnable_area_fraction must be in (0, 1].")
+    if replacement_nonfuel_id not in set(nonfuel_ids):
+        raise ValueError(f"replacement_nonfuel_id={replacement_nonfuel_id} is not in nonfuel_ids={sorted(nonfuel_ids)}.")
+
+    fuel_arr = np.asarray(fuel)
+    base_nonfuel = nonfuel_mask(fuel_arr, nonfuel_ids, nodata_value=nodata_value)
+    base_burnable = burnable_mask(fuel_arr, nonfuel_ids, nodata_value=nodata_value)
+    original_burnable_pixels = int(base_burnable.sum())
+    if original_burnable_pixels == 0:
+        raise ValueError("No burnable fuel components found.")
+
+    target_pixels = int(np.ceil(original_burnable_pixels * target_burnable_area_fraction))
+    rng = np.random.default_rng(seed)
+    structure = np.ones((3, 3), dtype=np.int8)
+    candidates: list[tuple[int, int, int]] = []
+    for fuel_id in np.unique(fuel_arr[base_burnable]).astype(np.int64):
+        component_labels, n_components = label(base_burnable & (fuel_arr == fuel_id), structure=structure)
+        component_sizes = np.bincount(component_labels.ravel(), minlength=int(n_components) + 1)
+        candidates.extend(
+            (int(fuel_id), component_id, int(component_sizes[component_id])) for component_id in range(1, int(n_components) + 1)
+        )
+
+    weights = np.asarray([component_pixels for _, _, component_pixels in candidates], dtype=np.float64)
+    weighted_order = np.argsort(rng.exponential(scale=1.0 / weights))
+    selected_candidates: list[tuple[int, int, int]] = []
+    selected_pixels = 0
+    for candidate_index in weighted_order:
+        candidate = candidates[int(candidate_index)]
+        selected_candidates.append(candidate)
+        selected_pixels += candidate[2]
+        if selected_pixels >= target_pixels:
+            break
+
+    selected = np.zeros(fuel_arr.shape, dtype=bool)
+    rows: list[dict] = []
+    selected_by_fuel: dict[int, list[tuple[int, int]]] = {}
+    for fuel_id, component_id, component_pixels in selected_candidates:
+        selected_by_fuel.setdefault(fuel_id, []).append((component_id, component_pixels))
+    for fuel_id, fuel_components in selected_by_fuel.items():
+        component_labels, _ = label(base_burnable & (fuel_arr == fuel_id), structure=structure)
+        selected_ids = [component_id for component_id, _ in fuel_components]
+        selected |= np.isin(component_labels, selected_ids)
+        row_offset = len(rows)
+        rows.extend(
+            {
+                "component_id": row_offset + offset + 1,
+                "source_component_id": component_id,
+                "edited_pixels": component_pixels,
+                "original_fuel_id": fuel_id,
+                "replacement_fuel_id": replacement_nonfuel_id,
+                "seed": seed,
+            }
+            for offset, (component_id, component_pixels) in enumerate(fuel_components)
+        )
+
+    edited = fuel_arr.copy()
+    edited[selected] = replacement_nonfuel_id
+    edited_pixels = int(selected.sum())
+    achieved_fraction = edited_pixels / original_burnable_pixels
+    report = FuelEditReport(
+        scenario_name=scenario_name,
+        mode="burnable_components_to_nonfuel_random",
+        edited_pixels=edited_pixels,
+        replacement_fuel_id=replacement_nonfuel_id,
+        candidate_pixels=original_burnable_pixels,
+        original_nonfuel_pixels=int(base_nonfuel.sum()),
+        original_burnable_pixels=original_burnable_pixels,
+        note=(
+            f"{len(rows)} area-weighted same-fuel components; "
+            f"target_fraction={target_burnable_area_fraction:.6f}; achieved_fraction={achieved_fraction:.6f}; seed={seed}"
+        ),
+    )
+    return edited, selected, report, pd.DataFrame(rows)
+
+
 def apply_fuel_edit(
     fuel: np.ndarray,
     nonfuel_ids: list[int] | tuple[int, ...],
@@ -400,6 +489,19 @@ def apply_fuel_edit(
             scenario_name=scenario_name,
         )
         components = pd.DataFrame()
+    elif mode == "burnable_components_to_nonfuel_random":
+        required = {"replacement_nonfuel_id", "target_burnable_area_fraction", "seed"}
+        missing = sorted(required - params.keys())
+        if missing:
+            raise ValueError(f"burnable_components_to_nonfuel_random requires parameters: {missing}.")
+        edited, edit_mask, report, components = replace_random_burnable_components_with_nonfuel(
+            fuel,
+            nonfuel_ids,
+            replacement_nonfuel_id=int(params["replacement_nonfuel_id"]),
+            target_burnable_area_fraction=float(params["target_burnable_area_fraction"]),
+            seed=int(params["seed"]),
+            scenario_name=scenario_name,
+        )
     else:
         raise ValueError(f"Unknown fuel edit mode {mode!r}; expected one of {FUEL_EDIT_MODES}.")
 

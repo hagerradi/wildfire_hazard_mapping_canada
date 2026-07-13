@@ -161,6 +161,8 @@ def intervention_layers_on_prediction_grid(
 
     params = dict(fuel_edit)
     mode = str(params.pop("mode"))
+    if not mode.startswith("nonfuel_to_burnable"):
+        raise ValueError(f"Fuel intervention map supports barrier-removal scenarios, got mode={mode!r}.")
     nonfuel_ids = params.pop("nonfuel_ids")
     if not isinstance(nonfuel_ids, list | tuple) or not nonfuel_ids:
         raise ValueError(f"Scenario {scenario!r} must define nonfuel_ids.")

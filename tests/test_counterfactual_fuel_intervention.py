@@ -13,6 +13,7 @@ from src.datasets.postprocessing.counterfactual_fuel import (
     replace_nonfuel_components_with_adjacent_modal,
     replace_nonfuel_with_adjacent_modal,
     replace_nonfuel_with_burnable,
+    replace_random_burnable_components_with_nonfuel,
 )
 from src.datasets.postprocessing.counterfactual_fuel_intervention_map import (
     intervention_layers,
@@ -179,6 +180,39 @@ def test_replace_burnable_with_nonfuel_only_edits_burnable_pixels() -> None:
     assert edited[0, 1] == 101
     assert edited[1, 2] == -32768
     assert report.edited_pixels == 4
+
+
+def test_random_component_insertion_is_seeded_and_reaches_area_target() -> None:
+    fuel = np.array(
+        [
+            [1, 1, 101, 2, 2],
+            [1, 1, 101, 2, 2],
+            [3, 101, 4, 4, 4],
+            [3, 101, 4, 4, 4],
+        ],
+        dtype=np.int32,
+    )
+
+    result_a = replace_random_burnable_components_with_nonfuel(
+        fuel,
+        [101],
+        replacement_nonfuel_id=101,
+        target_burnable_area_fraction=0.25,
+        seed=42,
+    )
+    result_b = replace_random_burnable_components_with_nonfuel(
+        fuel,
+        [101],
+        replacement_nonfuel_id=101,
+        target_burnable_area_fraction=0.25,
+        seed=42,
+    )
+    edited, edit_mask, report, components = result_a
+
+    assert np.array_equal(edit_mask, result_b[1])
+    assert np.all(edited[edit_mask] == 101)
+    assert report.edited_pixels >= int(np.ceil(report.original_burnable_pixels * 0.25))
+    assert set(components["original_fuel_id"]).issubset({1, 2, 3, 4})
 
 
 def test_zone_boundary_segments_traces_only_valid_interzone_borders() -> None:

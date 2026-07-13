@@ -29,3 +29,13 @@ scenarios:
       mode: "nonfuel_to_burnable_fixed"
       nonfuel_ids: [100, 101, 102, 105, 106, 110]
       replacement_fuel_id: 2
+
+  - name: "insert_random_nonfuel_10pct"
+    kind: "fuel"
+    description: "Replace area-weighted random same-fuel components covering approximately 10% of burnable area."
+    params:
+      mode: "burnable_components_to_nonfuel_random"
+      nonfuel_ids: [100, 101, 102, 105, 106, 110]
+      replacement_nonfuel_id: 101
+      target_burnable_area_fraction: 0.10
+      seed: 42
