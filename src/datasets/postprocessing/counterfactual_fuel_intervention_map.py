@@ -14,6 +14,7 @@ from matplotlib.patches import Patch
 
 from data_preparation.paths import Paths
 from data_preparation.spatial.utils import FUEL_GROUP_MAP, load_spatial_raster
+from src.datasets.postprocessing.counterfactual import load_counterfactual_config
 from src.datasets.postprocessing.counterfactual_fuel import replace_nonfuel_components_with_adjacent_modal
 from src.datasets.postprocessing.counterfactual_viz import (
     DEFAULT_ZONE_OVERLAY_ALPHA,
@@ -107,17 +108,22 @@ def paired_prediction_support(
     return np.isfinite(baseline_values) & np.isfinite(scenario_values_arr)
 
 
-def load_grouped_fuel_on_prediction_grid(
+def load_raw_fuel_on_prediction_grid(
     *,
     raw_data_dir: Path,
     reference_profile: dict,
     hex_id: str,
 ) -> np.ndarray:
-    """Load raw fuel on the prediction grid and map raw fuel IDs to model fuel groups."""
+    """Load raw fuel IDs on the prediction grid."""
 
     paths = Paths(hex_id=hex_id, root_dir=raw_data_dir)
     fuel_ma, _ = load_spatial_raster(paths.fuel_grid(hex_id), reference_profile=reference_profile)
-    raw_fuel = np.ma.asarray(fuel_ma).astype(np.float32).filled(np.nan)
+    return np.ma.asarray(fuel_ma).astype(np.float32).filled(np.nan)
+
+
+def group_raw_fuel(raw_fuel: np.ndarray) -> np.ndarray:
+    """Map raw fuel IDs to the legacy groups used by the map legend."""
+
     grouped = np.full(raw_fuel.shape, np.nan, dtype=np.float32)
     finite = np.isfinite(raw_fuel)
     raw_int = np.full(raw_fuel.shape, -9999, dtype=np.int32)
@@ -148,12 +154,13 @@ def intervention_layers_on_prediction_grid(
     scenario: str,
     endpoint: str,
     hex_id: str,
+    nonfuel_ids: list[int],
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Return grouped fuel and intervention layers on paired prediction support."""
 
     prediction_dirs = prediction_dirs_from_index(experiment_dir)
     reference_profile = prediction_reference_profile(prediction_dirs, hex_id)
-    grouped_fuel = load_grouped_fuel_on_prediction_grid(
+    raw_fuel = load_raw_fuel_on_prediction_grid(
         raw_data_dir=raw_data_dir,
         reference_profile=reference_profile,
         hex_id=hex_id,
@@ -164,15 +171,17 @@ def intervention_layers_on_prediction_grid(
         endpoint=endpoint,
         hex_id=hex_id,
     )
-    edited, original_nonfuel, _, _ = replace_nonfuel_components_with_adjacent_modal(
-        grouped_fuel,
-        [NONFUEL_GROUP],
+    edited_raw, original_nonfuel, _, _ = replace_nonfuel_components_with_adjacent_modal(
+        raw_fuel,
+        nonfuel_ids,
         scenario_name=scenario,
     )
+    grouped_fuel = group_raw_fuel(raw_fuel)
+    edited_grouped = group_raw_fuel(edited_raw)
     supported_fuel = np.where(support, grouped_fuel, np.nan)
     supported_nonfuel = original_nonfuel & support
     replacement_map = np.full(grouped_fuel.shape, np.nan, dtype=np.float32)
-    replacement_map[supported_nonfuel] = edited[supported_nonfuel]
+    replacement_map[supported_nonfuel] = edited_grouped[supported_nonfuel]
     unexpected_burnable_changes = np.zeros(grouped_fuel.shape, dtype=bool)
     return supported_fuel, supported_nonfuel, replacement_map, unexpected_burnable_changes
 
@@ -388,13 +397,23 @@ def write_fuel_intervention_map(
     zone_overlay_linewidth: float = DEFAULT_ZONE_OVERLAY_LINEWIDTH,
     zone_overlay_alpha: float = DEFAULT_ZONE_OVERLAY_ALPHA,
     out_dir: Path | None = None,
+    config_path: Path = Path("configs/counterfactual_fuel.yaml"),
 ) -> tuple[Path, Path]:
+    config = load_counterfactual_config(config_path)
+    scenario_config = next((item for item in config.scenarios if item.name == scenario), None)
+    if scenario_config is None:
+        raise ValueError(f"Scenario {scenario!r} is not defined in {config_path}.")
+    nonfuel_ids = (scenario_config.fuel_edit() or {}).get("nonfuel_ids")
+    if not isinstance(nonfuel_ids, list) or not nonfuel_ids:
+        raise ValueError(f"Scenario {scenario!r} must define nonfuel_ids in {config_path}.")
+
     baseline_fuel, original_nonfuel, replacement_map, unexpected_burnable_changes = intervention_layers_on_prediction_grid(
         experiment_dir=experiment_dir,
         raw_data_dir=raw_data_dir,
         scenario=scenario,
         endpoint=endpoint,
         hex_id=hex_id,
+        nonfuel_ids=[int(value) for value in nonfuel_ids],
     )
     summary = summarize_intervention(
         scenario=scenario,
@@ -437,7 +456,8 @@ def write_fuel_intervention_map(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Plot the fuel intervention for the local-modal counterfactual.")
-    parser.add_argument("--experiment_dir", type=Path, default=Path("experiments/counterfactual_hex16"))
+    parser.add_argument("--experiment_dir", type=Path, default=Path("experiments/counterfactual_fuel_hex16"))
+    parser.add_argument("--config", type=Path, default=Path("configs/counterfactual_fuel.yaml"))
     parser.add_argument(
         "--raw_data_dir",
         type=Path,
@@ -466,6 +486,7 @@ def main() -> None:
         zone_overlay_linewidth=args.zone_overlay_linewidth,
         zone_overlay_alpha=args.zone_overlay_alpha,
         out_dir=args.out_dir,
+        config_path=args.config,
     )
     print(f"Wrote fuel intervention map: {plot_path}")
     print(f"Wrote fuel intervention summary: {summary_path}")

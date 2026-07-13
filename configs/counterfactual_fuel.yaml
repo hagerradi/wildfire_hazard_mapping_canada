@@ -20,4 +20,4 @@ scenarios:
     description: "Replace each connected non-fuel component with its modal adjacent burnable fuel group."
     params:
       mode: "nonfuel_to_burnable_local_adjacent_modal"
-      nonfuel_groups: [0]
+      nonfuel_ids: [100, 101, 102, 105, 106, 110]

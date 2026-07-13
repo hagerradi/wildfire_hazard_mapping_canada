@@ -32,7 +32,7 @@ def test_fuel_counterfactual_reuses_stitching_for_overlapping_patches(tmp_path: 
         description="",
         params={
             "mode": "nonfuel_to_burnable_local_adjacent_modal",
-            "nonfuel_groups": [0],
+            "nonfuel_ids": [0],
         },
     )
 

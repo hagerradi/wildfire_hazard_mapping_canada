@@ -42,9 +42,9 @@ class FuelCounterfactualTransform:
     ) -> FuelCounterfactualTransform:
         params = dict(scenario.fuel_edit() or {})
         mode = str(params.pop("mode", "nonfuel_to_burnable_local_adjacent_modal"))
-        nonfuel_groups = params.pop("nonfuel_groups", None)
-        if not isinstance(nonfuel_groups, list | tuple) or not nonfuel_groups:
-            raise ValueError(f"Fuel scenario {scenario.name!r} must define nonfuel_groups.")
+        nonfuel_ids = params.pop("nonfuel_ids", None)
+        if not isinstance(nonfuel_ids, list | tuple) or not nonfuel_ids:
+            raise ValueError(f"Fuel scenario {scenario.name!r} must define nonfuel_ids.")
         if "hex_id" not in metadata.columns:
             raise ValueError("Patch metadata is missing required column 'hex_id'.")
 
@@ -77,7 +77,7 @@ class FuelCounterfactualTransform:
             stitched = stitch_windows(windows, coords, masks, (max_row, max_col), mode="mean")
             result = apply_fuel_edit(
                 stitched,
-                [int(value) for value in nonfuel_groups],
+                [int(value) for value in nonfuel_ids],
                 mode=mode,
                 scenario_name=scenario.name,
                 params=params,
