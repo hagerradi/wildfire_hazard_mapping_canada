@@ -21,3 +21,11 @@ scenarios:
     params:
       mode: "nonfuel_to_burnable_local_adjacent_modal"
       nonfuel_ids: [100, 101, 102, 105, 106, 110]
+
+  - name: "remove_barriers_fixed_c2"
+    kind: "fuel"
+    description: "Replace every non-fuel barrier pixel with C-2 boreal spruce."
+    params:
+      mode: "nonfuel_to_burnable_fixed"
+      nonfuel_ids: [100, 101, 102, 105, 106, 110]
+      replacement_fuel_id: 2

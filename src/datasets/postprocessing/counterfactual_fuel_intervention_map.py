@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from typing import Any
 
 import matplotlib
 import numpy as np
@@ -15,7 +16,7 @@ from matplotlib.patches import Patch
 from data_preparation.paths import Paths
 from data_preparation.spatial.utils import FUEL_GROUP_MAP, load_spatial_raster
 from src.datasets.postprocessing.counterfactual import load_counterfactual_config
-from src.datasets.postprocessing.counterfactual_fuel import replace_nonfuel_components_with_adjacent_modal
+from src.datasets.postprocessing.counterfactual_fuel import apply_fuel_edit
 from src.datasets.postprocessing.counterfactual_viz import (
     DEFAULT_ZONE_OVERLAY_ALPHA,
     DEFAULT_ZONE_OVERLAY_COLOR,
@@ -154,9 +155,15 @@ def intervention_layers_on_prediction_grid(
     scenario: str,
     endpoint: str,
     hex_id: str,
-    nonfuel_ids: list[int],
+    fuel_edit: dict[str, Any],
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Return grouped fuel and intervention layers on paired prediction support."""
+
+    params = dict(fuel_edit)
+    mode = str(params.pop("mode"))
+    nonfuel_ids = params.pop("nonfuel_ids")
+    if not isinstance(nonfuel_ids, list | tuple) or not nonfuel_ids:
+        raise ValueError(f"Scenario {scenario!r} must define nonfuel_ids.")
 
     prediction_dirs = prediction_dirs_from_index(experiment_dir)
     reference_profile = prediction_reference_profile(prediction_dirs, hex_id)
@@ -171,15 +178,17 @@ def intervention_layers_on_prediction_grid(
         endpoint=endpoint,
         hex_id=hex_id,
     )
-    edited_raw, original_nonfuel, _, _ = replace_nonfuel_components_with_adjacent_modal(
+    result = apply_fuel_edit(
         raw_fuel,
-        nonfuel_ids,
+        [int(value) for value in nonfuel_ids],
+        mode=mode,
         scenario_name=scenario,
+        params=params,
     )
     grouped_fuel = group_raw_fuel(raw_fuel)
-    edited_grouped = group_raw_fuel(edited_raw)
+    edited_grouped = group_raw_fuel(result.fuel)
     supported_fuel = np.where(support, grouped_fuel, np.nan)
-    supported_nonfuel = original_nonfuel & support
+    supported_nonfuel = result.edit_mask & support
     replacement_map = np.full(grouped_fuel.shape, np.nan, dtype=np.float32)
     replacement_map[supported_nonfuel] = edited_grouped[supported_nonfuel]
     unexpected_burnable_changes = np.zeros(grouped_fuel.shape, dtype=bool)
@@ -378,7 +387,8 @@ def plot_intervention_map(
         ncol=6,
     )
 
-    fig.suptitle(f"Hex{int(hex_id):02d} local adjacent-modal fuel intervention", y=1.03, fontsize=18)
+    scenario_label = scenario.replace("_", " ")
+    fig.suptitle(f"Hex{int(hex_id):02d} fuel intervention: {scenario_label}", y=1.03, fontsize=18)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_path, dpi=220, bbox_inches="tight")
     plt.close(fig)
@@ -403,9 +413,9 @@ def write_fuel_intervention_map(
     scenario_config = next((item for item in config.scenarios if item.name == scenario), None)
     if scenario_config is None:
         raise ValueError(f"Scenario {scenario!r} is not defined in {config_path}.")
-    nonfuel_ids = (scenario_config.fuel_edit() or {}).get("nonfuel_ids")
-    if not isinstance(nonfuel_ids, list) or not nonfuel_ids:
-        raise ValueError(f"Scenario {scenario!r} must define nonfuel_ids in {config_path}.")
+    fuel_edit = scenario_config.fuel_edit()
+    if fuel_edit is None:
+        raise ValueError(f"Scenario {scenario!r} is not a fuel intervention.")
 
     baseline_fuel, original_nonfuel, replacement_map, unexpected_burnable_changes = intervention_layers_on_prediction_grid(
         experiment_dir=experiment_dir,
@@ -413,7 +423,7 @@ def write_fuel_intervention_map(
         scenario=scenario,
         endpoint=endpoint,
         hex_id=hex_id,
-        nonfuel_ids=[int(value) for value in nonfuel_ids],
+        fuel_edit=fuel_edit,
     )
     summary = summarize_intervention(
         scenario=scenario,
