@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from src.datasets.postprocessing.counterfactual_fuel import (
+    apply_fuel_edit,
     burnable_mask,
     modal_adjacent_burnable_fuel,
     modal_adjacent_burnable_fuel_across_grids,
@@ -77,6 +78,22 @@ def test_replace_nonfuel_components_with_adjacent_modal_uses_local_components() 
     assert components["replacement_fuel_id"].tolist() == [1, 2]
     assert report.edited_pixels == 2
     assert "2 connected components" in report.note
+
+
+def test_apply_fuel_edit_returns_consistent_result() -> None:
+    fuel = np.array([[1, 1, 2], [1, 0, 2], [1, 1, 2]], dtype=np.float32)
+
+    result = apply_fuel_edit(
+        fuel,
+        [0],
+        mode="nonfuel_to_burnable_local_adjacent_modal",
+        scenario_name="remove_barrier",
+    )
+
+    assert result.fuel[1, 1] == pytest.approx(1.0)
+    assert result.edit_mask.sum() == 1
+    assert result.report.scenario_name == "remove_barrier"
+    assert result.components["replacement_fuel_id"].tolist() == [1]
 
 
 def test_intervention_layers_show_only_replaced_nonfuel_pixels() -> None:

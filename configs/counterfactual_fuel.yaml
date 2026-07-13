@@ -1,0 +1,23 @@
+raw_data_dir: "/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA"
+save_dir: "experiments/counterfactual_fuel_hex16"
+hex_ids: ["16"]
+
+endpoints:
+  bp:
+    config_path: "configs/bp_common_input_pipeline.yaml"
+  fi:
+    config_path: "configs/fi_common_input_pipeline.yaml"
+  ros:
+    config_path: "configs/ros_common_input_pipeline.yaml"
+
+scenarios:
+  - name: "baseline"
+    kind: "baseline"
+    description: "Unmodified prepared fuel inputs."
+
+  - name: "remove_barriers_adjacent_modal"
+    kind: "fuel"
+    description: "Replace each connected non-fuel component with its modal adjacent burnable fuel group."
+    params:
+      mode: "nonfuel_to_burnable_local_adjacent_modal"
+      nonfuel_groups: [0]

@@ -11,6 +11,12 @@ import pandas as pd
 from scipy.ndimage import binary_dilation, find_objects, label
 
 FUEL_NODATA = -32768
+FUEL_EDIT_MODES = (
+    "nonfuel_to_burnable_fixed",
+    "nonfuel_to_burnable_adjacent_modal",
+    "nonfuel_to_burnable_local_adjacent_modal",
+    "burnable_to_nonfuel",
+)
 
 
 @dataclass(frozen=True)
@@ -28,6 +34,14 @@ class FuelEditReport:
 
     def to_frame(self) -> pd.DataFrame:
         return pd.DataFrame([asdict(self)])
+
+
+@dataclass(frozen=True)
+class FuelEditResult:
+    fuel: np.ndarray
+    edit_mask: np.ndarray
+    report: FuelEditReport
+    components: pd.DataFrame
 
 
 def nonfuel_mask(fuel: np.ndarray, nonfuel_ids: list[int] | tuple[int, ...], nodata_value: int = FUEL_NODATA) -> np.ndarray:
@@ -336,3 +350,57 @@ def replace_burnable_with_nonfuel(
         note="selected burnable pixels replaced with non-fuel",
     )
     return edited, selected, report
+
+
+def apply_fuel_edit(
+    fuel: np.ndarray,
+    nonfuel_ids: list[int] | tuple[int, ...],
+    *,
+    mode: str,
+    scenario_name: str,
+    params: dict | None = None,
+) -> FuelEditResult:
+    """Apply a configured fuel edit using a consistent result type."""
+
+    params = dict(params or {})
+    if mode == "nonfuel_to_burnable_local_adjacent_modal":
+        edited, edit_mask, report, components = replace_nonfuel_components_with_adjacent_modal(
+            fuel,
+            nonfuel_ids,
+            scenario_name=scenario_name,
+            edit_mask=params.get("edit_mask"),
+        )
+    elif mode == "nonfuel_to_burnable_adjacent_modal":
+        edited, edit_mask, report = replace_nonfuel_with_adjacent_modal(
+            fuel,
+            nonfuel_ids,
+            scenario_name=scenario_name,
+            edit_mask=params.get("edit_mask"),
+        )
+        components = pd.DataFrame()
+    elif mode == "nonfuel_to_burnable_fixed":
+        if "replacement_fuel_id" not in params:
+            raise ValueError("nonfuel_to_burnable_fixed requires replacement_fuel_id.")
+        edited, edit_mask, report = replace_nonfuel_with_burnable(
+            fuel,
+            nonfuel_ids,
+            int(params["replacement_fuel_id"]),
+            scenario_name=scenario_name,
+            edit_mask=params.get("edit_mask"),
+        )
+        components = pd.DataFrame()
+    elif mode == "burnable_to_nonfuel":
+        if "insertion_mask" not in params:
+            raise ValueError("burnable_to_nonfuel requires insertion_mask.")
+        edited, edit_mask, report = replace_burnable_with_nonfuel(
+            fuel,
+            nonfuel_ids,
+            np.asarray(params["insertion_mask"], dtype=bool),
+            replacement_nonfuel_id=params.get("replacement_nonfuel_id"),
+            scenario_name=scenario_name,
+        )
+        components = pd.DataFrame()
+    else:
+        raise ValueError(f"Unknown fuel edit mode {mode!r}; expected one of {FUEL_EDIT_MODES}.")
+
+    return FuelEditResult(fuel=edited, edit_mask=edit_mask, report=report, components=components)

@@ -549,7 +549,6 @@ print(p_hfi)
 # ------------------------------------------------------------
 
 hfi_png_path <- file.path(out_dir, "fbp_hfi_curves_national_fuel.png")
-
 ggsave(
   filename = hfi_png_path,
   plot = p_hfi,
@@ -560,6 +559,5 @@ ggsave(
 
 cat("Saved HFI plot to:\n")
 cat(hfi_png_path, "\n\n")
-
 
 cat("Done.\n")

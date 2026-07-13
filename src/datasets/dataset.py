@@ -1,4 +1,5 @@
 import os
+from collections.abc import Callable
 from typing import Any
 
 import numpy as np
@@ -30,6 +31,8 @@ class MultiSourceDataset(Dataset):
         sources: dict[str, DataSource] | None = None,
         grid_transform=None,
         include_patch_metadata: bool = False,
+        patch_transform: Callable[[np.ndarray, dict[str, Any]], np.ndarray] | None = None,
+        metadata_filter: Callable[[pd.DataFrame], pd.DataFrame] | None = None,
     ):
         """
         Args:
@@ -48,12 +51,15 @@ class MultiSourceDataset(Dataset):
         self.filename_col = filename_col
         self.grid_transform = grid_transform
         self.include_patch_metadata = include_patch_metadata
+        self.patch_transform = patch_transform
         if not os.path.exists(self.metadata_path):
             raise FileNotFoundError(f"Metadata not found at: {self.metadata_path}")
         metadata_df = pd.read_csv(self.metadata_path)
         # Filter by valid_ratio if the column exists
         if "valid_ratio" in metadata_df.columns:
             metadata_df = metadata_df[metadata_df["valid_ratio"] > self.valid_mask_threshold].copy()
+        if metadata_filter is not None:
+            metadata_df = metadata_filter(metadata_df).copy()
         if filename_col not in metadata_df.columns:
             raise KeyError(f"Column '{filename_col}' not found in {csv_name}")
         self.metadata = metadata_df
@@ -69,7 +75,8 @@ class MultiSourceDataset(Dataset):
 
     def __getitem__(self, idx):
         patch_info = self.get_patch_info(idx)
-        patch_info["data"] = np.load(patch_info["file_path"], mmap_mode="r")  # Load once, distribute where needed
+        data = np.load(patch_info["file_path"], mmap_mode="r")
+        patch_info["data"] = self.patch_transform(data, patch_info) if self.patch_transform is not None else data
         sample = {}
         spatialized_inputs = []
         for name, source in self.sources.items():
@@ -111,7 +118,14 @@ class MultiSourceDataset(Dataset):
         return len(self.records)
 
 
-def build_dataset(config: DataConfig, csv_name: str, modelling_approach: str = "1") -> MultiSourceDataset:
+def build_dataset(
+    config: DataConfig,
+    csv_name: str,
+    modelling_approach: str = "1",
+    *,
+    patch_transform: Callable[[np.ndarray, dict[str, Any]], np.ndarray] | None = None,
+    metadata_filter: Callable[[pd.DataFrame], pd.DataFrame] | None = None,
+) -> MultiSourceDataset:
     """
     Args:
         config (DataConfig): Contains information for multi source dataset instantiation
@@ -155,6 +169,8 @@ def build_dataset(config: DataConfig, csv_name: str, modelling_approach: str = "
         sources=sources,
         grid_transform=grid_transform,
         include_patch_metadata=config.include_patch_metadata,
+        patch_transform=patch_transform,
+        metadata_filter=metadata_filter,
     )
     return dataset
 
@@ -187,7 +203,14 @@ def get_train_val_dataloader(config: DataConfig, modelling_approach: str = "1", 
     return train_dataloader, val_dataloader
 
 
-def get_test_dataloader(config: DataConfig, modelling_approach: str = "1", seed: int = 42) -> DataLoader:
+def get_test_dataloader(
+    config: DataConfig,
+    modelling_approach: str = "1",
+    seed: int = 42,
+    *,
+    patch_transform: Callable[[np.ndarray, dict[str, Any]], np.ndarray] | None = None,
+    metadata_filter: Callable[[pd.DataFrame], pd.DataFrame] | None = None,
+) -> DataLoader:
     """
     Creates and returns a test DataLoader with deterministic shuffling
     """
@@ -196,7 +219,12 @@ def get_test_dataloader(config: DataConfig, modelling_approach: str = "1", seed:
     test_split = config.test_split
 
     g = torch.Generator()
-    test_dataset = build_dataset(config, csv_name=test_split)
+    test_dataset = build_dataset(
+        config,
+        csv_name=test_split,
+        patch_transform=patch_transform,
+        metadata_filter=metadata_filter,
+    )
 
     test_dataloader = DataLoader(
         test_dataset,
