@@ -8,7 +8,7 @@ import os
 import numpy as np
 import yaml
 
-from src.config import Config, GridParams
+from src.config import Config, GridParams, apply_run_id_overrides
 from src.datasets.dataset import get_test_dataloader, get_train_val_dataloader
 from src.datasets.postprocessing.utils import evaluate_and_visualize_hexels, print_and_log_eval_metrics
 from src.datasets.utils import get_dataset_dimensions
@@ -33,6 +33,13 @@ def parse_args() -> argparse.Namespace:
         default=True,
         help="Disable saving predicted hexels to comet (default: True)",
     )
+    parser.add_argument(
+        "--run_id",
+        type=int,
+        default=None,
+        help="SLURM array task ID (or run index) used to derive a run-specific seed, save_dir, and "
+        "Comet experiment name for parallel multi-seed runs (see run_files/train_no_tmp_copy_array.sh).",
+    )
     return parser.parse_args()
 
 
@@ -52,6 +59,10 @@ def load_config(path: str) -> Config:
 def main() -> None:
     args = parse_args()
     config = load_config(args.config)
+
+    if args.run_id is not None:
+        run_seed = apply_run_id_overrides(config, args.run_id)
+        print(f"[run_id={args.run_id}] Overriding seed={run_seed}, save_dir={config.save_dir}")
 
     # ---------- Set Seed ----------
     seed = getattr(config, "seed", 42)
