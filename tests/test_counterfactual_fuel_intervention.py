@@ -1,8 +1,14 @@
 from __future__ import annotations
 
-import numpy as np
-import pytest
+from pathlib import Path
 
+import numpy as np
+import pandas as pd
+import pytest
+import rasterio
+from rasterio.transform import from_origin
+
+from src.datasets.fuel_counterfactual import fuel_intervention_raster_path
 from src.datasets.postprocessing.counterfactual_fuel import (
     apply_fuel_edit,
     burnable_mask,
@@ -17,6 +23,7 @@ from src.datasets.postprocessing.counterfactual_fuel import (
 )
 from src.datasets.postprocessing.counterfactual_fuel_intervention_map import (
     intervention_layers,
+    intervention_layers_on_prediction_grid,
     summarize_intervention,
 )
 from src.datasets.postprocessing.counterfactual_viz import zone_boundary_segments
@@ -168,6 +175,58 @@ def test_intervention_layers_detects_burnable_to_nonfuel_changes() -> None:
     assert summary.n_original_nonfuel_pixels == 2
     assert summary.n_replaced_pixels == 1
     assert summary.replacement_fuel_ids == "0"
+
+
+def test_intervention_layers_on_prediction_grid_loads_evaluated_fuel_artifacts(tmp_path: Path) -> None:
+    experiment_dir = tmp_path / "experiment"
+    baseline_prediction_dir = experiment_dir / "predictions" / "baseline" / "bp"
+    scenario_prediction_dir = experiment_dir / "predictions" / "insert" / "bp"
+    profile = {
+        "driver": "GTiff",
+        "height": 2,
+        "width": 3,
+        "count": 1,
+        "dtype": "float32",
+        "crs": "EPSG:4326",
+        "transform": from_origin(0, 2, 1, 1),
+        "nodata": -9999.0,
+    }
+
+    def write_raster(path: Path, values: np.ndarray) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with rasterio.open(path, "w", **profile) as dst:
+            dst.write(values.astype(np.float32), 1)
+
+    prediction_values = np.ones((2, 3), dtype=np.float32)
+    write_raster(baseline_prediction_dir / "predicted_hexels" / "hexel_16_predicted.tif", prediction_values)
+    write_raster(scenario_prediction_dir / "predicted_hexels" / "hexel_16_predicted.tif", prediction_values)
+    write_raster(
+        fuel_intervention_raster_path(scenario_prediction_dir, "16", "baseline"),
+        np.array([[1, 101, 2], [3, 101, 4]], dtype=np.float32),
+    )
+    write_raster(
+        fuel_intervention_raster_path(scenario_prediction_dir, "16", "scenario"),
+        np.array([[101, 101, 2], [3, 101, 4]], dtype=np.float32),
+    )
+    pd.DataFrame(
+        [
+            {"scenario": "baseline", "endpoint": "bp", "prediction_dir": baseline_prediction_dir},
+            {"scenario": "insert", "endpoint": "bp", "prediction_dir": scenario_prediction_dir},
+        ]
+    ).to_csv(experiment_dir / "scenario_prediction_index.csv", index=False)
+
+    baseline, original_nonfuel, replacement_map, burnable_changes = intervention_layers_on_prediction_grid(
+        experiment_dir=experiment_dir,
+        scenario="insert",
+        endpoint="bp",
+        hex_id="16",
+    )
+
+    assert baseline.tolist() == [[1.0, 0.0, 2.0], [3.0, 0.0, 4.0]]
+    assert original_nonfuel.tolist() == [[False, True, False], [False, True, False]]
+    assert replacement_map[0, 0] == 0.0
+    assert np.isnan(replacement_map[0, 1])
+    assert burnable_changes.tolist() == [[True, False, False], [False, False, False]]
 
 
 def test_modal_adjacent_burnable_across_grids_picks_consistent_replacement() -> None:

@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any
 
 import matplotlib
 import numpy as np
@@ -15,8 +14,8 @@ from matplotlib.patches import Patch
 
 from data_preparation.paths import Paths
 from data_preparation.spatial.utils import FUEL_GROUP_MAP, load_spatial_raster
+from src.datasets.fuel_counterfactual import fuel_intervention_raster_path
 from src.datasets.postprocessing.counterfactual import load_counterfactual_config
-from src.datasets.postprocessing.counterfactual_fuel import apply_fuel_edit
 from src.datasets.postprocessing.counterfactual_viz import (
     DEFAULT_ZONE_OVERLAY_ALPHA,
     DEFAULT_ZONE_OVERLAY_COLOR,
@@ -154,42 +153,31 @@ def load_zone_labels_on_prediction_grid(
 def intervention_layers_on_prediction_grid(
     *,
     experiment_dir: Path,
-    raw_data_dir: Path,
     scenario: str,
     endpoint: str,
     hex_id: str,
-    fuel_edit: dict[str, Any],
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Return grouped fuel and intervention layers on paired prediction support."""
-
-    params = dict(fuel_edit)
-    mode = str(params.pop("mode"))
-    nonfuel_ids = params.pop("nonfuel_ids")
-    if not isinstance(nonfuel_ids, list | tuple) or not nonfuel_ids:
-        raise ValueError(f"Scenario {scenario!r} must define nonfuel_ids.")
+    """Load the evaluated fuel intervention and return grouped layers on paired prediction support."""
 
     prediction_dirs = prediction_dirs_from_index(experiment_dir)
-    reference_profile = prediction_reference_profile(prediction_dirs, hex_id, baseline_endpoint=endpoint)
-    raw_fuel = load_raw_fuel_on_prediction_grid(
-        raw_data_dir=raw_data_dir,
-        reference_profile=reference_profile,
-        hex_id=hex_id,
-    )
+    scenario_dir = prediction_dirs.get((scenario, endpoint))
+    if scenario_dir is None:
+        raise KeyError(f"Missing prediction directory for scenario={scenario!r}, endpoint={endpoint!r}.")
+    baseline_fuel = read_prediction(fuel_intervention_raster_path(scenario_dir, hex_id, "baseline"))
+    scenario_fuel = read_prediction(fuel_intervention_raster_path(scenario_dir, hex_id, "scenario"))
+    baseline_values = np.asarray(baseline_fuel.filled(np.nan), dtype=np.float32)
+    scenario_values = np.asarray(scenario_fuel.filled(np.nan), dtype=np.float32)
+    if baseline_values.shape != scenario_values.shape:
+        raise ValueError(f"Fuel intervention rasters have different shapes: {baseline_values.shape} vs {scenario_values.shape}.")
     support = paired_prediction_support(
         experiment_dir=experiment_dir,
         scenario=scenario,
         endpoint=endpoint,
         hex_id=hex_id,
     )
-    result = apply_fuel_edit(
-        raw_fuel,
-        [int(value) for value in nonfuel_ids],
-        mode=mode,
-        scenario_name=scenario,
-        params=params,
-    )
-    grouped_fuel = group_raw_fuel(raw_fuel)
-    edited_grouped = group_raw_fuel(result.fuel)
+    support &= np.isfinite(baseline_values) & np.isfinite(scenario_values)
+    grouped_fuel = group_raw_fuel(baseline_values)
+    edited_grouped = group_raw_fuel(scenario_values)
     supported_fuel = np.where(support, grouped_fuel, np.nan)
     supported_scenario = np.where(support, edited_grouped, np.nan)
     original_nonfuel, replacement_map, unexpected_burnable_changes = intervention_layers(supported_fuel, supported_scenario)
@@ -434,17 +422,14 @@ def write_fuel_intervention_map(
     scenario_config = next((item for item in config.scenarios if item.name == scenario), None)
     if scenario_config is None:
         raise ValueError(f"Scenario {scenario!r} is not defined in {config_path}.")
-    fuel_edit = scenario_config.fuel_edit()
-    if fuel_edit is None:
+    if scenario_config.fuel_edit() is None:
         raise ValueError(f"Scenario {scenario!r} is not a fuel intervention.")
 
     baseline_fuel, original_nonfuel, replacement_map, unexpected_burnable_changes = intervention_layers_on_prediction_grid(
         experiment_dir=experiment_dir,
-        raw_data_dir=raw_data_dir,
         scenario=scenario,
         endpoint=endpoint,
         hex_id=hex_id,
-        fuel_edit=fuel_edit,
     )
     summary = summarize_intervention(
         scenario=scenario,

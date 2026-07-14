@@ -27,11 +27,12 @@ src/datasets/postprocessing/
    hexel rasters under `<save_dir>/predictions/<scenario>/<endpoint>/`, an index mapping
    `(scenario, endpoint) -> prediction_dir` (`scenario_prediction_index.csv`), evaluation
    metrics (`counterfactual_metrics.csv`), and fuel-edit summaries (`fuel_edit_summary.csv`,
-   `fuel_component_replacements.csv`).
+   `fuel_component_replacements.csv`). Fuel scenarios also write the exact baseline and
+   edited fuel rasters used by inference under each prediction directory's
+   `fuel_intervention/` subdirectory.
 2. **Fuel edit map** (`counterfactual_fuel_intervention_map.py`): for one hexel/scenario/
-   endpoint, renders a side-by-side map of the original grouped fuel and its counterfactual
-   replacement (original non-fuel vs. replacement fuel groups), plus a per-hexel
-   pixel-count summary CSV.
+   endpoint, renders the persisted evaluated fuel intervention (original grouped fuel vs.
+   replacement fuel groups), plus a per-hexel pixel-count summary CSV.
 3. **Response maps** (`counterfactual_response_maps.py`): generic, endpoint-parameterized
    (`--endpoint {bp,fi,ros}`) ground-truth/baseline/scenario/Δ maps for one hexel/scenario
    pair, plus zoom-ins on the highest-Δ patches and per-pixel Δ histogram/concentration

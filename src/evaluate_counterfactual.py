@@ -164,6 +164,8 @@ def run_counterfactual_evaluation(
                     fuel_channel=_fuel_channel(data_root, run_config.modelling_approach),
                     scenario=scenario,
                     filename_col=base_config.data.filename_col,
+                    prediction_dir=prediction_dir,
+                    raw_data_dir=raw_data_dir,
                 )
                 summary = patch_transform.summary.copy()
                 summary.insert(0, "endpoint", endpoint.name)

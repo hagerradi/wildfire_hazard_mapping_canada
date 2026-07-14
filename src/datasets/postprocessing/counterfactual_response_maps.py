@@ -399,11 +399,9 @@ def main() -> None:
         nonfuel_ids = [int(value) for value in fuel_edit["nonfuel_ids"]]
         _, fuel_filled_mask, _, _ = intervention_layers_on_prediction_grid(
             experiment_dir=args.experiment_dir,
-            raw_data_dir=args.raw_data_dir,
             scenario=args.scenario,
             endpoint=args.endpoint,
             hex_id=args.hex_id,
-            fuel_edit=fuel_edit,
         )
 
     ground_truth, baseline, scenario_values, delta, extent, reference_profile = load_endpoint_response(

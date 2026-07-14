@@ -2,12 +2,18 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pytest
+import rasterio
+from rasterio.transform import from_origin
 
-from src.datasets.fuel_counterfactual import FuelCounterfactualTransform
+from src.datasets.fuel_counterfactual import FuelCounterfactualTransform, fuel_intervention_raster_path
 from src.datasets.postprocessing.counterfactual import ScenarioConfig
 
 
-def test_fuel_counterfactual_reuses_stitching_for_overlapping_patches(tmp_path: Path) -> None:
+def test_fuel_counterfactual_reuses_stitching_and_writes_exact_intervention(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     global_fuel = np.array(
         [
             [1, 1, 2, 2],
@@ -35,12 +41,29 @@ def test_fuel_counterfactual_reuses_stitching_for_overlapping_patches(tmp_path: 
             "nonfuel_ids": [0],
         },
     )
+    reference_profile = {
+        "driver": "GTiff",
+        "height": 3,
+        "width": 4,
+        "count": 1,
+        "dtype": "float32",
+        "crs": "EPSG:4326",
+        "transform": from_origin(0, 3, 1, 1),
+        "nodata": -9999,
+    }
+    monkeypatch.setattr(
+        "src.datasets.fuel_counterfactual.load_spatial_raster",
+        lambda **_: (np.ma.masked_array(np.ones((3, 4), dtype=np.float32), mask=False), reference_profile),
+    )
+    prediction_dir = tmp_path / "predictions" / scenario.name / "bp"
 
     transform = FuelCounterfactualTransform.from_metadata(
         data_root=tmp_path,
         metadata=metadata,
         fuel_channel=0,
         scenario=scenario,
+        prediction_dir=prediction_dir,
+        raw_data_dir=tmp_path,
     )
 
     left = transform(np.load(tmp_path / "left.npy"), metadata.iloc[0].to_dict())
@@ -49,3 +72,10 @@ def test_fuel_counterfactual_reuses_stitching_for_overlapping_patches(tmp_path: 
     assert right[1, 0, 0] == 1
     assert transform.summary["edited_pixels"].tolist() == [1]
     assert transform.components["replacement_fuel_id"].tolist() == [1]
+
+    with rasterio.open(fuel_intervention_raster_path(prediction_dir, "16", "baseline")) as src:
+        baseline_fuel = src.read(1, masked=True).filled(np.nan)
+    with rasterio.open(fuel_intervention_raster_path(prediction_dir, "16", "scenario")) as src:
+        scenario_fuel = src.read(1, masked=True).filled(np.nan)
+    assert baseline_fuel.tolist() == global_fuel.tolist()
+    assert scenario_fuel[1, 1] == 1
