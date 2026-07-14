@@ -9,12 +9,21 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from src.datasets.fuel_utils import normalize_hex_id
 from src.datasets.postprocessing.counterfactual import ScenarioConfig
 from src.datasets.postprocessing.counterfactual_fuel import apply_fuel_edit
 from src.datasets.postprocessing.stitch_hexel import stitch_windows
 
 
 class FuelCounterfactualTransform:
+    """Dataset patch transform that overlays a per-hexel fuel-edit scenario.
+
+    Instances are built once per scenario via `from_metadata`, which stitches each
+    hexel's patches into a full fuel grid, applies the fuel edit, and re-splits the
+    result back into per-patch fuel channels. `__call__` then substitutes the fuel
+    channel of a given patch with its pre-computed edited version at data-loading time.
+    """
+
     def __init__(
         self,
         *,
@@ -40,6 +49,13 @@ class FuelCounterfactualTransform:
         scenario: ScenarioConfig,
         filename_col: str = "filename",
     ) -> FuelCounterfactualTransform:
+        """Precompute the edited fuel channel for every patch listed in `metadata`.
+
+        For each hexel, patches are stitched into a single fuel grid (averaging
+        overlapping windows), the scenario's fuel edit is applied once on that grid,
+        and the edited result is cut back into per-patch windows so `__call__` can
+        substitute them in without re-running the edit at load time.
+        """
         params = dict(scenario.fuel_edit() or {})
         mode = str(params.pop("mode", "nonfuel_to_burnable_local_adjacent_modal"))
         nonfuel_ids = params.pop("nonfuel_ids", None)
@@ -48,7 +64,7 @@ class FuelCounterfactualTransform:
         if "hex_id" not in metadata.columns:
             raise ValueError("Patch metadata is missing required column 'hex_id'.")
 
-        normalized_hex_ids = metadata["hex_id"].astype(str).str.extract(r"(\d+)", expand=False).str.zfill(2)
+        normalized_hex_ids = metadata["hex_id"].astype(str).map(normalize_hex_id)
         edited_channels: dict[str, np.ndarray] = {}
         summary_rows: list[dict[str, Any]] = []
         component_frames: list[pd.DataFrame] = []
@@ -103,6 +119,7 @@ class FuelCounterfactualTransform:
         )
 
     def __call__(self, data: np.ndarray, patch_info: dict[str, Any]) -> np.ndarray:
+        """Return a copy of `data` with its fuel channel replaced by the precomputed edit."""
         key = Path(str(patch_info[self.filename_col])).as_posix()
         if key not in self.edited_channels:
             raise KeyError(f"No counterfactual fuel channel was prepared for patch {key}.")

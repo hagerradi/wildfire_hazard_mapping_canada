@@ -11,7 +11,8 @@ from pathlib import Path
 import pandas as pd
 
 from src.datasets.fuel_counterfactual import FuelCounterfactualTransform
-from src.datasets.postprocessing.counterfactual import load_counterfactual_config
+from src.datasets.fuel_utils import normalize_hex_id
+from src.datasets.postprocessing.counterfactual import ScenarioConfig, load_counterfactual_config
 from src.evaluate_hexels import load_config
 from src.evaluate_hexels import main as evaluate_hexels
 
@@ -21,8 +22,19 @@ def _resolve_path(path: Path | str, project_root: Path) -> Path:
     return value if value.is_absolute() else project_root / value
 
 
+def _select_scenarios(scenarios: list[ScenarioConfig], scenario_names: set[str] | None) -> list[ScenarioConfig]:
+    """Filter to the requested scenarios, always keeping the baseline scenario.
+
+    Downstream plotting scripts diff every fuel scenario against baseline, so baseline
+    predictions must exist even if `scenario_names` doesn't request it explicitly.
+    """
+    if scenario_names is None:
+        return list(scenarios)
+    return [scenario for scenario in scenarios if scenario.kind == "baseline" or scenario.name in scenario_names]
+
+
 def _filter_hex_ids(metadata: pd.DataFrame, hex_ids: set[str]) -> pd.DataFrame:
-    normalized = metadata["hex_id"].astype(str).str.extract(r"(\d+)", expand=False).str.zfill(2)
+    normalized = metadata["hex_id"].astype(str).map(normalize_hex_id)
     return metadata.loc[normalized.isin(hex_ids)]
 
 
@@ -82,13 +94,30 @@ def run_counterfactual_evaluation(
     overwrite: bool = False,
     project_root: Path | None = None,
 ) -> pd.DataFrame:
+    """Evaluate each selected endpoint under each selected scenario for the configured hexels.
+
+    For every (endpoint, scenario) pair, this loads the endpoint's checkpoint config,
+    filters test metadata to `config.hex_ids`, applies the scenario's fuel-edit patch
+    transform (a no-op for the baseline scenario), and runs `evaluate_hexels` to write
+    predicted hexel rasters under `<save_dir>/predictions/<scenario>/<endpoint>/`. Also
+    writes, under `save_dir`: `scenario_prediction_index.csv` (returned), `counterfactual
+    _metrics.csv`, and (for fuel scenarios) `fuel_edit_summary.csv` / `fuel_component_
+    replacements.csv`.
+
+    The baseline scenario is always evaluated regardless of `scenario_names`, since
+    downstream plotting scripts diff each fuel scenario against it.
+
+    Returns:
+        The scenario/endpoint -> prediction_dir index, as also written to
+        `scenario_prediction_index.csv`.
+    """
     project_root = (project_root or Path.cwd()).resolve()
     config = load_counterfactual_config(config_path)
     save_dir = _resolve_path(config.save_dir, project_root)
     raw_data_dir = _resolve_path(config.raw_data_dir, project_root)
     hex_ids = set(config.hex_ids)
     endpoints = [endpoint for endpoint in config.endpoints.values() if endpoint_names is None or endpoint.name in endpoint_names]
-    scenarios = [scenario for scenario in config.scenarios if scenario_names is None or scenario.name in scenario_names]
+    scenarios = _select_scenarios(config.scenarios, scenario_names)
     if not endpoints:
         raise ValueError("No enabled endpoints selected.")
     if not scenarios:

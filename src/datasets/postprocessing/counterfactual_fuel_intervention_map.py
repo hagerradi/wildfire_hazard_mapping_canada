@@ -82,6 +82,8 @@ FUEL_GROUP_COLOURS: dict[int, str] = {
 
 @dataclass(frozen=True)
 class FuelInterventionSummary:
+    """Per-hexel pixel-count summary of a fuel-edit scenario's effect vs. baseline fuel."""
+
     scenario: str
     endpoint: str
     hex_id: str
@@ -101,6 +103,7 @@ def paired_prediction_support(
     endpoint: str,
     hex_id: str,
 ) -> np.ndarray:
+    """Return the mask of pixels with valid predictions in both the baseline and `scenario` runs."""
     prediction_dirs = prediction_dirs_from_index(experiment_dir)
     baseline = read_prediction(prediction_raster_path(prediction_dirs[("baseline", endpoint)], hex_id))
     scenario_values = read_prediction(prediction_raster_path(prediction_dirs[(scenario, endpoint)], hex_id))
@@ -166,7 +169,7 @@ def intervention_layers_on_prediction_grid(
         raise ValueError(f"Scenario {scenario!r} must define nonfuel_ids.")
 
     prediction_dirs = prediction_dirs_from_index(experiment_dir)
-    reference_profile = prediction_reference_profile(prediction_dirs, hex_id)
+    reference_profile = prediction_reference_profile(prediction_dirs, hex_id, baseline_endpoint=endpoint)
     raw_fuel = load_raw_fuel_on_prediction_grid(
         raw_data_dir=raw_data_dir,
         reference_profile=reference_profile,
@@ -188,14 +191,8 @@ def intervention_layers_on_prediction_grid(
     grouped_fuel = group_raw_fuel(raw_fuel)
     edited_grouped = group_raw_fuel(result.fuel)
     supported_fuel = np.where(support, grouped_fuel, np.nan)
-    changed_mask = result.edit_mask & support
-    replacement_map = np.full(grouped_fuel.shape, np.nan, dtype=np.float32)
-    replacement_map[changed_mask] = edited_grouped[changed_mask]
-    # Report the true baseline non-fuel mask (not the changed pixels) so callers can
-    # correctly render/summarize both edit directions (barrier removal and burnable
-    # -> non-fuel insertion) against the original fuel map.
-    original_nonfuel = support & np.isfinite(grouped_fuel) & (grouped_fuel == NONFUEL_GROUP)
-    unexpected_burnable_changes = np.zeros(grouped_fuel.shape, dtype=bool)
+    supported_scenario = np.where(support, edited_grouped, np.nan)
+    original_nonfuel, replacement_map, unexpected_burnable_changes = intervention_layers(supported_fuel, supported_scenario)
     return supported_fuel, original_nonfuel, replacement_map, unexpected_burnable_changes
 
 
@@ -205,8 +202,17 @@ def intervention_layers(
     *,
     nonfuel_group: int = NONFUEL_GROUP,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Return original non-fuel mask, replacement-only map, and changed burnable mask."""
+    """Diff baseline vs. scenario fuel grids into masks for rendering and QA.
 
+    Returns:
+        original_nonfuel: baseline pixels that were non-fuel.
+        replacement_map: scenario fuel values at pixels that changed (NaN elsewhere).
+        unexpected_burnable_changes: changed pixels that were burnable in the baseline.
+            Expected to be non-empty for burnable-to-nonfuel scenarios, but should be
+            empty for nonfuel-to-burnable (barrier-removal) scenarios, where only
+            originally-nonfuel pixels are meant to change; a nonzero count there
+            signals the edit touched pixels outside its intended target set.
+    """
     if baseline_fuel.shape != scenario_fuel.shape:
         raise ValueError(f"Fuel arrays have different shapes: {baseline_fuel.shape} vs {scenario_fuel.shape}")
     baseline = np.asarray(baseline_fuel)
@@ -220,9 +226,6 @@ def intervention_layers(
     changed_mask = finite & (baseline_int != scenario_int)
     replacement_map = np.full(baseline.shape, np.nan, dtype=np.float32)
     replacement_map[changed_mask] = scenario[changed_mask]
-    # Changes originating from burnable pixels are expected for burnable -> non-fuel
-    # scenarios but unexpected for barrier-removal (nonfuel -> burnable) scenarios;
-    # callers can filter on this per scenario direction if needed.
     unexpected_burnable_changes = changed_mask & ~original_nonfuel
     return original_nonfuel, replacement_map, unexpected_burnable_changes
 
@@ -266,6 +269,7 @@ def summarize_intervention(
     original_nonfuel: np.ndarray,
     unexpected_burnable_changes: np.ndarray,
 ) -> FuelInterventionSummary:
+    """Tabulate pixel counts and replacement fuel groups from `intervention_layers` outputs."""
     baseline = np.asarray(baseline_fuel)
     valid = np.isfinite(baseline)
     original_burnable = valid & ~original_nonfuel
@@ -416,6 +420,16 @@ def write_fuel_intervention_map(
     out_dir: Path | None = None,
     config_path: Path = Path("configs/counterfactual_fuel.yaml"),
 ) -> tuple[Path, Path]:
+    """Render a fuel intervention map for one hexel/scenario/endpoint and write its summary CSV.
+
+    Loads the scenario's fuel edit from `config_path`, diffs baseline vs. edited fuel on
+    the prediction grid, plots the result to `out_dir` (default: `<experiment_dir>/figures
+    /fuel_intervention`), and appends the pixel-count summary to
+    `<experiment_dir>/counterfactual_<scenario>_fuel_intervention_summary.csv`.
+
+    Returns:
+        The (plot_path, summary_path) that were written.
+    """
     config = load_counterfactual_config(config_path)
     scenario_config = next((item for item in config.scenarios if item.name == scenario), None)
     if scenario_config is None:
@@ -450,7 +464,7 @@ def write_fuel_intervention_map(
         prediction_dirs = prediction_dirs_from_index(experiment_dir)
         zone_labels = load_zone_labels_on_prediction_grid(
             raw_data_dir=raw_data_dir,
-            reference_profile=prediction_reference_profile(prediction_dirs, hex_id),
+            reference_profile=prediction_reference_profile(prediction_dirs, hex_id, baseline_endpoint=endpoint),
             hex_id=hex_id,
             support=np.isfinite(np.asarray(baseline_fuel)),
         )

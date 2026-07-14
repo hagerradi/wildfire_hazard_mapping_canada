@@ -33,6 +33,8 @@ CONCENTRATION_FRACTIONS = (0.001, 0.01, 0.05, 0.10, 0.50)
 
 @dataclass(frozen=True)
 class ChangeSummary:
+    """Per-hexel statistics on how much a scenario's prediction differs from baseline."""
+
     scenario: str
     endpoint: str
     hex_id: str
@@ -67,6 +69,13 @@ def paired_prediction_change(
     endpoint: str,
     hex_id: str,
 ) -> tuple[np.ndarray, np.ndarray, dict]:
+    """Load baseline and scenario predictions and return their pixelwise delta.
+
+    Returns:
+        delta: scenario minus baseline, NaN where either prediction is missing.
+        paired: mask of pixels with valid predictions in both baseline and scenario.
+        profile: the baseline raster's rasterio profile (for grid/transform reuse).
+    """
     prediction_dirs = prediction_dirs_from_index(experiment_dir)
     baseline_dir = prediction_dirs.get(("baseline", endpoint))
     scenario_dir = prediction_dirs.get((scenario, endpoint))
@@ -92,6 +101,7 @@ def original_barrier_mask(
     hex_id: str,
     support: np.ndarray,
 ) -> np.ndarray:
+    """Return the mask of originally non-fuel ("barrier") pixels within `support`."""
     raw_fuel = load_raw_fuel_on_prediction_grid(
         raw_data_dir=raw_data_dir,
         reference_profile=reference_profile,
@@ -102,6 +112,7 @@ def original_barrier_mask(
 
 
 def absolute_change_concentration(abs_delta: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Return the Lorenz-curve-style (pixel_share, cumulative_abs_change_share) of |Δ|, sorted descending."""
     sorted_change = np.sort(np.asarray(abs_delta, dtype=np.float64))[::-1]
     total = float(sorted_change.sum())
     if sorted_change.size == 0 or np.isclose(total, 0.0):
@@ -136,6 +147,7 @@ def summarize_change(
     endpoint: str,
     hex_id: str,
 ) -> ChangeSummary:
+    """Compute magnitude/sign/concentration statistics for a hexel's prediction change."""
     values = np.asarray(delta[paired], dtype=np.float64)
     if values.size == 0:
         raise ValueError("No paired finite prediction pixels found.")
@@ -179,6 +191,7 @@ def distance_bin_summary(
     pixel_height_m: float,
     pixel_width_m: float,
 ) -> pd.DataFrame:
+    """Bin off-barrier pixels by Euclidean distance to the nearest original barrier pixel and summarize Δ per bin."""
     if not barrier_mask.any():
         raise ValueError("No original non-fuel barrier pixels found.")
     distance_m = distance_transform_edt(
@@ -224,6 +237,7 @@ def plot_change_distribution(
     out_path: Path,
     percentile: float = 99.9,
 ) -> None:
+    """Plot a histogram of Δ (clipped to the central `percentile` by |Δ|) and its change-concentration curve."""
     values = np.asarray(delta[paired], dtype=np.float64)
     abs_values = np.abs(values)
     limit = max(float(np.percentile(abs_values, percentile)), float(np.finfo(np.float32).eps))
@@ -253,6 +267,7 @@ def plot_change_distribution(
 
 
 def plot_distance_summary(summary: pd.DataFrame, *, endpoint: str, scenario: str, out_path: Path) -> None:
+    """Bar-plot mean/median Δ per barrier-distance bin, from `distance_bin_summary`'s output."""
     x = np.arange(len(summary))
     means = summary["delta_mean"].to_numpy(dtype=float)
     medians = summary["delta_median"].to_numpy(dtype=float)
@@ -281,6 +296,16 @@ def write_change_distribution(
     hex_id: str,
     out_dir: Path | None = None,
 ) -> list[Path]:
+    """Compute and plot a scenario's spatial change distribution, writing plots and summary CSVs.
+
+    Writes the change-distribution histogram/concentration plot, the mean-change-by-
+    barrier-distance plot, and their underlying summary CSVs, to `out_dir` (default:
+    `<experiment_dir>/figures/fuel_change_distribution`) and `experiment_dir` respectively.
+
+    Returns:
+        The four paths written: [distribution_plot, distance_plot, change_summary_csv,
+        distance_summary_csv].
+    """
     delta, paired, profile = paired_prediction_change(
         experiment_dir,
         scenario=scenario,

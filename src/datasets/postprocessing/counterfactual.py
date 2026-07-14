@@ -8,17 +8,22 @@ from typing import Any
 
 import yaml
 
+from src.datasets.fuel_utils import normalize_hex_id
+
 SCENARIO_KINDS = ("baseline", "fuel")
 
 
 @dataclass(frozen=True)
 class EndpointConfig:
+    """A trained-model endpoint (e.g. bp/fi/ros) to evaluate under each scenario."""
+
     name: str
     config_path: Path
     baseline_data_root: Path | None = None
 
     @classmethod
     def from_mapping(cls, name: str, raw: object) -> EndpointConfig:
+        """Parse an endpoint entry from the raw YAML mapping under `endpoints.<name>`."""
         if not isinstance(raw, dict):
             raise ValueError(f"Endpoint {name!r} must be a mapping.")
         if "config_path" not in raw:
@@ -33,6 +38,8 @@ class EndpointConfig:
 
 @dataclass(frozen=True)
 class ScenarioConfig:
+    """A named counterfactual scenario: either the unmodified `baseline`, or a `fuel` edit."""
+
     name: str
     kind: str
     description: str
@@ -40,6 +47,7 @@ class ScenarioConfig:
 
     @classmethod
     def from_mapping(cls, raw: object) -> ScenarioConfig:
+        """Parse a scenario entry from a raw YAML mapping under `scenarios`."""
         if not isinstance(raw, dict):
             raise ValueError("Each scenario must be a mapping.")
         missing = [key for key in ("name", "kind") if key not in raw]
@@ -59,11 +67,14 @@ class ScenarioConfig:
         )
 
     def fuel_edit(self) -> dict[str, Any] | None:
+        """Return this scenario's fuel-edit params, or None for the baseline scenario."""
         return self.params if self.kind == "fuel" else None
 
 
 @dataclass(frozen=True)
 class CounterfactualConfig:
+    """Top-level counterfactual run configuration: data paths, hexels, endpoints, and scenarios."""
+
     raw_data_dir: Path
     save_dir: Path
     hex_ids: list[str]
@@ -74,7 +85,7 @@ class CounterfactualConfig:
 def _parse_hex_ids(raw_hex_ids: object) -> list[str]:
     if not isinstance(raw_hex_ids, list | tuple) or not raw_hex_ids:
         raise ValueError("Counterfactual config key 'hex_ids' must be a non-empty list.")
-    return [str(hex_id).replace("hex", "").zfill(2) for hex_id in raw_hex_ids]
+    return [normalize_hex_id(hex_id) for hex_id in raw_hex_ids]
 
 
 def _parse_endpoints(raw_endpoints: object) -> dict[str, EndpointConfig]:
@@ -97,6 +108,7 @@ def _parse_scenarios(raw_scenarios: object) -> list[ScenarioConfig]:
 
 
 def load_counterfactual_config(path: Path) -> CounterfactualConfig:
+    """Load and validate a counterfactual run config (e.g. `configs/counterfactual_fuel.yaml`)."""
     with path.open() as handle:
         raw = yaml.safe_load(handle) or {}
     if not isinstance(raw, dict):
