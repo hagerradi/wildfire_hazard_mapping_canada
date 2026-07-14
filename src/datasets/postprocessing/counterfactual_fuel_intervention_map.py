@@ -136,6 +136,19 @@ def group_raw_fuel(raw_fuel: np.ndarray) -> np.ndarray:
     return grouped
 
 
+def burnable_fuel_support(
+    fuel: np.ma.MaskedArray | np.ndarray,
+    nonfuel_ids: list[int] | tuple[int, ...],
+) -> np.ndarray:
+    """Return valid pixels whose raw fuel ID is not a configured non-fuel ID."""
+
+    values = np.asarray(np.ma.asarray(fuel).filled(np.nan), dtype=np.float64)
+    valid = np.isfinite(values)
+    fuel_ids = np.full(values.shape, -9999, dtype=np.int32)
+    fuel_ids[valid] = values[valid].astype(np.int32)
+    return valid & ~np.isin(fuel_ids, nonfuel_ids)
+
+
 def load_zone_labels_on_prediction_grid(
     *,
     raw_data_dir: Path,
@@ -159,16 +172,14 @@ def intervention_layers_on_prediction_grid(
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Load the evaluated fuel intervention and return grouped layers on paired prediction support."""
 
-    prediction_dirs = prediction_dirs_from_index(experiment_dir)
-    scenario_dir = prediction_dirs.get((scenario, endpoint))
-    if scenario_dir is None:
-        raise KeyError(f"Missing prediction directory for scenario={scenario!r}, endpoint={endpoint!r}.")
-    baseline_fuel = read_prediction(fuel_intervention_raster_path(scenario_dir, hex_id, "baseline"))
-    scenario_fuel = read_prediction(fuel_intervention_raster_path(scenario_dir, hex_id, "scenario"))
+    baseline_fuel, scenario_fuel = load_evaluated_fuel_pair(
+        experiment_dir=experiment_dir,
+        scenario=scenario,
+        endpoint=endpoint,
+        hex_id=hex_id,
+    )
     baseline_values = np.asarray(baseline_fuel.filled(np.nan), dtype=np.float32)
     scenario_values = np.asarray(scenario_fuel.filled(np.nan), dtype=np.float32)
-    if baseline_values.shape != scenario_values.shape:
-        raise ValueError(f"Fuel intervention rasters have different shapes: {baseline_values.shape} vs {scenario_values.shape}.")
     support = paired_prediction_support(
         experiment_dir=experiment_dir,
         scenario=scenario,
@@ -182,6 +193,28 @@ def intervention_layers_on_prediction_grid(
     supported_scenario = np.where(support, edited_grouped, np.nan)
     original_nonfuel, replacement_map, unexpected_burnable_changes = intervention_layers(supported_fuel, supported_scenario)
     return supported_fuel, original_nonfuel, replacement_map, unexpected_burnable_changes
+
+
+def load_evaluated_fuel_pair(
+    *,
+    experiment_dir: Path,
+    scenario: str,
+    endpoint: str,
+    hex_id: str,
+) -> tuple[np.ma.MaskedArray, np.ma.MaskedArray]:
+    """Load the exact baseline and scenario fuel rasters persisted during evaluation."""
+
+    prediction_dirs = prediction_dirs_from_index(experiment_dir)
+    scenario_dir = prediction_dirs.get((scenario, endpoint))
+    if scenario_dir is None:
+        raise KeyError(f"Missing prediction directory for scenario={scenario!r}, endpoint={endpoint!r}.")
+    baseline_fuel = read_prediction(fuel_intervention_raster_path(scenario_dir, hex_id, "baseline"))
+    scenario_fuel = read_prediction(fuel_intervention_raster_path(scenario_dir, hex_id, "scenario"))
+    baseline_values = np.asarray(baseline_fuel.filled(np.nan), dtype=np.float32)
+    scenario_values = np.asarray(scenario_fuel.filled(np.nan), dtype=np.float32)
+    if baseline_values.shape != scenario_values.shape:
+        raise ValueError(f"Fuel intervention rasters have different shapes: {baseline_values.shape} vs {scenario_values.shape}.")
+    return baseline_fuel, scenario_fuel
 
 
 def intervention_layers(

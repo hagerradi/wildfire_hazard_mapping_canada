@@ -5,10 +5,9 @@ Ground-truth/baseline/scenario/\u0394 maps and high-response patch zoom-ins for 
 endpoint (bp/fi/ros) so any future counterfactual scenario family (fuel, weather,
 wind, ...) reuses this instead of writing a new per-endpoint figure script.
 
-For fuel-editing scenarios, pass ``nonfuel_ids`` (and optionally a precomputed
-``fuel_filled_mask``) so ground-truth/baseline stay restricted to originally-burnable
-pixels while the scenario panel also shows newly-filled pixels, with baseline
-treated as zero there \u2014 \u0394 then reflects the full barrier-removal effect.
+For fuel-editing scenarios, baseline and scenario support come from the exact fuel
+rasters persisted during evaluation. Non-burnable pixels contribute zero, so
+barrier removal and insertion are represented symmetrically.
 """
 
 from __future__ import annotations
@@ -29,7 +28,8 @@ from data_preparation.spatial.utils import load_spatial_raster
 from src.datasets.fuel_utils import normalize_hex_id
 from src.datasets.postprocessing.counterfactual import load_counterfactual_config
 from src.datasets.postprocessing.counterfactual_fuel_intervention_map import (
-    intervention_layers_on_prediction_grid,
+    burnable_fuel_support,
+    load_evaluated_fuel_pair,
     load_zone_labels_on_prediction_grid,
 )
 from src.datasets.postprocessing.counterfactual_viz import (
@@ -37,6 +37,7 @@ from src.datasets.postprocessing.counterfactual_viz import (
     DEFAULT_ZONE_OVERLAY_COLOR,
     DEFAULT_ZONE_OVERLAY_LINEWIDTH,
     add_zone_overlay_args,
+    build_endpoint_response,
     delta_norm,
     downsample_for_display,
     finite_values,
@@ -67,7 +68,6 @@ plt.rcParams.update(
 
 PANEL_TITLE_WIDTH = 30
 DELTA_COLOR = "#b2182b"
-FUEL_NODATA = -32768
 
 
 @dataclass(frozen=True)
@@ -115,19 +115,6 @@ def load_ground_truth(raw_data_dir: Path, hex_id: str, reference_profile: dict, 
     return gt
 
 
-def load_burnable_support(
-    raw_data_dir: Path,
-    hex_id: str,
-    reference_profile: dict,
-    nonfuel_ids: list[int],
-) -> np.ndarray:
-    """Boolean mask of burnable pixels (i.e. not in `nonfuel_ids`) on the prediction grid."""
-    paths = Paths(hex_id=hex_id, root_dir=raw_data_dir)
-    fuel_ma, _ = load_spatial_raster(path=paths.fuel_grid(hex_id), reference_profile=reference_profile)
-    fuel_values = np.ma.asarray(fuel_ma).filled(FUEL_NODATA).astype(np.int32)
-    return ~np.isin(fuel_values, nonfuel_ids)
-
-
 def block_response(delta: np.ma.MaskedArray, block: int) -> np.ndarray:
     """Mean absolute response pooled into `block`x`block` cells over valid pixels."""
     abs_delta = np.abs(np.ma.filled(delta, 0.0))
@@ -158,6 +145,7 @@ def hotspot_centers(delta: np.ma.MaskedArray, block: int, *, count: int, window:
 
 
 def load_endpoint_response(
+    experiment_dir: Path,
     prediction_dirs: dict[tuple[str, str], Path],
     hex_id: str,
     raw_data_dir: Path,
@@ -165,17 +153,8 @@ def load_endpoint_response(
     scenario: str,
     endpoint: str,
     nonfuel_ids: list[int] | None = None,
-    fuel_filled_mask: np.ndarray | None = None,
 ) -> tuple[np.ma.MaskedArray, np.ma.MaskedArray, np.ma.MaskedArray, np.ma.MaskedArray, tuple[float, float, float, float], dict]:
-    """Load ground-truth, baseline, scenario, and \u0394 on the prediction grid.
-
-    With no `nonfuel_ids`, support is simply "valid in both baseline and scenario" \u2014
-    the right default for non-fuel scenarios (weather, wind, ...). Pass `nonfuel_ids`
-    to also restrict ground-truth/baseline to originally-burnable pixels; additionally
-    pass `fuel_filled_mask` (pixels a fuel edit turned burnable) to keep those visible
-    in the scenario panel with baseline treated as zero there, so \u0394 reflects the full
-    barrier-removal effect.
-    """
+    """Load ground-truth and a support-aware baseline/scenario response."""
     if endpoint not in ENDPOINT_SPECS:
         raise ValueError(f"Unknown endpoint {endpoint!r}; expected one of {sorted(ENDPOINT_SPECS)}.")
 
@@ -185,25 +164,28 @@ def load_endpoint_response(
     with rasterio.open(baseline_path) as src:
         reference_profile = src.profile.copy()
 
-    finite = ~np.ma.getmaskarray(baseline) & ~np.ma.getmaskarray(scenario_values)
-    base_support = finite if nonfuel_ids is None else load_burnable_support(raw_data_dir, hex_id, reference_profile, nonfuel_ids) & finite
-
-    if fuel_filled_mask is None:
-        scenario_support = base_support
-        baseline_for_delta: np.ma.MaskedArray = baseline
+    if nonfuel_ids is None:
+        response = build_endpoint_response(baseline, scenario_values)
     else:
-        scenario_support = base_support | (np.asarray(fuel_filled_mask, dtype=bool) & finite)
-        baseline_for_delta = np.ma.where(base_support, baseline, 0.0)
+        baseline_fuel, scenario_fuel = load_evaluated_fuel_pair(
+            experiment_dir=experiment_dir,
+            scenario=scenario,
+            endpoint=endpoint,
+            hex_id=hex_id,
+        )
+        response = build_endpoint_response(
+            baseline,
+            scenario_values,
+            baseline_support=burnable_fuel_support(baseline_fuel, nonfuel_ids),
+            scenario_support=burnable_fuel_support(scenario_fuel, nonfuel_ids),
+        )
 
     ground_truth = load_ground_truth(raw_data_dir, hex_id, reference_profile, endpoint=endpoint)
     if ground_truth.shape != baseline.shape:
         raise ValueError(f"Ground-truth shape {ground_truth.shape} does not match prediction grid {baseline.shape}.")
 
-    ground_truth = restrict_to_support(ground_truth, base_support)
-    baseline = restrict_to_support(baseline, base_support)
-    scenario_values = restrict_to_support(scenario_values, scenario_support)
-    delta = restrict_to_support(scenario_values - baseline_for_delta, scenario_support)
-    return ground_truth, baseline, scenario_values, delta, extent, reference_profile
+    ground_truth = restrict_to_support(ground_truth, response.baseline_support)
+    return ground_truth, response.baseline, response.scenario, response.delta, extent, reference_profile
 
 
 def _render_panel(
@@ -393,25 +375,18 @@ def main() -> None:
         raise KeyError(f"Scenario {args.scenario!r} not found in {args.config}.")
 
     nonfuel_ids: list[int] | None = None
-    fuel_filled_mask: np.ndarray | None = None
     fuel_edit = scenario_cfg.fuel_edit()
     if fuel_edit is not None:
         nonfuel_ids = [int(value) for value in fuel_edit["nonfuel_ids"]]
-        _, fuel_filled_mask, _, _ = intervention_layers_on_prediction_grid(
-            experiment_dir=args.experiment_dir,
-            scenario=args.scenario,
-            endpoint=args.endpoint,
-            hex_id=args.hex_id,
-        )
 
     ground_truth, baseline, scenario_values, delta, extent, reference_profile = load_endpoint_response(
+        args.experiment_dir,
         prediction_dirs,
         args.hex_id,
         args.raw_data_dir,
         scenario=args.scenario,
         endpoint=args.endpoint,
         nonfuel_ids=nonfuel_ids,
-        fuel_filled_mask=fuel_filled_mask,
     )
     zone_labels = None
     if args.zone_overlay:

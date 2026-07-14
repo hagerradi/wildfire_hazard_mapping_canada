@@ -5,6 +5,7 @@ import pytest
 
 from src.datasets.postprocessing.counterfactual_viz import (
     abs_share_at,
+    build_endpoint_response,
     cumulative_abs_share,
     downsample_for_display,
     finite_values,
@@ -13,6 +14,21 @@ from src.datasets.postprocessing.counterfactual_viz import (
     symmetric_percentile_limit,
     values_and_valid,
 )
+
+
+def test_build_endpoint_response_handles_support_added_and_removed() -> None:
+    baseline = np.array([5.0, 7.0, 9.0])
+    scenario = np.array([6.0, 8.0, 10.0])
+    response = build_endpoint_response(
+        baseline,
+        scenario,
+        baseline_support=np.array([True, False, True]),
+        scenario_support=np.array([True, True, False]),
+    )
+
+    np.testing.assert_allclose(response.baseline.filled(np.nan), [5.0, np.nan, 9.0], equal_nan=True)
+    np.testing.assert_allclose(response.scenario.filled(np.nan), [6.0, 8.0, np.nan], equal_nan=True)
+    np.testing.assert_allclose(response.delta.filled(np.nan), [1.0, 8.0, -9.0])
 
 
 def test_finite_values_drops_nan_and_masked() -> None:

@@ -8,6 +8,7 @@ counterfactual figure scripts.
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -20,6 +21,60 @@ from matplotlib.colors import Normalize, TwoSlopeNorm
 DEFAULT_ZONE_OVERLAY_COLOR = "#111111"
 DEFAULT_ZONE_OVERLAY_LINEWIDTH = 1.4
 DEFAULT_ZONE_OVERLAY_ALPHA = 0.9
+
+
+@dataclass(frozen=True)
+class EndpointResponse:
+    baseline: np.ma.MaskedArray
+    scenario: np.ma.MaskedArray
+    delta: np.ma.MaskedArray
+    baseline_support: np.ndarray
+    scenario_support: np.ndarray
+    response_support: np.ndarray
+
+
+def build_endpoint_response(
+    baseline: np.ma.MaskedArray | np.ndarray,
+    scenario: np.ma.MaskedArray | np.ndarray,
+    *,
+    baseline_support: np.ndarray | None = None,
+    scenario_support: np.ndarray | None = None,
+) -> EndpointResponse:
+    """Build a symmetric counterfactual response on baseline/scenario support.
+
+    Values outside each scenario's support contribute zero to the response. For fuel
+    edits this makes newly burnable pixels contribute ``+scenario`` and newly
+    non-burnable pixels contribute ``-baseline``.
+    """
+
+    baseline_values, baseline_valid = values_and_valid(baseline)
+    scenario_values, scenario_valid = values_and_valid(scenario)
+    if baseline_values.shape != scenario_values.shape:
+        raise ValueError(f"Baseline/scenario shapes differ: {baseline_values.shape} vs {scenario_values.shape}.")
+    paired = baseline_valid & scenario_valid
+
+    if baseline_support is None and scenario_support is None:
+        supported_baseline = paired
+        supported_scenario = paired
+    elif baseline_support is None or scenario_support is None:
+        raise ValueError("baseline_support and scenario_support must be provided together.")
+    else:
+        if baseline_support.shape != paired.shape or scenario_support.shape != paired.shape:
+            raise ValueError("Prediction and support masks must have the same shape.")
+        supported_baseline = paired & np.asarray(baseline_support, dtype=bool)
+        supported_scenario = paired & np.asarray(scenario_support, dtype=bool)
+
+    response_support = supported_baseline | supported_scenario
+    baseline_effective = np.where(supported_baseline, baseline_values, 0.0)
+    scenario_effective = np.where(supported_scenario, scenario_values, 0.0)
+    return EndpointResponse(
+        baseline=np.ma.masked_where(~supported_baseline, baseline_values),
+        scenario=np.ma.masked_where(~supported_scenario, scenario_values),
+        delta=np.ma.masked_where(~response_support, scenario_effective - baseline_effective),
+        baseline_support=supported_baseline,
+        scenario_support=supported_scenario,
+        response_support=response_support,
+    )
 
 
 def prediction_dirs_from_index(experiment_dir: Path) -> dict[tuple[str, str], Path]:

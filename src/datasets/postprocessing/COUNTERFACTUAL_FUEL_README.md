@@ -36,9 +36,9 @@ src/datasets/postprocessing/
 3. **Response maps** (`counterfactual_response_maps.py`): generic, endpoint-parameterized
    (`--endpoint {bp,fi,ros}`) ground-truth/baseline/scenario/Δ maps for one hexel/scenario
    pair, plus zoom-ins on the highest-Δ patches and per-pixel Δ histogram/concentration
-   plots. For `fuel` scenarios it automatically restricts ground-truth/baseline to
-   originally-burnable pixels while keeping newly-filled pixels visible in the scenario
-   panel (baseline treated as zero there), so Δ reflects the full barrier-removal effect.
+   plots. For `fuel` scenarios it uses the persisted baseline/scenario fuel support:
+   non-burnable pixels contribute zero, so newly burnable pixels contribute the scenario
+   response and newly non-burnable pixels contribute the negative baseline response.
    Reusable as-is by any future counterfactual scenario family — not just fuel edits.
 4. **Local zoom panels** (`counterfactual_local_zoom_panels.py`): fuel-intervention-specific
    companion to the response maps. Instead of generic high-|Δ| hotspots, it selects
@@ -47,9 +47,9 @@ src/datasets/postprocessing/
    baseline/scenario/Δ FI and hazard (BP × FI) maps for each selected window, plus a
    per-window summary CSV.
 5. **Change distribution** (`counterfactual_change_distribution.py`): computes per-hexel Δ
-   magnitude/sign/concentration statistics — including barrier vs. off-barrier attribution
+   magnitude/sign/concentration statistics — including edited vs. off-edit attribution
    and top-fraction abs-change shares — into a summary CSV, and plots/tabulates mean Δ as a
-   function of distance from the edited (barrier) pixels.
+   function of distance from the edited fuel pixels.
 
 ## Configuration (`configs/counterfactual_fuel.yaml`)
 
