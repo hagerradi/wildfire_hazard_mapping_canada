@@ -161,8 +161,6 @@ def intervention_layers_on_prediction_grid(
 
     params = dict(fuel_edit)
     mode = str(params.pop("mode"))
-    if not mode.startswith("nonfuel_to_burnable"):
-        raise ValueError(f"Fuel intervention map supports barrier-removal scenarios, got mode={mode!r}.")
     nonfuel_ids = params.pop("nonfuel_ids")
     if not isinstance(nonfuel_ids, list | tuple) or not nonfuel_ids:
         raise ValueError(f"Scenario {scenario!r} must define nonfuel_ids.")
@@ -190,11 +188,15 @@ def intervention_layers_on_prediction_grid(
     grouped_fuel = group_raw_fuel(raw_fuel)
     edited_grouped = group_raw_fuel(result.fuel)
     supported_fuel = np.where(support, grouped_fuel, np.nan)
-    supported_nonfuel = result.edit_mask & support
+    changed_mask = result.edit_mask & support
     replacement_map = np.full(grouped_fuel.shape, np.nan, dtype=np.float32)
-    replacement_map[supported_nonfuel] = edited_grouped[supported_nonfuel]
+    replacement_map[changed_mask] = edited_grouped[changed_mask]
+    # Report the true baseline non-fuel mask (not the changed pixels) so callers can
+    # correctly render/summarize both edit directions (barrier removal and burnable
+    # -> non-fuel insertion) against the original fuel map.
+    original_nonfuel = support & np.isfinite(grouped_fuel) & (grouped_fuel == NONFUEL_GROUP)
     unexpected_burnable_changes = np.zeros(grouped_fuel.shape, dtype=bool)
-    return supported_fuel, supported_nonfuel, replacement_map, unexpected_burnable_changes
+    return supported_fuel, original_nonfuel, replacement_map, unexpected_burnable_changes
 
 
 def intervention_layers(
@@ -215,10 +217,13 @@ def intervention_layers(
     baseline_int[finite] = baseline[finite].astype(np.int32)
     scenario_int[finite] = scenario[finite].astype(np.int32)
     original_nonfuel = finite & (baseline_int == int(nonfuel_group))
-    replacement_mask = original_nonfuel & (scenario_int != int(nonfuel_group))
+    changed_mask = finite & (baseline_int != scenario_int)
     replacement_map = np.full(baseline.shape, np.nan, dtype=np.float32)
-    replacement_map[replacement_mask] = scenario[replacement_mask]
-    unexpected_burnable_changes = finite & ~original_nonfuel & (baseline != scenario)
+    replacement_map[changed_mask] = scenario[changed_mask]
+    # Changes originating from burnable pixels are expected for burnable -> non-fuel
+    # scenarios but unexpected for barrier-removal (nonfuel -> burnable) scenarios;
+    # callers can filter on this per scenario direction if needed.
+    unexpected_burnable_changes = changed_mask & ~original_nonfuel
     return original_nonfuel, replacement_map, unexpected_burnable_changes
 
 

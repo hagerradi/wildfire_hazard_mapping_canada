@@ -134,6 +134,42 @@ def test_intervention_layers_show_only_replaced_nonfuel_pixels() -> None:
     assert summary.replacement_fuel_ids == "8;14"
 
 
+def test_intervention_layers_detects_burnable_to_nonfuel_changes() -> None:
+    baseline = np.array(
+        [
+            [1, 0, 2],
+            [3, 0, np.nan],
+        ],
+        dtype=np.float32,
+    )
+    scenario = np.array(
+        [
+            [0, 0, 2],
+            [3, 0, np.nan],
+        ],
+        dtype=np.float32,
+    )
+
+    original_nonfuel, replacement_map, unexpected = intervention_layers(baseline, scenario)
+    assert original_nonfuel.tolist() == [[False, True, False], [False, True, False]]
+    assert replacement_map[0, 0] == pytest.approx(0)
+    assert np.isnan(replacement_map[0, 1])
+    assert unexpected.tolist() == [[True, False, False], [False, False, False]]
+
+    summary = summarize_intervention(
+        scenario="synthetic_random",
+        endpoint="bp",
+        hex_id="16",
+        baseline_fuel=baseline,
+        replacement_map=replacement_map,
+        original_nonfuel=original_nonfuel,
+        unexpected_burnable_changes=unexpected,
+    )
+    assert summary.n_original_nonfuel_pixels == 2
+    assert summary.n_replaced_pixels == 1
+    assert summary.replacement_fuel_ids == "0"
+
+
 def test_modal_adjacent_burnable_across_grids_picks_consistent_replacement() -> None:
     grids = [
         np.array([[1, 101, 2], [1, 101, 2]], dtype=np.int32),
