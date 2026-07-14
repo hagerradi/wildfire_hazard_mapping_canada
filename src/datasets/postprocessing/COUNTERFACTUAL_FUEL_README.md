@@ -14,8 +14,10 @@ src/evaluate_counterfactual.py            # 1. Evaluate baseline + selected scen
         │
         ▼
 src/datasets/postprocessing/
-  counterfactual_fuel_intervention_map.py # 2. Plot fuel edit + prediction change for one hexel/scenario/endpoint
-  counterfactual_change_distribution.py   # 3. Summarize prediction change magnitude and its spatial concentration
+  counterfactual_fuel_intervention_map.py # 2. Plot the fuel edit itself (original vs. replacement fuel)
+  counterfactual_response_maps.py         # 3. Plot GT/baseline/scenario/Δ prediction maps + hotspot patch zoom
+  counterfactual_local_zoom_panels.py     #    Fuel-specific zoom on selected barrier-removal neighborhoods
+  counterfactual_change_distribution.py   # 4. Summarize prediction change magnitude and its spatial concentration
 ```
 
 1. **Evaluate** (`evaluate_counterfactual.py`): runs the `baseline` scenario (unmodified
@@ -26,10 +28,24 @@ src/datasets/postprocessing/
    `(scenario, endpoint) -> prediction_dir` (`scenario_prediction_index.csv`), evaluation
    metrics (`counterfactual_metrics.csv`), and fuel-edit summaries (`fuel_edit_summary.csv`,
    `fuel_component_replacements.csv`).
-2. **Map** (`counterfactual_fuel_intervention_map.py`): for one hexel/scenario/endpoint,
-   renders a side-by-side map of the baseline fuel, the edited pixels, and the resulting
-   prediction change, plus a per-hexel pixel-count summary CSV.
-3. **Change distribution** (`counterfactual_change_distribution.py`): summarizes how much
+2. **Fuel edit map** (`counterfactual_fuel_intervention_map.py`): for one hexel/scenario/
+   endpoint, renders a side-by-side map of the original grouped fuel and its counterfactual
+   replacement (original non-fuel vs. replacement fuel groups), plus a per-hexel
+   pixel-count summary CSV.
+3. **Response maps** (`counterfactual_response_maps.py`): generic, endpoint-parameterized
+   (`--endpoint {bp,fi,ros}`) ground-truth/baseline/scenario/Δ maps for one hexel/scenario
+   pair, plus zoom-ins on the highest-Δ patches and per-pixel Δ histogram/concentration
+   plots. For `fuel` scenarios it automatically restricts ground-truth/baseline to
+   originally-burnable pixels while keeping newly-filled pixels visible in the scenario
+   panel (baseline treated as zero there), so Δ reflects the full barrier-removal effect.
+   Reusable as-is by any future counterfactual scenario family — not just fuel edits.
+4. **Local zoom panels** (`counterfactual_local_zoom_panels.py`): fuel-intervention-specific
+   companion to the response maps. Instead of generic high-|Δ| hotspots, it selects
+   fixed-size windows that clearly contain edited non-fuel barriers and a strong
+   hazard/FI response, then renders the barrier mask, its local-modal replacement, and the
+   baseline/scenario/Δ FI and hazard (BP × FI) maps for each selected window, plus a
+   per-window summary CSV.
+5. **Change distribution** (`counterfactual_change_distribution.py`): summarizes how much
    the prediction changed (magnitude, sign, spatial concentration, and change as a function
    of distance from the edited pixels) across the whole hexel.
 
@@ -107,13 +123,23 @@ python -m src.datasets.postprocessing.counterfactual_fuel_intervention_map \
     --experiment_dir experiments/counterfactual_fuel_hex16 \
     --scenario remove_barriers_adjacent_modal --endpoint bp --hex_id 16
 
+# Plot GT/baseline/scenario/Δ response maps + patch zoom for one endpoint
+python -m src.datasets.postprocessing.counterfactual_response_maps \
+    --experiment_dir experiments/counterfactual_fuel_hex16 \
+    --scenario remove_barriers_adjacent_modal --endpoint fi --hex_id 16
+
+# Plot local zoom panels on selected barrier-removal neighborhoods (uses bp + fi)
+python -m src.datasets.postprocessing.counterfactual_local_zoom_panels \
+    --experiment_dir experiments/counterfactual_fuel_hex16 \
+    --scenario remove_barriers_adjacent_modal --hex_id 16
+
 # Summarize the prediction change distribution
 python -m src.datasets.postprocessing.counterfactual_change_distribution \
     --experiment_dir experiments/counterfactual_fuel_hex16 \
     --scenario remove_barriers_adjacent_modal --endpoint bp
 ```
 
-Run `--help` on either script for the full set of options (e.g. `--zone_overlay` to draw
+Run `--help` on any script for the full set of options (e.g. `--zone_overlay` to draw
 firezone boundaries, `--downsample` for lower-resolution map rendering).
 
 See `run_files/counterfactual_fuel_iROS.sh` and `run_files/counterfactual_c2_plots.sh` for

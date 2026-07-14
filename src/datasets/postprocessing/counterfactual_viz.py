@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 import rasterio
 from matplotlib.collections import LineCollection
+from matplotlib.colors import Normalize, TwoSlopeNorm
 
 DEFAULT_ZONE_OVERLAY_COLOR = "#111111"
 DEFAULT_ZONE_OVERLAY_LINEWIDTH = 1.4
@@ -57,6 +58,116 @@ def prediction_reference_profile(
         raise KeyError(f"Missing baseline {baseline_endpoint.upper()} prediction directory; cannot define reference grid.")
     with rasterio.open(prediction_raster_path(baseline_dir, hex_id)) as src:
         return src.profile.copy()
+
+
+def load_baseline_scenario_pair(
+    prediction_dirs: dict[tuple[str, str], Path],
+    hex_id: str,
+    *,
+    endpoint: str,
+    scenario: str,
+) -> tuple[np.ma.MaskedArray, np.ma.MaskedArray]:
+    """Read the baseline and scenario prediction rasters for one endpoint."""
+
+    baseline_dir = prediction_dirs.get(("baseline", endpoint))
+    scenario_dir = prediction_dirs.get((scenario, endpoint))
+    if baseline_dir is None:
+        raise KeyError(f"Missing baseline {endpoint.upper()} prediction directory.")
+    if scenario_dir is None:
+        raise KeyError(f"Missing {endpoint.upper()} prediction directory for scenario={scenario!r}.")
+    baseline = read_prediction(prediction_raster_path(baseline_dir, hex_id))
+    scenario_values = read_prediction(prediction_raster_path(scenario_dir, hex_id))
+    if scenario_values.shape != baseline.shape:
+        raise ValueError(f"Scenario {endpoint.upper()} shape {scenario_values.shape} does not match baseline grid {baseline.shape}.")
+    return baseline, scenario_values
+
+
+def read_prediction_extent(path: Path) -> tuple[float, float, float, float]:
+    with rasterio.open(path) as src:
+        bounds = src.bounds
+    return bounds.left, bounds.right, bounds.bottom, bounds.top
+
+
+def prediction_footprint(
+    prediction_dirs: dict[tuple[str, str], Path],
+    hex_id: str,
+    *,
+    endpoint: str,
+    scenario: str = "baseline",
+) -> np.ndarray:
+    """Valid raster footprint before scenario-specific map masks are applied."""
+
+    prediction_dir = prediction_dirs.get((scenario, endpoint))
+    if prediction_dir is None:
+        raise KeyError(f"Missing {scenario} {endpoint.upper()} prediction directory; cannot define prediction footprint.")
+    return ~np.ma.getmaskarray(read_prediction(prediction_raster_path(prediction_dir, hex_id)))
+
+
+def finite_values(data: np.ma.MaskedArray | np.ndarray) -> np.ndarray:
+    values = np.asarray(np.ma.asarray(data).filled(np.nan), dtype=np.float64)
+    return values[np.isfinite(values)]
+
+
+def values_and_valid(data: np.ma.MaskedArray | np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    values = np.asarray(np.ma.asarray(data).filled(np.nan), dtype=np.float64)
+    return values, np.isfinite(values)
+
+
+def symmetric_percentile_limit(deltas: list[np.ma.MaskedArray], percentile: float = 99.5) -> float:
+    """Symmetric color limit from pooled absolute delta values."""
+
+    values = [np.abs(finite_values(delta)) for delta in deltas]
+    values = [value for value in values if value.size > 0]
+    if not values:
+        return 1.0
+    limit = float(np.percentile(np.concatenate(values), percentile))
+    return max(limit, 1e-9)
+
+
+def robust_norm(arrays: list[np.ndarray | np.ma.MaskedArray], *, low: float = 1.0, high: float = 99.0) -> Normalize:
+    """Sequential colour scale spanning the `[low, high]` percentiles of pooled values."""
+
+    values = [finite_values(array) for array in arrays]
+    values = [value for value in values if value.size > 0]
+    if not values:
+        return Normalize(vmin=0.0, vmax=1.0)
+    pooled = np.concatenate(values)
+    vmin = float(np.percentile(pooled, low))
+    vmax = float(np.percentile(pooled, high))
+    if np.isclose(vmin, vmax):
+        vmax = vmin + 1.0
+    return Normalize(vmin=vmin, vmax=vmax)
+
+
+def delta_norm(deltas: list[np.ma.MaskedArray], percentile: float = 99.5) -> TwoSlopeNorm:
+    """Zero-centered diverging colour scale spanning `symmetric_percentile_limit(deltas)`."""
+
+    limit = symmetric_percentile_limit(deltas, percentile=percentile)
+    return TwoSlopeNorm(vmin=-limit, vcenter=0.0, vmax=limit)
+
+
+def downsample_for_display(data: np.ma.MaskedArray | np.ndarray, factor: int) -> np.ma.MaskedArray:
+    """Stride-downsample a raster for plotting only."""
+
+    arr = np.ma.asarray(data)
+    if factor <= 1:
+        return arr
+    row_indices = np.arange(0, arr.shape[0], factor)
+    col_indices = np.arange(0, arr.shape[1], factor)
+    if row_indices.size > 0 and row_indices[-1] != arr.shape[0] - 1:
+        row_indices = np.append(row_indices, arr.shape[0] - 1)
+    if col_indices.size > 0 and col_indices[-1] != arr.shape[1] - 1:
+        col_indices = np.append(col_indices, arr.shape[1] - 1)
+    return arr[np.ix_(row_indices, col_indices)]
+
+
+def restrict_to_support(data: np.ma.MaskedArray | np.ndarray, support_mask: np.ndarray) -> np.ma.MaskedArray:
+    """Mask an array outside a boolean analysis support mask."""
+
+    arr = np.ma.asarray(data)
+    if arr.shape != support_mask.shape:
+        raise ValueError(f"Support mask shape {support_mask.shape} does not match data shape {arr.shape}.")
+    return np.ma.masked_where(~support_mask | np.ma.getmaskarray(arr), arr)
 
 
 def add_zone_overlay_args(parser: argparse.ArgumentParser) -> None:
@@ -141,3 +252,112 @@ def overlay_zone_boundaries(
     if segments.shape[0] == 0:
         return
     ax.add_collection(LineCollection(list(segments), colors=color, linewidths=linewidth, alpha=alpha, zorder=5, clip_on=False))
+
+
+def cumulative_abs_share(delta: np.ma.MaskedArray | np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Concentration curve of an output delta.
+
+    Returns ``(pixel_fraction, cumulative_abs_share)`` for finite pixels ranked by
+    descending ``|delta|``: at ``pixel_fraction == 0.1`` the share is the fraction of
+    total absolute change contributed by the most-changed 10% of pixels.  A curve near
+    the diagonal means changes are spread out; a curve bowed to the top-left means a few
+    pixels dominate.
+    """
+
+    values = np.abs(finite_values(delta))
+    if values.size == 0:
+        return np.array([0.0, 1.0]), np.array([0.0, 0.0])
+    values = np.sort(values)[::-1]
+    pixel_fraction = np.arange(1, values.size + 1, dtype=np.float64) / values.size
+    total = float(values.sum())
+    cumulative = np.cumsum(values) / total if total > 0.0 else np.zeros_like(pixel_fraction)
+    return pixel_fraction, cumulative
+
+
+def abs_share_at(pixel_fraction: np.ndarray, cumulative_share: np.ndarray, top_fraction: float) -> float:
+    """Cumulative absolute-change share contributed by the top ``top_fraction`` of pixels."""
+
+    if pixel_fraction.size == 0:
+        return 0.0
+    index = int(np.searchsorted(pixel_fraction, top_fraction, side="left"))
+    index = min(index, cumulative_share.size - 1)
+    return float(cumulative_share[index])
+
+
+def plot_delta_histogram(
+    delta: np.ma.MaskedArray | np.ndarray,
+    *,
+    out_path: Path,
+    xlabel: str,
+    title: str,
+    color: str = "#b2182b",
+    percentile: float = 99.5,
+    bins: int = 201,
+) -> None:
+    """Reusable per-pixel output-delta histogram for any counterfactual intervention.
+
+    Log-count histogram of the delta with mean and zero markers.
+    """
+
+    values = finite_values(delta)
+    fig, ax = plt.subplots(figsize=(7.0, 5.2))
+
+    if values.size == 0:
+        ax.text(0.5, 0.5, "no finite delta", ha="center", va="center", transform=ax.transAxes)
+        fig.suptitle(title)
+        fig.tight_layout()
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(out_path, dpi=200, bbox_inches="tight")
+        plt.close(fig)
+        return
+
+    limit = max(float(np.percentile(np.abs(values), percentile)), 1e-9)
+    mean = float(np.mean(values))
+    frac_positive = float(np.mean(values > 0))
+    ax.hist(values, bins=np.linspace(-limit, limit, bins).tolist(), histtype="step", linewidth=1.8, color=color)
+    ax.axvline(mean, color=color, linestyle="--", linewidth=1.2, label=f"mean \u0394={mean:+.3g}")
+    ax.axvline(0.0, color="0.4", linewidth=1.0)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel("Pixel count")
+    ax.set_yscale("log")
+    ax.set_title(f"{100.0 * frac_positive:g}% of pixels increase")
+    ax.legend(loc="upper left")
+
+    fig.suptitle(title)
+    fig.tight_layout(rect=(0, 0, 1, 0.96))
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_path, dpi=200, bbox_inches="tight")
+    plt.close(fig)
+
+
+def plot_delta_concentration(
+    delta: np.ma.MaskedArray | np.ndarray,
+    *,
+    out_path: Path,
+    title: str,
+    color: str = "#b2182b",
+) -> None:
+    """Reusable |delta| concentration (cumulative-share) curve for any counterfactual intervention.
+
+    Shows whether the response is spread across-the-board or driven by a few
+    pixels: at ``pixel_fraction == 0.1`` the y-value is the fraction of total
+    absolute change contributed by the most-changed 10% of pixels.
+    """
+
+    pixel_fraction, cumulative = cumulative_abs_share(delta)
+    fig, ax = plt.subplots(figsize=(7.0, 5.2))
+    ax.plot([0.0, 1.0], [0.0, 1.0], color="0.6", linestyle=":", linewidth=1.0, label="uniform")
+    ax.plot(pixel_fraction, cumulative, color=color, linewidth=1.8)
+    annotations = "  ".join(f"top {int(f * 100)}%: {abs_share_at(pixel_fraction, cumulative, f):.0%}" for f in (0.01, 0.05, 0.10))
+    ax.set_xlim(0.0, 1.0)
+    ax.set_ylim(0.0, 1.0)
+    ax.set_xlabel("Top fraction of pixels (ranked by |\u0394|)")
+    ax.set_ylabel("Cumulative share of total |\u0394|")
+    ax.set_title(annotations)
+    ax.legend(loc="lower right")
+
+    fig.suptitle(title)
+    fig.tight_layout(rect=(0, 0, 1, 0.96))
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_path, dpi=200, bbox_inches="tight")
+    plt.close(fig)
