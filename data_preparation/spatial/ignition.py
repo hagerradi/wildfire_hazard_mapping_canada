@@ -57,8 +57,9 @@ def load_ignition_grid(
 
 # IgnitionDistribution.csv cause label -> grid cause letter
 _csv_cause_to_letter = {label: letter for letter, label in fire_cause_label_mapping.items()}
-# matches e.g. "hex02_ignGrid_H_s3.tif" -> ("H", 3)
-_IGN_GRID_PATTERN = re.compile(r"_ignGrid_([A-Z])_s(\d+)\.tif$")
+# matches e.g. "hex02_ignGrid_H_s3.tif" or "hex100_ignGrid_H_Spring.tif"
+# Season token is any non-dot sequence after the cause letter.
+_IGN_GRID_PATTERN = re.compile(r"_ignGrid_([A-Z])_([^.]+)\.tif$")
 
 
 def load_ignition_grid_weighted(
@@ -79,10 +80,11 @@ def load_ignition_grid_weighted(
         human_channel     = sum_s w_H_s * grid_H_s
         lightning_channel = sum_s w_N_s * grid_N_s
 
-    The number of seasons varies per hex (some have s1/s2, others s1/s2/s3), so
-    grids are discovered from disk rather than assumed. Returns a masked array
-    of shape (H, W, 2): channel 0 = Human, channel 1 = Lightning. Falls back to
-    uniform weights if the CSV is missing or all weights are zero.
+    Season tokens are read directly from TIF filenames and the CSV — both use
+    the same naming convention (e.g. "s1"/"s2"/"s3" or "Spring"/"Summer-Fall").
+    Returns a masked array of shape (H, W, 2): channel 0 = Human,
+    channel 1 = Lightning. Falls back to uniform weights if the CSV is missing
+    or all weights are zero.
     """
     all_paths = Paths(hex_id=hex_id, root_dir=root_dir)
     ign_dir = all_paths.ignition_prob_dir()
@@ -91,20 +93,20 @@ def load_ignition_grid_weighted(
     # ── 1. Discover the (cause, season) ignition grids present for this hex ───
     # Season count varies per hex, and some hexels lack a whole cause (e.g.
     # hex54 has no lightning grids), so we read whatever TIFs are on disk.
-    grids: dict[tuple[str, int], np.ma.MaskedArray] = {}
+    grids: dict[tuple[str, str], np.ma.MaskedArray] = {}
     known_causes = set(fire_cause_mapping.values())
     if ign_dir.is_dir():
         for fname in sorted(os.listdir(ign_dir)):
             match = _IGN_GRID_PATTERN.search(fname)
             if match is None or match.group(1) not in known_causes:
                 continue
-            cause_letter, season_int = match.group(1), int(match.group(2))
+            cause_letter, season_str = match.group(1), match.group(2)
             raster, _ = load_spatial_raster(
                 path=ign_dir / fname,
                 mask_path=mask_path,
                 reference_profile=reference_profile,
             )
-            grids[(cause_letter, season_int)] = raster
+            grids[(cause_letter, season_str)] = raster
 
     if not grids:
         raise FileNotFoundError(f"No ignition TIFs found in {ign_dir} for hex{hex_id}")
@@ -138,7 +140,7 @@ def load_ignition_grid_weighted(
 
     # ── 4. Compute hex-level weights from IgnitionDistribution.csv ───────────
     ign_csv = all_paths.ignition_distribution_table(hex_id=hex_id)
-    weights: dict[tuple[str, int], float] = {key: 0.0 for key in grids}
+    weights: dict[tuple[str, str], float] = {key: 0.0 for key in grids}
 
     if ign_csv.exists() and zone_name_to_id and area_frac:
         dist_df = pd.read_csv(ign_csv)
@@ -157,9 +159,11 @@ def load_ignition_grid_weighted(
             if zone_id is None or zone_id not in area_frac:
                 continue
 
-            # Map CSV cause/season back to our (cause_letter, season_int) key
+            # Map CSV cause/season back to our (cause_letter, season_str) key.
+            # Season token in the CSV always matches the token in the TIF filename
+            # (e.g. "s1" or "Spring" or "Summer-Fall").
             mapped_cause = _csv_cause_to_letter.get(cause_csv)
-            mapped_season = int(season_csv[1:]) if season_csv[:1] == "s" and season_csv[1:].isdigit() else None
+            mapped_season = season_csv if season_csv else None
             if mapped_cause is None or mapped_season is None:
                 continue
 
@@ -191,7 +195,7 @@ def load_ignition_grid_weighted(
     # ── 6. Blend the per-season grids into one channel per cause ─────────────
     ref = next(iter(grids.values()))
 
-    def _blend(keys: list[tuple[str, int]]) -> np.ma.MaskedArray:
+    def _blend(keys: list[tuple[str, str]]) -> np.ma.MaskedArray:
         result = np.ma.zeros_like(ref)
         for k in keys:
             result = result + weights[k] * grids[k]

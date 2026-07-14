@@ -1,8 +1,9 @@
-To generate the initial rate of spread data for current fuel types in the national map, as a function of ISI (initial spread index),
-directly run the R script: source("compute_vector_values_national.R"), the output csv file will be under "fbp_rosi_curves_national_fuel.csv"
+To generate the initial rate of spread data and Head fire intensity for current fuel types in the national map, as a function of ISI (initial spread index),
+directly run the R script: source("compute_vector_values_national.R"), the output csv file will be under "fbp_curves_national_fuel.csv"
 or BETTER run it from python using the script: `generate_fuel_vectors_national.py`
 `python -m data_preparation.tabular.fuel_features.generate_fuel_vectors_national --output-dir /network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA/data_samples_v3`
 
+The curves are generated for the fuel inside `Fuel_Types.csv`
 
 [NOT USED FOR NOW] For FBP Raster function, run the python script:
 `python -m data_preparation/feature_processing/fuel_features/generate`
