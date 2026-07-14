@@ -53,10 +53,10 @@ def parse_args() -> argparse.Namespace:
         "--metrics",
         type=str,
         nargs="+",
-        default=["hexel/all/", "patch/"],
-        help="Metric columns to keep and summarize with mean/std, e.g. 'patch/mse hexel/all/mse'. Matches exact "
-        "column names or prefixes (e.g. 'hexel/all/' keeps every column starting with it). Defaults to every "
-        "numeric column (all patch/* and hexel/* metrics) when omitted.",
+        default=["test_hexel/all/", "patch/"],
+        help="Metric columns to keep and summarize with mean/std, e.g. 'patch/mse test_hexel/all/mse'. Matches exact "
+        "column names or prefixes (e.g. 'test_hexel/all/' keeps every column starting with it). Defaults to every "
+        "numeric column (all patch/*, test_hexel/*, and val_hexel/* metrics) when omitted.",
     )
     return parser.parse_args()
 
@@ -85,7 +85,7 @@ def aggregate_eval_results(save_dirs: list[str], metrics: list[str] | None = Non
     concatenate them into a single DataFrame, and append trailing "mean"/"std" summary rows.
 
     If `metrics` is given, only id columns (run_id, seed, save_dir) plus columns matching
-    `metrics` (by exact name or prefix, e.g. "hexel/all/") are kept and summarized. Otherwise
+    `metrics` (by exact name or prefix, e.g. "test_hexel/all/") are kept and summarized. Otherwise
     every numeric column is kept and summarized.
     """
     eval_csvs = [os.path.join(save_dir, "eval_metrics.csv") for save_dir in save_dirs]

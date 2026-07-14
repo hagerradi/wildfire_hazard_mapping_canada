@@ -574,15 +574,24 @@ def evaluate_and_visualize_hexels(
     save_plots: bool = True,
     robust_plot_percentile: float | None = None,
     mask_scope: str = "actual",
+    split_csv: str | None = None,
+    save_dir_suffix: str | None = None,
 ) -> dict[str, float]:
     """
     A util function to re-construct predicted hexels out of test predictions, and visualize side-by-side with the Groundtruth.
     Also computes and aggregates stitched hexel-level metrics.
+
+    ``split_csv`` selects which patch metadata split to stitch (defaults to
+    ``config.data.test_split``); pass ``config.data.val_split`` to compute
+    hexel-level metrics on the validation split instead. ``save_dir_suffix``,
+    if given, isolates that split's artifacts under a dedicated subdirectory
+    (e.g. "val") so they don't collide with the default test-split outputs.
     """
     prediction_support_label = "input support" if config.evaluation.prediction_support_policy == "input" else "target support"
     scope = normalize_mask_scope(mask_scope)
     show_prediction_support_outline = config.evaluation.prediction_support_policy == "input" and scope == "actual"
-    artifacts_save_dir = get_mask_scope_save_dir(config.save_dir, scope)
+    base_save_dir = os.path.join(config.save_dir, save_dir_suffix) if save_dir_suffix else config.save_dir
+    artifacts_save_dir = get_mask_scope_save_dir(base_save_dir, scope)
 
     from src.datasets.postprocessing.hexel_reconstruction import reconstruct_denormalized_hexels
 
@@ -595,6 +604,7 @@ def evaluate_and_visualize_hexels(
         out_norm=out_norm,
         stitch_mode=stitch_mode,
         mask_scope=scope,
+        split_csv=split_csv,
     ):
         if stitched_hexel.hex_id != current_hex_id:
             if current_hex_id is not None and save_artifacts:
@@ -762,23 +772,31 @@ def evaluate_and_visualize_hexels(
 
 
 def print_and_log_eval_metrics(
-    test_metrics: str | dict[str, float] | None, hexel_metrics: dict[str, float] | None, experiment_logger: CometLogger | None = None
+    test_metrics: str | dict[str, float] | None,
+    hexel_metrics: dict[str, float] | None,
+    experiment_logger: CometLogger | None = None,
+    split_label: str = "Test",
+    metric_prefix: str = "test_hexel",
 ) -> None:
     """
     Prints terminal metrics and Comet logging for both patch-level and hexel-level metrics.
+
+    ``split_label`` customizes the printed section headers (e.g. "Val") and
+    ``metric_prefix`` customizes the Comet metric key prefix (e.g. "val_hexel")
+    so metrics from different splits don't collide when logged side by side.
     """
     # patch-level metrics
     if isinstance(test_metrics, dict):
-        print("\n[Test patch-level metrics]")
+        print(f"\n[{split_label} patch-level metrics]")
         for k, v in test_metrics.items():
             print(f"  {k}: {v:.6f}")
 
         if experiment_logger:
-            experiment_logger.log_metrics({f"test_{k}": v for k, v in test_metrics.items()})
+            experiment_logger.log_metrics({f"{split_label.lower()}_patch_{k}": v for k, v in test_metrics.items()})
 
     # hexel-level metrics
     if hexel_metrics:
-        print("\n[Test per-hexel and aggregated metrics]")
+        print(f"\n[{split_label} per-hexel and aggregated metrics]")
         current_group = None
 
         for k, v in hexel_metrics.items():
@@ -790,4 +808,4 @@ def print_and_log_eval_metrics(
             print(f"  [{group}] {metric_name}: {v:.6f}")
 
         if experiment_logger:
-            experiment_logger.log_metrics({f"hexel/{k}": v for k, v in hexel_metrics.items()})
+            experiment_logger.log_metrics({f"{metric_prefix}/{k}": v for k, v in hexel_metrics.items()})

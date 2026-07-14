@@ -14,7 +14,7 @@ import yaml
 
 from data_preparation.paths import MASK_SCOPE_CHOICES
 from src.config import Config, GridParams, apply_run_id_overrides
-from src.datasets.dataset import get_test_dataloader
+from src.datasets.dataset import get_test_dataloader, get_val_dataloader
 from src.datasets.postprocessing.utils import evaluate_and_visualize_hexels, print_and_log_eval_metrics
 from src.datasets.utils import get_dataset_dimensions
 from src.trainer import Trainer
@@ -76,6 +76,11 @@ def parse_args() -> argparse.Namespace:
         choices=MASK_SCOPE_CHOICES,
         default="actual",
         help="Mask scope for stitched evaluation/inference artifacts. Non-actual scopes require matching patch metadata.",
+    )
+    parser.add_argument(
+        "--eval_val_hexels",
+        action="store_true",
+        help="Also compute hexel-level metrics on the validation split (best checkpoint, run once at the end).",
     )
     parser.add_argument(
         "--run_id",
@@ -208,7 +213,44 @@ def main() -> None:
             "save_dir": config.save_dir,
         }
         eval_metrics_row.update({f"patch/{k}": v for k, v in (test_metrics if isinstance(test_metrics, dict) else {}).items()})
-        eval_metrics_row.update({f"hexel/{k}": v for k, v in hexel_metrics.items()})
+        eval_metrics_row.update({f"test_hexel/{k}": v for k, v in hexel_metrics.items()})
+
+        # ---------- Optional one-off validation-set hexel evaluation (best checkpoint) ----------
+        if args.eval_val_hexels:
+            print("\n[Evaluation] Computing hexel-level metrics on the validation set (best checkpoint)...")
+            val_loader = get_val_dataloader(config=config.data, modelling_approach=config.modelling_approach, seed=seed)
+            val_metrics, val_predictions = trainer.test(val_loader, return_predictions=True)
+
+            if isinstance(val_predictions, np.ndarray):
+                val_hexel_metrics = evaluate_and_visualize_hexels(
+                    test_predictions=val_predictions,
+                    config=config,
+                    out_norm=out_norm,
+                    device=trainer.device,
+                    experiment_logger=None,
+                    metric_functions=trainer.metric_functions,
+                    stitch_mode=args.stitch_mode,
+                    save_artifacts=not args.metrics_only,
+                    save_plots=not args.skip_hexel_plots,
+                    robust_plot_percentile=args.robust_plot_percentile
+                    if args.robust_plot_percentile is not None
+                    else config.evaluation.robust_plot_percentile,
+                    mask_scope=args.mask_scope,
+                    split_csv=config.data.val_split,
+                    save_dir_suffix="val",
+                )
+
+                print_and_log_eval_metrics(
+                    test_metrics=val_metrics,
+                    hexel_metrics=val_hexel_metrics,
+                    experiment_logger=trainer.logger,
+                    split_label="Val",
+                    metric_prefix="val_hexel",
+                )
+
+                eval_metrics_row.update({f"val_patch/{k}": v for k, v in (val_metrics if isinstance(val_metrics, dict) else {}).items()})
+                eval_metrics_row.update({f"val_hexel/{k}": v for k, v in val_hexel_metrics.items()})
+
         pd.DataFrame([eval_metrics_row]).to_csv(os.path.join(config.save_dir, "eval_metrics.csv"), index=False)
 
     print(f"=======Total Evaluation Time {round(time.time() - start_time, 3)}s========")
