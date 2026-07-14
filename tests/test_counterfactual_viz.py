@@ -8,6 +8,7 @@ from src.datasets.postprocessing.counterfactual_viz import (
     cumulative_abs_share,
     downsample_for_display,
     finite_values,
+    pixel_fraction_for_share,
     restrict_to_support,
     symmetric_percentile_limit,
     values_and_valid,
@@ -77,3 +78,15 @@ def test_cumulative_abs_share_ignores_masked_and_handles_empty() -> None:
     assert abs_share_at(pixel_fraction, cumulative, 0.5) == pytest.approx(5.0 / 8.0)
     empty_fraction, empty_cumulative = cumulative_abs_share(np.ma.masked_array(np.array([np.nan]), mask=[True]))
     assert abs_share_at(empty_fraction, empty_cumulative, 0.1) == pytest.approx(0.0)
+
+
+def test_cumulative_abs_share_handles_all_zero_delta() -> None:
+    pixel_fraction, cumulative = cumulative_abs_share(np.zeros(3))
+    assert cumulative.tolist() == [0.0, 0.0, 0.0]
+    assert pixel_fraction_for_share(pixel_fraction, cumulative, 0.5) == pytest.approx(1.0)
+
+
+def test_pixel_fraction_for_share_inverts_cumulative_abs_share() -> None:
+    delta = np.array([9.0, 1.0, 0.0, 0.0])
+    pixel_fraction, cumulative = cumulative_abs_share(delta)
+    assert pixel_fraction_for_share(pixel_fraction, cumulative, 0.80) == pytest.approx(0.25)

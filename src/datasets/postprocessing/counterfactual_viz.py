@@ -284,6 +284,16 @@ def abs_share_at(pixel_fraction: np.ndarray, cumulative_share: np.ndarray, top_f
     return float(cumulative_share[index])
 
 
+def pixel_fraction_for_share(pixel_fraction: np.ndarray, cumulative_share: np.ndarray, target_share: float) -> float:
+    """Smallest top-pixel fraction whose cumulative absolute-change share reaches ``target_share``."""
+
+    if cumulative_share.size == 0:
+        return 0.0
+    index = int(np.searchsorted(cumulative_share, target_share, side="left"))
+    index = min(index, pixel_fraction.size - 1)
+    return float(pixel_fraction[index])
+
+
 def plot_delta_histogram(
     delta: np.ma.MaskedArray | np.ndarray,
     *,

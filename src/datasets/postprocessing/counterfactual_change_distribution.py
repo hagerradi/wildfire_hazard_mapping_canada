@@ -18,6 +18,9 @@ from src.datasets.postprocessing.counterfactual_fuel_intervention_map import (
     load_raw_fuel_on_prediction_grid,
 )
 from src.datasets.postprocessing.counterfactual_viz import (
+    abs_share_at,
+    cumulative_abs_share,
+    pixel_fraction_for_share,
     prediction_dirs_from_index,
     prediction_raster_path,
     read_prediction,
@@ -111,33 +114,6 @@ def original_barrier_mask(
     return support & np.isfinite(grouped_fuel) & (grouped_fuel == NONFUEL_GROUP)
 
 
-def absolute_change_concentration(abs_delta: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Return the Lorenz-curve-style (pixel_share, cumulative_abs_change_share) of |Δ|, sorted descending."""
-    sorted_change = np.sort(np.asarray(abs_delta, dtype=np.float64))[::-1]
-    total = float(sorted_change.sum())
-    if sorted_change.size == 0 or np.isclose(total, 0.0):
-        return np.array([0.0, 1.0]), np.array([0.0, 0.0])
-    cumulative = np.cumsum(sorted_change) / total
-    pixel_share = np.arange(1, sorted_change.size + 1, dtype=np.float64) / sorted_change.size
-    return np.concatenate(([0.0], pixel_share)), np.concatenate(([0.0], cumulative))
-
-
-def _top_fraction_share(abs_delta: np.ndarray, fraction: float) -> float:
-    if abs_delta.size == 0:
-        return 0.0
-    count = max(1, int(np.ceil(abs_delta.size * fraction)))
-    total = float(abs_delta.sum())
-    if np.isclose(total, 0.0):
-        return 0.0
-    partition = np.partition(abs_delta, abs_delta.size - count)
-    return float(partition[-count:].sum() / total)
-
-
-def _pixel_share_for_change(concentration_x: np.ndarray, concentration_y: np.ndarray, share: float) -> float:
-    index = int(np.searchsorted(concentration_y, share, side="left"))
-    return float(concentration_x[min(index, concentration_x.size - 1)])
-
-
 def summarize_change(
     delta: np.ndarray,
     paired: np.ndarray,
@@ -152,12 +128,12 @@ def summarize_change(
     if values.size == 0:
         raise ValueError("No paired finite prediction pixels found.")
     abs_values = np.abs(values)
-    concentration_x, concentration_y = absolute_change_concentration(abs_values)
+    pixel_fraction, cumulative_share = cumulative_abs_share(values)
     total_abs = float(abs_values.sum())
     barrier_abs = float(np.abs(delta[barrier_mask]).sum())
     barrier_share = 0.0 if np.isclose(total_abs, 0.0) else barrier_abs / total_abs
 
-    top_shares = {fraction: _top_fraction_share(abs_values, fraction) for fraction in CONCENTRATION_FRACTIONS}
+    top_shares = {fraction: abs_share_at(pixel_fraction, cumulative_share, fraction) for fraction in CONCENTRATION_FRACTIONS}
     return ChangeSummary(
         scenario=scenario,
         endpoint=endpoint,
@@ -177,9 +153,9 @@ def summarize_change(
         top_5pct_abs_change_share=top_shares[0.05],
         top_10pct_abs_change_share=top_shares[0.10],
         top_50pct_abs_change_share=top_shares[0.50],
-        pixel_share_for_50pct_abs_change=_pixel_share_for_change(concentration_x, concentration_y, 0.50),
-        pixel_share_for_80pct_abs_change=_pixel_share_for_change(concentration_x, concentration_y, 0.80),
-        pixel_share_for_90pct_abs_change=_pixel_share_for_change(concentration_x, concentration_y, 0.90),
+        pixel_share_for_50pct_abs_change=pixel_fraction_for_share(pixel_fraction, cumulative_share, 0.50),
+        pixel_share_for_80pct_abs_change=pixel_fraction_for_share(pixel_fraction, cumulative_share, 0.80),
+        pixel_share_for_90pct_abs_change=pixel_fraction_for_share(pixel_fraction, cumulative_share, 0.90),
     )
 
 
@@ -228,44 +204,6 @@ def distance_bin_summary(
     return pd.DataFrame(rows)
 
 
-def plot_change_distribution(
-    delta: np.ndarray,
-    paired: np.ndarray,
-    *,
-    endpoint: str,
-    scenario: str,
-    out_path: Path,
-    percentile: float = 99.9,
-) -> None:
-    """Plot a histogram of Δ (clipped to the central `percentile` by |Δ|) and its change-concentration curve."""
-    values = np.asarray(delta[paired], dtype=np.float64)
-    abs_values = np.abs(values)
-    limit = max(float(np.percentile(abs_values, percentile)), float(np.finfo(np.float32).eps))
-    concentration_x, concentration_y = absolute_change_concentration(abs_values)
-
-    fig, axes = plt.subplots(1, 2, figsize=(13.5, 5.2), constrained_layout=True)
-    axes[0].hist(values, bins=160, range=(-limit, limit), color="#4c78a8")
-    axes[0].axvline(0.0, color="black", linewidth=1)
-    axes[0].set_yscale("log")
-    axes[0].set_xlabel(f"Δ{endpoint.upper()} (scenario − baseline)")
-    axes[0].set_ylabel("Pixel count (log scale)")
-    axes[0].set_title(f"Change distribution (central {percentile:g}% by |Δ|)")
-
-    axes[1].plot(concentration_x * 100, concentration_y * 100, color="#d95f02", linewidth=2)
-    axes[1].plot([0, 100], [0, 100], color="#888888", linestyle="--", label="Uniform contribution")
-    axes[1].set_xlabel("Pixels with largest |Δ| (%)")
-    axes[1].set_ylabel("Cumulative absolute change (%)")
-    axes[1].set_xlim(0, 100)
-    axes[1].set_ylim(0, 100)
-    axes[1].set_title("Concentration of total absolute change")
-    axes[1].legend(loc="upper left")
-
-    fig.suptitle(f"Hex16 {endpoint.upper()} response to {scenario.replace('_', ' ')}")
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out_path, dpi=220)
-    plt.close(fig)
-
-
 def plot_distance_summary(summary: pd.DataFrame, *, endpoint: str, scenario: str, out_path: Path) -> None:
     """Bar-plot mean/median Δ per barrier-distance bin, from `distance_bin_summary`'s output."""
     x = np.arange(len(summary))
@@ -296,15 +234,14 @@ def write_change_distribution(
     hex_id: str,
     out_dir: Path | None = None,
 ) -> list[Path]:
-    """Compute and plot a scenario's spatial change distribution, writing plots and summary CSVs.
+    """Compute a scenario's spatial change distribution, writing the barrier-distance plot and summary CSVs.
 
-    Writes the change-distribution histogram/concentration plot, the mean-change-by-
-    barrier-distance plot, and their underlying summary CSVs, to `out_dir` (default:
-    `<experiment_dir>/figures/fuel_change_distribution`) and `experiment_dir` respectively.
+    Writes the mean-change-by-barrier-distance plot to `out_dir` (default:
+    `<experiment_dir>/figures/fuel_change_distribution`), and the change-concentration and
+    barrier-distance summary CSVs to `experiment_dir`.
 
     Returns:
-        The four paths written: [distribution_plot, distance_plot, change_summary_csv,
-        distance_summary_csv].
+        The three paths written: [distance_plot, change_summary_csv, distance_summary_csv].
     """
     delta, paired, profile = paired_prediction_change(
         experiment_dir,
@@ -336,22 +273,14 @@ def write_change_distribution(
 
     out_dir = out_dir or experiment_dir / "figures" / "fuel_change_distribution"
     prefix = f"hex{int(hex_id):02d}_{scenario}_{endpoint}"
-    distribution_path = out_dir / f"{prefix}_change_distribution.png"
     distance_path = out_dir / f"{prefix}_mean_change_by_barrier_distance.png"
     summary_path = experiment_dir / f"counterfactual_{scenario}_{endpoint}_change_concentration.csv"
     distance_summary_path = experiment_dir / f"counterfactual_{scenario}_{endpoint}_barrier_distance_summary.csv"
 
-    plot_change_distribution(
-        delta,
-        paired,
-        endpoint=endpoint,
-        scenario=scenario,
-        out_path=distribution_path,
-    )
     plot_distance_summary(distance_summary, endpoint=endpoint, scenario=scenario, out_path=distance_path)
     pd.DataFrame([asdict(summary)]).to_csv(summary_path, index=False)
     distance_summary.to_csv(distance_summary_path, index=False)
-    return [distribution_path, distance_path, summary_path, distance_summary_path]
+    return [distance_path, summary_path, distance_summary_path]
 
 
 def parse_args() -> argparse.Namespace:

@@ -17,7 +17,7 @@ src/datasets/postprocessing/
   counterfactual_fuel_intervention_map.py # 2. Plot the fuel edit itself (original vs. replacement fuel)
   counterfactual_response_maps.py         # 3. Plot GT/baseline/scenario/Δ prediction maps + hotspot patch zoom
   counterfactual_local_zoom_panels.py     #    Fuel-specific zoom on selected barrier-removal neighborhoods
-  counterfactual_change_distribution.py   # 4. Summarize prediction change magnitude and its spatial concentration
+  counterfactual_change_distribution.py   # 4. Summarize prediction-change attribution and its decay with distance
 ```
 
 1. **Evaluate** (`evaluate_counterfactual.py`): runs the `baseline` scenario (unmodified
@@ -45,9 +45,10 @@ src/datasets/postprocessing/
    hazard/FI response, then renders the barrier mask, its local-modal replacement, and the
    baseline/scenario/Δ FI and hazard (BP × FI) maps for each selected window, plus a
    per-window summary CSV.
-5. **Change distribution** (`counterfactual_change_distribution.py`): summarizes how much
-   the prediction changed (magnitude, sign, spatial concentration, and change as a function
-   of distance from the edited pixels) across the whole hexel.
+5. **Change distribution** (`counterfactual_change_distribution.py`): computes per-hexel Δ
+   magnitude/sign/concentration statistics — including barrier vs. off-barrier attribution
+   and top-fraction abs-change shares — into a summary CSV, and plots/tabulates mean Δ as a
+   function of distance from the edited (barrier) pixels.
 
 ## Configuration (`configs/counterfactual_fuel.yaml`)
 
