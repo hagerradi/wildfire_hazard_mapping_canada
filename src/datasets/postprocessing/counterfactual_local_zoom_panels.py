@@ -1,10 +1,10 @@
-"""Local zoom panels around selected barrier-removal neighborhoods.
+"""Local zoom panels around selected fuel-intervention neighborhoods.
 
 Fuel-intervention-specific companion to `counterfactual_response_maps.py`: instead
 of generic high-|delta| hotspots, this selects fixed-size windows that clearly
-contain edited non-fuel barriers and a strong hazard/FI response, then renders the
-original barrier mask, its local-modal replacement, and the baseline/scenario/delta
-FI and hazard (BP x FI) maps side by side for each selected window.
+contain evaluated fuel edits and a strong direction-aligned hazard/FI response, then
+renders the edit mask, scenario fuel group, and baseline/scenario/delta FI and hazard
+(BP x FI) maps side by side for each selected window.
 """
 
 from __future__ import annotations
@@ -21,22 +21,24 @@ from matplotlib.colors import Normalize
 from matplotlib.patches import Patch
 
 from src.datasets.fuel_utils import normalize_hex_id
-from src.datasets.postprocessing.counterfactual_fuel import replace_nonfuel_components_with_adjacent_modal
+from src.datasets.postprocessing.counterfactual import load_counterfactual_config
 from src.datasets.postprocessing.counterfactual_fuel_intervention_map import (
     FUEL_GROUP_COLOURS,
     FUEL_GROUP_LABELS,
-    NONFUEL_GROUP,
     SCENARIO,
     _categorical_codes,
+    burnable_fuel_support,
     group_raw_fuel,
-    load_raw_fuel_on_prediction_grid,
+    load_evaluated_fuel_pair,
     load_zone_labels_on_prediction_grid,
 )
 from src.datasets.postprocessing.counterfactual_viz import (
     DEFAULT_ZONE_OVERLAY_ALPHA,
     DEFAULT_ZONE_OVERLAY_COLOR,
     DEFAULT_ZONE_OVERLAY_LINEWIDTH,
+    EndpointResponse,
     add_zone_overlay_args,
+    build_endpoint_response,
     delta_norm,
     finite_values,
     load_baseline_scenario_pair,
@@ -44,7 +46,6 @@ from src.datasets.postprocessing.counterfactual_viz import (
     prediction_dirs_from_index,
     prediction_reference_profile,
     robust_norm,
-    values_and_valid,
 )
 
 matplotlib.use("Agg")
@@ -69,8 +70,8 @@ class NeighborhoodWindow:
     row_max: int
     col_min: int
     col_max: int
-    barrier_pixels: int
-    barrier_density: float
+    edit_pixels: int
+    edit_density: float
     valid_fraction: float
     delta_hazard_mean: float
     delta_fi_mean: float
@@ -95,8 +96,8 @@ class NeighborhoodSummary:
     row_max: int
     col_min: int
     col_max: int
-    barrier_pixels: int
-    barrier_density: float
+    edit_pixels: int
+    edit_density: float
     valid_fraction: float
     baseline_fi_mean: float
     scenario_fi_mean: float
@@ -140,24 +141,27 @@ def _iou(a: NeighborhoodWindow, b: NeighborhoodWindow) -> float:
 
 def select_neighborhood_windows(
     *,
-    barrier_mask: np.ndarray,
+    edit_mask: np.ndarray,
     valid_mask: np.ndarray,
     delta_hazard: np.ndarray,
     delta_fi: np.ndarray,
+    response_direction: int,
     n_windows: int = 3,
     crop_size: int = 700,
     stride: int = 140,
-    min_barrier_pixels: int = 1500,
-    min_barrier_density: float = 0.01,
-    max_barrier_density: float = 0.35,
+    min_edit_pixels: int = 1500,
+    min_edit_density: float = 0.01,
+    max_edit_density: float = 0.35,
     min_valid_fraction: float = 0.95,
     max_iou: float = 0.15,
     exclude_border_pixels: int = 100,
 ) -> list[NeighborhoodWindow]:
-    """Select fixed-size windows that clearly contain edited barriers and response."""
+    """Select windows containing evaluated edits and direction-aligned response."""
 
-    if barrier_mask.shape != valid_mask.shape or barrier_mask.shape != delta_hazard.shape or barrier_mask.shape != delta_fi.shape:
-        raise ValueError("barrier_mask, valid_mask, delta_hazard, and delta_fi must have the same shape.")
+    if edit_mask.shape != valid_mask.shape or edit_mask.shape != delta_hazard.shape or edit_mask.shape != delta_fi.shape:
+        raise ValueError("edit_mask, valid_mask, delta_hazard, and delta_fi must have the same shape.")
+    if response_direction not in {-1, 1}:
+        raise ValueError("response_direction must be -1 or 1.")
     if n_windows < 1:
         raise ValueError("n_windows must be positive.")
     if crop_size < 1:
@@ -165,14 +169,14 @@ def select_neighborhood_windows(
     if stride < 1:
         raise ValueError("stride must be positive.")
 
-    h, w = barrier_mask.shape
+    h, w = edit_mask.shape
     crop_h = min(crop_size, h)
     crop_w = min(crop_size, w)
     area = float(crop_h * crop_w)
 
     finite_hazard = valid_mask & np.isfinite(delta_hazard)
     finite_fi = valid_mask & np.isfinite(delta_fi)
-    barrier_integral = integral_image(barrier_mask.astype(np.float64))
+    edit_integral = integral_image(edit_mask.astype(np.float64))
     valid_integral = integral_image(valid_mask.astype(np.float64))
     hazard_sum_integral = integral_image(np.where(finite_hazard, delta_hazard, 0.0))
     hazard_count_integral = integral_image(finite_hazard.astype(np.float64))
@@ -192,11 +196,11 @@ def select_neighborhood_windows(
                 or col_max > w - exclude_border_pixels
             ):
                 continue
-            barrier_pixels = int(window_sum(barrier_integral, row_min, row_max, col_min, col_max))
-            if barrier_pixels < min_barrier_pixels:
+            edit_pixels = int(window_sum(edit_integral, row_min, row_max, col_min, col_max))
+            if edit_pixels < min_edit_pixels:
                 continue
-            barrier_density = barrier_pixels / area
-            if barrier_density < min_barrier_density or barrier_density > max_barrier_density:
+            edit_density = edit_pixels / area
+            if edit_density < min_edit_density or edit_density > max_edit_density:
                 continue
             valid_pixels = window_sum(valid_integral, row_min, row_max, col_min, col_max)
             valid_fraction = valid_pixels / area
@@ -208,11 +212,12 @@ def select_neighborhood_windows(
                 continue
             delta_hazard_mean = window_sum(hazard_sum_integral, row_min, row_max, col_min, col_max) / hazard_count
             delta_fi_mean = window_sum(fi_sum_integral, row_min, row_max, col_min, col_max) / fi_count
-            if delta_hazard_mean <= 0.0:
+            aligned_hazard_response = response_direction * delta_hazard_mean
+            if aligned_hazard_response <= 0.0:
                 continue
 
-            density_preference = max(0.1, 1.0 - abs(barrier_density - 0.08) / 0.08)
-            score = float(delta_hazard_mean * np.sqrt(barrier_pixels) * density_preference)
+            density_preference = max(0.1, 1.0 - abs(edit_density - 0.08) / 0.08)
+            score = float(aligned_hazard_response * np.sqrt(edit_pixels) * density_preference)
             window_id += 1
             candidates.append(
                 NeighborhoodWindow(
@@ -222,8 +227,8 @@ def select_neighborhood_windows(
                     row_max=row_max,
                     col_min=col_min,
                     col_max=col_max,
-                    barrier_pixels=barrier_pixels,
-                    barrier_density=float(barrier_density),
+                    edit_pixels=edit_pixels,
+                    edit_density=float(edit_density),
                     valid_fraction=float(valid_fraction),
                     delta_hazard_mean=float(delta_hazard_mean),
                     delta_fi_mean=float(delta_fi_mean),
@@ -255,8 +260,8 @@ def select_neighborhood_windows(
             row_max=window.row_max,
             col_min=window.col_min,
             col_max=window.col_max,
-            barrier_pixels=window.barrier_pixels,
-            barrier_density=window.barrier_density,
+            edit_pixels=window.edit_pixels,
+            edit_density=window.edit_density,
             valid_fraction=window.valid_fraction,
             delta_hazard_mean=window.delta_hazard_mean,
             delta_fi_mean=window.delta_fi_mean,
@@ -264,19 +269,6 @@ def select_neighborhood_windows(
         )
         for rank, window in enumerate(selected, start=1)
     ]
-
-
-def replacement_group_map_on_prediction_grid(grouped_fuel: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Return original non-fuel mask and its local-modal replacement group map."""
-
-    edited, original_nonfuel, _, _ = replace_nonfuel_components_with_adjacent_modal(
-        grouped_fuel,
-        [NONFUEL_GROUP],
-        scenario_name=SCENARIO,
-    )
-    replacement_map = np.full(grouped_fuel.shape, np.nan, dtype=np.float32)
-    replacement_map[original_nonfuel] = edited[original_nonfuel]
-    return original_nonfuel, replacement_map
 
 
 def crop(data: np.ndarray | np.ma.MaskedArray, window: _SliceWindow) -> np.ma.MaskedArray:
@@ -293,7 +285,7 @@ def _norm_limits(norm: Normalize) -> str:
     return f"[{float(cast(float, norm.vmin)):.2g}, {float(cast(float, norm.vmax)):.2g}]"
 
 
-def _replacement_legend(categories: list[int]) -> list[Patch]:
+def _fuel_group_legend(categories: list[int]) -> list[Patch]:
     return [
         Patch(
             facecolor=FUEL_GROUP_COLOURS.get(category, "#999999"),
@@ -306,8 +298,8 @@ def _replacement_legend(categories: list[int]) -> list[Patch]:
 
 def plot_neighborhood_grid(
     *,
-    replacement_map: np.ndarray,
-    barrier_mask: np.ndarray,
+    scenario_fuel_map: np.ndarray,
+    edit_mask: np.ndarray,
     valid_mask: np.ndarray,
     baseline: np.ma.MaskedArray,
     scenario_values: np.ma.MaskedArray,
@@ -323,7 +315,7 @@ def plot_neighborhood_grid(
     zone_overlay_linewidth: float = DEFAULT_ZONE_OVERLAY_LINEWIDTH,
     zone_overlay_alpha: float = DEFAULT_ZONE_OVERLAY_ALPHA,
 ) -> None:
-    """Plot intervention, replacement, baseline, scenario, and delta for selected windows."""
+    """Plot intervention, edited fuel, baseline, scenario, and delta for selected windows."""
 
     sequential_norm = robust_norm(
         [
@@ -338,16 +330,14 @@ def plot_neighborhood_grid(
         [np.ma.masked_where(~crop(valid_mask, window).filled(False).astype(bool), crop(delta, window)) for window in windows],
         percentile=99.0,
     )
-    all_replacement_values = []
+    all_fuel_group_values = []
     for window in windows:
-        values = finite_values(crop(replacement_map, window)).astype(np.int32)
+        values = finite_values(crop(scenario_fuel_map, window)).astype(np.int32)
         if values.size:
-            all_replacement_values.extend(values.tolist())
-    replacement_categories = sorted(set(map(int, all_replacement_values)))
-    replacement_cmap = matplotlib.colors.ListedColormap(
-        [FUEL_GROUP_COLOURS.get(category, "#999999") for category in replacement_categories]
-    )
-    replacement_cmap.set_bad(color="white", alpha=0.0)
+            all_fuel_group_values.extend(values.tolist())
+    fuel_group_categories = sorted(set(map(int, all_fuel_group_values)))
+    fuel_group_cmap = matplotlib.colors.ListedColormap([FUEL_GROUP_COLOURS.get(category, "#999999") for category in fuel_group_categories])
+    fuel_group_cmap.set_bad(color="white", alpha=0.0)
     sequential_cmap = plt.get_cmap("viridis").copy()
     sequential_cmap.set_bad(color="#d9d9d9", alpha=1.0)
     delta_cmap = plt.get_cmap("RdBu_r").copy()
@@ -375,16 +365,16 @@ def plot_neighborhood_grid(
     for row_idx, window in enumerate(windows):
         row_label = row_labels[row_idx] if row_labels is not None and row_idx < len(row_labels) else f"Neighborhood {window.rank}"
         support_crop = crop(valid_mask, window).filled(False).astype(bool)
-        barrier_crop = crop(barrier_mask, window).filled(False).astype(bool) & support_crop
+        edit_crop = crop(edit_mask, window).filled(False).astype(bool) & support_crop
         zone_crop = crop(zone_labels, window) if zone_labels is not None else None
-        replacement_crop = np.ma.masked_where(~support_crop, crop(replacement_map, window))
-        replacement_codes = _categorical_codes(replacement_crop, replacement_categories)
+        scenario_fuel_crop = np.ma.masked_where(~support_crop, crop(scenario_fuel_map, window))
+        fuel_group_codes = _categorical_codes(scenario_fuel_crop, fuel_group_categories)
         support_context = np.where(support_crop, 1.0, 0.0)
         support_cmap = matplotlib.colors.ListedColormap(["#d9d9d9", "#f7f7f7"])
 
         panels = (
-            ("Original barrier mask", None, None, None),
-            ("Replacement fuel group", replacement_codes, replacement_cmap, None),
+            ("Evaluated edit mask", None, None, None),
+            ("Scenario fuel group", fuel_group_codes, fuel_group_cmap, None),
             (
                 f"Baseline {endpoint_label}",
                 np.ma.masked_where(~support_crop, crop(baseline, window)),
@@ -403,7 +393,7 @@ def plot_neighborhood_grid(
             ax = axes[row_idx, col_idx]
             if col_idx == 0:
                 ax.imshow(support_context, cmap=support_cmap, interpolation="nearest", origin="upper")
-                _mask_overlay(ax, barrier_crop, colour="#000000", alpha=0.85)
+                _mask_overlay(ax, edit_crop, colour="#000000", alpha=0.85)
             elif col_idx == 1:
                 ax.imshow(support_context, cmap=support_cmap, interpolation="nearest", origin="upper")
                 ax.imshow(array, cmap=cmap, interpolation="nearest", origin="upper")
@@ -427,7 +417,7 @@ def plot_neighborhood_grid(
                 ax.set_title(title, fontsize=10)
             if col_idx == 0:
                 ax.set_ylabel(
-                    f"{row_label}\n{window.barrier_pixels:,} barrier px\nmean \u0394hazard {window.delta_hazard_mean:.2f}",
+                    f"{row_label}\n{window.edit_pixels:,} edited px\nmean \u0394hazard {window.delta_hazard_mean:.2f}",
                     fontsize=8,
                 )
 
@@ -437,8 +427,8 @@ def plot_neighborhood_grid(
     if delta_image is not None:
         cbar = fig.colorbar(delta_image, cax=delta_cax)
         cbar.set_label(f"{delta_label} centered scale {_norm_limits(diverging_norm)}")
-    handles = [Patch(facecolor="#000000", edgecolor="none", alpha=0.85, label="Original non-fuel pixels")]
-    handles.extend(_replacement_legend(replacement_categories))
+    handles = [Patch(facecolor="#000000", edgecolor="none", alpha=0.85, label="Edited fuel pixels")]
+    handles.extend(_fuel_group_legend(fuel_group_categories))
     fig.legend(
         handles=handles,
         loc="upper center",
@@ -450,7 +440,7 @@ def plot_neighborhood_grid(
         handlelength=1.0,
     )
     fig.suptitle(
-        f"Local barrier-removal neighborhoods: intervention and {endpoint_label} response",
+        f"Local fuel-intervention neighborhoods: edit and {endpoint_label} response",
         y=0.965,
         fontsize=13,
     )
@@ -459,16 +449,71 @@ def plot_neighborhood_grid(
     plt.close(fig)
 
 
-def _prediction_arrays(
+def _endpoint_response(
     experiment_dir: Path,
     *,
     scenario: str,
     hex_id: str,
-) -> tuple[np.ma.MaskedArray, np.ma.MaskedArray, np.ma.MaskedArray, np.ma.MaskedArray]:
+    endpoint: str,
+    nonfuel_ids: list[int],
+) -> EndpointResponse:
     prediction_dirs = prediction_dirs_from_index(experiment_dir)
-    baseline_bp, scenario_bp = load_baseline_scenario_pair(prediction_dirs, hex_id, endpoint="bp", scenario=scenario)
-    baseline_fi, scenario_fi = load_baseline_scenario_pair(prediction_dirs, hex_id, endpoint="fi", scenario=scenario)
-    return baseline_bp, scenario_bp, baseline_fi, scenario_fi
+    baseline, scenario_values = load_baseline_scenario_pair(
+        prediction_dirs,
+        hex_id,
+        endpoint=endpoint,
+        scenario=scenario,
+    )
+    baseline_fuel, scenario_fuel = load_evaluated_fuel_pair(
+        experiment_dir=experiment_dir,
+        scenario=scenario,
+        endpoint=endpoint,
+        hex_id=hex_id,
+    )
+    return build_endpoint_response(
+        baseline,
+        scenario_values,
+        baseline_support=burnable_fuel_support(baseline_fuel, nonfuel_ids),
+        scenario_support=burnable_fuel_support(scenario_fuel, nonfuel_ids),
+    )
+
+
+def _hazard_response(
+    bp_response: EndpointResponse,
+    fi_response: EndpointResponse,
+) -> EndpointResponse:
+    if not np.array_equal(bp_response.baseline_support, fi_response.baseline_support) or not np.array_equal(
+        bp_response.scenario_support,
+        fi_response.scenario_support,
+    ):
+        raise ValueError("BP and FI fuel support differ.")
+
+    baseline_values = bp_response.baseline.filled(0.0) * fi_response.baseline.filled(0.0)
+    scenario_values = bp_response.scenario.filled(0.0) * fi_response.scenario.filled(0.0)
+    return EndpointResponse(
+        baseline=np.ma.masked_where(~bp_response.baseline_support, baseline_values),
+        scenario=np.ma.masked_where(~bp_response.scenario_support, scenario_values),
+        delta=np.ma.masked_where(~bp_response.response_support, scenario_values - baseline_values),
+        baseline_support=bp_response.baseline_support,
+        scenario_support=bp_response.scenario_support,
+        response_support=bp_response.response_support,
+    )
+
+
+def _response_direction(
+    edit_mask: np.ndarray,
+    baseline_support: np.ndarray,
+    scenario_support: np.ndarray,
+) -> int:
+    added_support = edit_mask & ~baseline_support & scenario_support
+    removed_support = edit_mask & baseline_support & ~scenario_support
+    if added_support.any() and removed_support.any():
+        raise ValueError("Local zoom does not support interventions that both add and remove burnable support.")
+    if added_support.any():
+        return 1
+    if removed_support.any():
+        return -1
+    raise ValueError("Local zoom requires a fuel edit that changes burnable support.")
 
 
 def _mean_on_crop(data: np.ndarray | np.ma.MaskedArray, window: _SliceWindow) -> float:
@@ -476,16 +521,26 @@ def _mean_on_crop(data: np.ndarray | np.ma.MaskedArray, window: _SliceWindow) ->
     return float(np.mean(values)) if values.size else float("nan")
 
 
+def _effective_mean_on_crop(
+    data: np.ma.MaskedArray,
+    response_support: np.ndarray,
+    window: _SliceWindow,
+) -> float:
+    effective = np.ma.masked_where(~response_support, data.filled(0.0))
+    return _mean_on_crop(effective, window)
+
+
 def write_local_neighborhood_panels(
     *,
     experiment_dir: Path,
     raw_data_dir: Path,
+    config_path: Path,
     scenario: str = SCENARIO,
     hex_id: str = "16",
     n_windows: int = 2,
     crop_pixels: int = 700,
     stride_pixels: int = 140,
-    min_barrier_pixels: int = 1500,
+    min_edit_pixels: int = 1500,
     exclude_border_pixels: int = 100,
     min_valid_fraction: float = 0.95,
     zone_overlay: bool = False,
@@ -494,48 +549,79 @@ def write_local_neighborhood_panels(
     zone_overlay_alpha: float = DEFAULT_ZONE_OVERLAY_ALPHA,
     out_dir: Path | None = None,
 ) -> tuple[Path, Path, Path]:
+    config = load_counterfactual_config(config_path)
+    scenario_config = next((item for item in config.scenarios if item.name == scenario), None)
+    if scenario_config is None:
+        raise KeyError(f"Scenario {scenario!r} not found in {config_path}.")
+    fuel_edit = scenario_config.fuel_edit()
+    if fuel_edit is None:
+        raise ValueError(f"Scenario {scenario!r} is not a fuel intervention.")
+    configured_nonfuel_ids = fuel_edit.get("nonfuel_ids")
+    if not isinstance(configured_nonfuel_ids, list | tuple) or not configured_nonfuel_ids:
+        raise ValueError(f"Fuel scenario {scenario!r} must define nonfuel_ids.")
+    nonfuel_ids = [int(value) for value in configured_nonfuel_ids]
+
     prediction_dirs = prediction_dirs_from_index(experiment_dir)
-    baseline_bp, scenario_bp, baseline_fi, scenario_fi = _prediction_arrays(
+    bp_response = _endpoint_response(
         experiment_dir,
         scenario=scenario,
         hex_id=hex_id,
+        endpoint="bp",
+        nonfuel_ids=nonfuel_ids,
     )
-    baseline_hazard = baseline_bp * baseline_fi
-    scenario_hazard = scenario_bp * scenario_fi
-    delta_fi = scenario_fi - baseline_fi
-    delta_hazard = scenario_hazard - baseline_hazard
+    fi_response = _endpoint_response(
+        experiment_dir,
+        scenario=scenario,
+        hex_id=hex_id,
+        endpoint="fi",
+        nonfuel_ids=nonfuel_ids,
+    )
+    hazard_response = _hazard_response(bp_response, fi_response)
+    baseline_fi = fi_response.baseline
+    scenario_fi = fi_response.scenario
+    delta_fi = fi_response.delta
+    baseline_hazard = hazard_response.baseline
+    scenario_hazard = hazard_response.scenario
+    delta_hazard = hazard_response.delta
 
     reference_profile = prediction_reference_profile(prediction_dirs, hex_id)
-    grouped_fuel = group_raw_fuel(
-        load_raw_fuel_on_prediction_grid(
-            raw_data_dir=raw_data_dir,
-            reference_profile=reference_profile,
-            hex_id=hex_id,
-        )
+    baseline_fuel, scenario_fuel = load_evaluated_fuel_pair(
+        experiment_dir=experiment_dir,
+        scenario=scenario,
+        endpoint="bp",
+        hex_id=hex_id,
     )
-    original_nonfuel, replacement_map = replacement_group_map_on_prediction_grid(grouped_fuel)
-    hazard_values, hazard_valid = values_and_valid(delta_hazard)
-    fi_values, fi_valid = values_and_valid(delta_fi)
-    valid_mask = hazard_valid & fi_valid & np.isfinite(hazard_values) & np.isfinite(fi_values)
+    baseline_fuel_values = np.asarray(baseline_fuel.filled(np.nan), dtype=np.float64)
+    scenario_fuel_values = np.asarray(scenario_fuel.filled(np.nan), dtype=np.float64)
+    footprint_mask = np.isfinite(baseline_fuel_values) & np.isfinite(scenario_fuel_values)
+    edit_mask = footprint_mask & (baseline_fuel_values != scenario_fuel_values)
+    response_direction = _response_direction(
+        edit_mask,
+        bp_response.baseline_support,
+        bp_response.scenario_support,
+    )
+    scenario_fuel_map = np.where(edit_mask, group_raw_fuel(scenario_fuel_values), np.nan)
+    hazard_values = np.asarray(delta_hazard.filled(np.nan), dtype=np.float64)
+    fi_values = np.asarray(delta_fi.filled(np.nan), dtype=np.float64)
     zone_labels = None
     if zone_overlay:
         zone_labels = load_zone_labels_on_prediction_grid(
             raw_data_dir=raw_data_dir,
             reference_profile=reference_profile,
             hex_id=hex_id,
-            support=valid_mask,
+            support=footprint_mask,
         )
-    selection_barrier_mask = original_nonfuel & valid_mask
-    replacement_map = np.where(selection_barrier_mask, replacement_map, np.nan)
     windows = select_neighborhood_windows(
-        barrier_mask=selection_barrier_mask,
-        valid_mask=valid_mask,
+        edit_mask=edit_mask,
+        valid_mask=footprint_mask,
         delta_hazard=hazard_values,
         delta_fi=fi_values,
+        response_direction=response_direction,
         n_windows=n_windows,
         crop_size=crop_pixels,
         stride=stride_pixels,
-        min_barrier_pixels=min_barrier_pixels,
+        min_edit_pixels=min_edit_pixels,
+        max_edit_density=1.0,
         exclude_border_pixels=exclude_border_pixels,
         min_valid_fraction=min_valid_fraction,
     )
@@ -545,9 +631,9 @@ def write_local_neighborhood_panels(
     fi_plot_path = out_dir / f"hex{int(hex_id):02d}_{scenario}_local_neighborhood_fi.png"
     hazard_plot_path = out_dir / f"hex{int(hex_id):02d}_{scenario}_local_neighborhood_hazard.png"
     plot_neighborhood_grid(
-        replacement_map=replacement_map,
-        barrier_mask=selection_barrier_mask,
-        valid_mask=valid_mask,
+        scenario_fuel_map=scenario_fuel_map,
+        edit_mask=edit_mask,
+        valid_mask=footprint_mask,
         baseline=baseline_fi,
         scenario_values=scenario_fi,
         delta=delta_fi,
@@ -562,9 +648,9 @@ def write_local_neighborhood_panels(
         zone_overlay_alpha=zone_overlay_alpha,
     )
     plot_neighborhood_grid(
-        replacement_map=replacement_map,
-        barrier_mask=selection_barrier_mask,
-        valid_mask=valid_mask,
+        scenario_fuel_map=scenario_fuel_map,
+        edit_mask=edit_mask,
+        valid_mask=footprint_mask,
         baseline=baseline_hazard,
         scenario_values=scenario_hazard,
         delta=delta_hazard,
@@ -590,14 +676,22 @@ def write_local_neighborhood_panels(
                 row_max=window.row_max,
                 col_min=window.col_min,
                 col_max=window.col_max,
-                barrier_pixels=window.barrier_pixels,
-                barrier_density=window.barrier_density,
+                edit_pixels=window.edit_pixels,
+                edit_density=window.edit_density,
                 valid_fraction=window.valid_fraction,
-                baseline_fi_mean=_mean_on_crop(baseline_fi, window),
-                scenario_fi_mean=_mean_on_crop(scenario_fi, window),
+                baseline_fi_mean=_effective_mean_on_crop(baseline_fi, fi_response.response_support, window),
+                scenario_fi_mean=_effective_mean_on_crop(scenario_fi, fi_response.response_support, window),
                 delta_fi_mean=_mean_on_crop(delta_fi, window),
-                baseline_hazard_mean=_mean_on_crop(baseline_hazard, window),
-                scenario_hazard_mean=_mean_on_crop(scenario_hazard, window),
+                baseline_hazard_mean=_effective_mean_on_crop(
+                    baseline_hazard,
+                    hazard_response.response_support,
+                    window,
+                ),
+                scenario_hazard_mean=_effective_mean_on_crop(
+                    scenario_hazard,
+                    hazard_response.response_support,
+                    window,
+                ),
                 delta_hazard_mean=_mean_on_crop(delta_hazard, window),
                 score=window.score,
             )
@@ -610,8 +704,9 @@ def write_local_neighborhood_panels(
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Plot local zoom panels around selected barrier-removal neighborhoods.")
+    parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--experiment_dir", type=Path, default=Path("experiments/counterfactual_fuel_hex16"))
+    parser.add_argument("--config", type=Path, default=Path("configs/counterfactual_fuel.yaml"))
     parser.add_argument(
         "--raw_data_dir",
         type=Path,
@@ -622,7 +717,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--n_windows", type=int, default=3)
     parser.add_argument("--crop_pixels", type=int, default=700)
     parser.add_argument("--stride_pixels", type=int, default=140)
-    parser.add_argument("--min_barrier_pixels", type=int, default=1500)
+    parser.add_argument("--min_edit_pixels", type=int, default=1500)
     parser.add_argument("--exclude_border_pixels", type=int, default=100)
     parser.add_argument("--min_valid_fraction", type=float, default=0.95)
     parser.add_argument("--out_dir", type=Path, default=None, help="Defaults to experiment_dir/figures/fuel_local_zoom.")
@@ -635,12 +730,13 @@ def main() -> None:
     fi_plot_path, hazard_plot_path, summary_path = write_local_neighborhood_panels(
         experiment_dir=args.experiment_dir,
         raw_data_dir=args.raw_data_dir,
+        config_path=args.config,
         scenario=args.scenario,
         hex_id=normalize_hex_id(args.hex_id),
         n_windows=max(1, int(args.n_windows)),
         crop_pixels=max(1, int(args.crop_pixels)),
         stride_pixels=max(1, int(args.stride_pixels)),
-        min_barrier_pixels=max(1, int(args.min_barrier_pixels)),
+        min_edit_pixels=max(1, int(args.min_edit_pixels)),
         exclude_border_pixels=max(0, int(args.exclude_border_pixels)),
         min_valid_fraction=float(args.min_valid_fraction),
         zone_overlay=args.zone_overlay,

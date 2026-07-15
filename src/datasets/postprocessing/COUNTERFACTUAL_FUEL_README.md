@@ -16,7 +16,7 @@ src/evaluate_counterfactual.py            # 1. Evaluate baseline + selected scen
 src/datasets/postprocessing/
   counterfactual_fuel_intervention_map.py # 2. Plot the fuel edit itself (original vs. replacement fuel)
   counterfactual_response_maps.py         # 3. Plot GT/baseline/scenario/Δ prediction maps + hotspot patch zoom
-  counterfactual_local_zoom_panels.py     #    Fuel-specific zoom on selected barrier-removal neighborhoods
+  counterfactual_local_zoom_panels.py     #    Fuel-specific zoom on selected evaluated-edit neighborhoods
   counterfactual_change_distribution.py   # 4. Summarize prediction-change attribution and its decay with distance
 ```
 
@@ -42,10 +42,11 @@ src/datasets/postprocessing/
    Reusable as-is by any future counterfactual scenario family — not just fuel edits.
 4. **Local zoom panels** (`counterfactual_local_zoom_panels.py`): fuel-intervention-specific
    companion to the response maps. Instead of generic high-|Δ| hotspots, it selects
-   fixed-size windows that clearly contain edited non-fuel barriers and a strong
-   hazard/FI response, then renders the barrier mask, its local-modal replacement, and the
+   fixed-size windows that contain the persisted evaluated fuel edits and a strong
+   direction-aligned hazard/FI response. It renders the edit mask, edited fuel groups, and
    baseline/scenario/Δ FI and hazard (BP × FI) maps for each selected window, plus a
-   per-window summary CSV.
+   per-window summary CSV. This supports both non-fuel-to-burnable and
+   burnable-to-non-fuel scenarios without reconstructing the intervention.
 5. **Change distribution** (`counterfactual_change_distribution.py`): computes per-hexel Δ
    magnitude/sign/concentration statistics — including edited vs. off-edit attribution
    and top-fraction abs-change shares — into a summary CSV, and plots/tabulates mean Δ as a
@@ -130,9 +131,10 @@ python -m src.datasets.postprocessing.counterfactual_response_maps \
     --experiment_dir experiments/counterfactual_fuel_hex16 \
     --scenario remove_barriers_adjacent_modal --endpoint fi --hex_id 16
 
-# Plot local zoom panels on selected barrier-removal neighborhoods (uses bp + fi)
+# Plot local zoom panels on selected evaluated-edit neighborhoods (uses bp + fi)
 python -m src.datasets.postprocessing.counterfactual_local_zoom_panels \
     --experiment_dir experiments/counterfactual_fuel_hex16 \
+    --config configs/counterfactual_fuel.yaml \
     --scenario remove_barriers_adjacent_modal --hex_id 16
 
 # Summarize the prediction change distribution
