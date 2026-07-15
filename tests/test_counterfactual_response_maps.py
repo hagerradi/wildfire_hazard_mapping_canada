@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 
 from src.datasets.postprocessing.counterfactual_response_maps import (
     ENDPOINT_SPECS,
     block_response,
     hotspot_centers,
+    plot_patch_zoom,
 )
 
 
@@ -53,3 +56,27 @@ def test_hotspot_centers_stops_when_no_positive_response_left() -> None:
     delta = np.ma.masked_array(np.zeros((10, 10)), mask=False)
     centers = hotspot_centers(delta, block=2, count=3, window=4)
     assert centers == []
+
+
+def test_plot_patch_zoom_skips_cleanly_when_no_positive_response(tmp_path: Path) -> None:
+    ground_truth = np.ma.masked_array(np.zeros((10, 10)), mask=False)
+    baseline = np.ma.masked_array(np.zeros((10, 10)), mask=False)
+    scenario_values = np.ma.masked_array(np.zeros((10, 10)), mask=False)
+    delta = np.ma.masked_array(np.zeros((10, 10)), mask=False)
+    out_path = tmp_path / "patch_zoom.png"
+
+    plot_patch_zoom(
+        ground_truth,
+        baseline,
+        scenario_values,
+        delta,
+        endpoint="fi",
+        out_path=out_path,
+        scenario_label="scenario",
+        suptitle="No response",
+        window=4,
+        hotspot_block=2,
+        patch_count=3,
+    )
+
+    assert not out_path.exists()

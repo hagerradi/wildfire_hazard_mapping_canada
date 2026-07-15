@@ -307,6 +307,9 @@ def plot_patch_zoom(
     value_norm, response_delta_norm = _response_norms(ground_truth, baseline, scenario_values, delta)
     half = window // 2
     centers = hotspot_centers(delta, hotspot_block, count=patch_count, window=window)
+    if not centers:
+        print(f"No positive response found for {out_path.name}; skipping patch zoom plot.")
+        return
 
     fig, axes = plt.subplots(len(centers), 4, figsize=(20.0, 5.0 * len(centers)), squeeze=False)
     for row, (center_row, center_col) in enumerate(centers):
