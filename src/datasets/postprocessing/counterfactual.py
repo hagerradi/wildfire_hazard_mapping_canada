@@ -102,8 +102,11 @@ def _parse_scenarios(raw_scenarios: object) -> list[ScenarioConfig]:
     duplicates = sorted({name for name in names if names.count(name) > 1})
     if duplicates:
         raise ValueError(f"Scenario names must be unique; duplicates: {duplicates}.")
-    if not any(scenario.kind == "baseline" for scenario in scenarios):
-        raise ValueError("At least one baseline scenario is required.")
+    baselines = [scenario for scenario in scenarios if scenario.kind == "baseline"]
+    if len(baselines) != 1:
+        raise ValueError(f"Exactly one baseline scenario is required; found {len(baselines)}.")
+    if baselines[0].name != "baseline":
+        raise ValueError("The baseline scenario must be named 'baseline'.")
     return scenarios
 
 

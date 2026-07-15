@@ -12,9 +12,27 @@ import pandas as pd
 
 from src.datasets.fuel_counterfactual import FuelCounterfactualTransform
 from src.datasets.fuel_utils import normalize_hex_id
-from src.datasets.postprocessing.counterfactual import ScenarioConfig, load_counterfactual_config
+from src.datasets.postprocessing.counterfactual import EndpointConfig, ScenarioConfig, load_counterfactual_config
 from src.evaluate_hexels import load_config
 from src.evaluate_hexels import main as evaluate_hexels
+
+
+def _validate_requested_names(requested: set[str] | None, available: set[str], *, label: str) -> None:
+    if requested is None:
+        return
+    unknown = sorted(requested - available)
+    if unknown:
+        raise ValueError(f"Unknown {label} selection(s): {unknown}; available {label}s: {sorted(available)}.")
+
+
+def _select_endpoints(
+    endpoints: dict[str, EndpointConfig],
+    endpoint_names: set[str] | None,
+) -> list[EndpointConfig]:
+    _validate_requested_names(endpoint_names, set(endpoints), label="endpoint")
+    if endpoint_names is None:
+        return list(endpoints.values())
+    return [endpoint for name, endpoint in endpoints.items() if name in endpoint_names]
 
 
 def _resolve_path(path: Path | str, project_root: Path) -> Path:
@@ -30,6 +48,7 @@ def _select_scenarios(scenarios: list[ScenarioConfig], scenario_names: set[str] 
     """
     if scenario_names is None:
         return list(scenarios)
+    _validate_requested_names(scenario_names, {scenario.name for scenario in scenarios}, label="scenario")
     return [scenario for scenario in scenarios if scenario.kind == "baseline" or scenario.name in scenario_names]
 
 
@@ -86,6 +105,13 @@ def _evaluation_args() -> argparse.Namespace:
     )
 
 
+def _write_optional_frame(frame: pd.DataFrame | None, path: Path) -> None:
+    if frame is None or frame.empty:
+        path.unlink(missing_ok=True)
+        return
+    frame.to_csv(path, index=False)
+
+
 def run_counterfactual_evaluation(
     config_path: Path,
     *,
@@ -116,7 +142,7 @@ def run_counterfactual_evaluation(
     save_dir = _resolve_path(config.save_dir, project_root)
     raw_data_dir = _resolve_path(config.raw_data_dir, project_root)
     hex_ids = set(config.hex_ids)
-    endpoints = [endpoint for endpoint in config.endpoints.values() if endpoint_names is None or endpoint.name in endpoint_names]
+    endpoints = _select_endpoints(config.endpoints, endpoint_names)
     scenarios = _select_scenarios(config.scenarios, scenario_names)
     if not endpoints:
         raise ValueError("No enabled endpoints selected.")
@@ -201,12 +227,15 @@ def run_counterfactual_evaluation(
     save_dir.mkdir(parents=True, exist_ok=True)
     index = pd.DataFrame(index_rows)
     index.to_csv(save_dir / "scenario_prediction_index.csv", index=False)
-    if metric_rows:
-        pd.DataFrame(metric_rows).to_csv(save_dir / "counterfactual_metrics.csv", index=False)
-    if summary_frames:
-        pd.concat(summary_frames, ignore_index=True).to_csv(save_dir / "fuel_edit_summary.csv", index=False)
-    if component_frames:
-        pd.concat(component_frames, ignore_index=True).to_csv(save_dir / "fuel_component_replacements.csv", index=False)
+    _write_optional_frame(pd.DataFrame(metric_rows), save_dir / "counterfactual_metrics.csv")
+    _write_optional_frame(
+        pd.concat(summary_frames, ignore_index=True) if summary_frames else None,
+        save_dir / "fuel_edit_summary.csv",
+    )
+    _write_optional_frame(
+        pd.concat(component_frames, ignore_index=True) if component_frames else None,
+        save_dir / "fuel_component_replacements.csv",
+    )
     return index
 
 

@@ -57,3 +57,40 @@ def test_load_counterfactual_config_requires_baseline(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="baseline"):
         load_counterfactual_config(path)
+
+
+def test_load_counterfactual_config_requires_exactly_one_baseline(tmp_path: Path) -> None:
+    path = tmp_path / "counterfactual.yaml"
+    _write_config(
+        path,
+        {
+            "raw_data_dir": "/raw",
+            "save_dir": "/experiment",
+            "hex_ids": ["16"],
+            "endpoints": {"bp": {"config_path": "bp.yaml"}},
+            "scenarios": [
+                {"name": "baseline", "kind": "baseline"},
+                {"name": "reference", "kind": "baseline"},
+            ],
+        },
+    )
+
+    with pytest.raises(ValueError, match="Exactly one baseline"):
+        load_counterfactual_config(path)
+
+
+def test_load_counterfactual_config_requires_standard_baseline_name(tmp_path: Path) -> None:
+    path = tmp_path / "counterfactual.yaml"
+    _write_config(
+        path,
+        {
+            "raw_data_dir": "/raw",
+            "save_dir": "/experiment",
+            "hex_ids": ["16"],
+            "endpoints": {"bp": {"config_path": "bp.yaml"}},
+            "scenarios": [{"name": "reference", "kind": "baseline"}],
+        },
+    )
+
+    with pytest.raises(ValueError, match="named 'baseline'"):
+        load_counterfactual_config(path)

@@ -83,7 +83,8 @@ scenarios:
 - `endpoints`: one entry per trained model to evaluate; `config_path` points at that
   model's own training/evaluation config (used to resolve its checkpoint, data root, and
   test split).
-- `scenarios`: exactly one `baseline` scenario plus any number of `fuel` scenarios. Each
+- `scenarios`: exactly one scenario named `baseline` with `kind: "baseline"`, plus any
+  number of `fuel` scenarios. Each
   `fuel` scenario's `params` are passed to `apply_fuel_edit` (`counterfactual_fuel.py`),
   keyed by `mode`:
 
