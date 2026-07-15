@@ -100,8 +100,13 @@ class BaselineUNet(UNetBase):
         self._effective_spatial_in = self.input_channels + self.fuel_curve_embed_dim
         self.fuel_curve_encoder: FuelCurveEncoder | None
         if self.fuel_curve_input_dim > 0:
-            _mean = fuel_curve_mean if fuel_curve_mean is not None else torch.zeros(fuel_curve_input_dim)
-            _std = fuel_curve_std if fuel_curve_std is not None else torch.ones(fuel_curve_input_dim)
+            # Real stats (computed in GridSource) are always a single global scalar
+            # (shape (1,)), regardless of fuel_curve_input_dim (number of ISI bins).
+            # Default to a scalar too so eval-time construction (no train_dataset,
+            # e.g. evaluate_hexels.py) matches the checkpoint's buffer shape before
+            # load_state_dict overwrites it with the real values.
+            _mean = fuel_curve_mean if fuel_curve_mean is not None else torch.zeros(1)
+            _std = fuel_curve_std if fuel_curve_std is not None else torch.ones(1)
             self.fuel_curve_encoder = FuelCurveEncoder(
                 curve_mean=_mean, curve_std=_std, in_channels=self.fuel_curve_input_dim, embed_dim=self.fuel_curve_embed_dim
             )
@@ -184,8 +189,13 @@ class MultiSourceUNet(UNetBase):
         self.fuel_curve_embed_dim = self.auxiliary_embed_dims.get("fuel_curve", 4) if fuel_curve_in > 0 else 0
         self.fuel_curve_encoder: FuelCurveEncoder | None
         if fuel_curve_in > 0:
-            _mean = fuel_curve_mean if fuel_curve_mean is not None else torch.zeros(fuel_curve_in)
-            _std = fuel_curve_std if fuel_curve_std is not None else torch.ones(fuel_curve_in)
+            # Real stats (computed in GridSource) are always a single global scalar
+            # (shape (1,)), regardless of fuel_curve_in (number of ISI bins). Default
+            # to a scalar too so eval-time construction (no train_dataset, e.g.
+            # evaluate_hexels.py) matches the checkpoint's buffer shape before
+            # load_state_dict overwrites it with the real values.
+            _mean = fuel_curve_mean if fuel_curve_mean is not None else torch.zeros(1)
+            _std = fuel_curve_std if fuel_curve_std is not None else torch.ones(1)
             self.fuel_curve_encoder = FuelCurveEncoder(
                 curve_mean=_mean, curve_std=_std, in_channels=fuel_curve_in, embed_dim=self.fuel_curve_embed_dim
             )
