@@ -53,6 +53,7 @@ if [[ "$RUN_HEXEL_EVAL" == "1" ]]; then
     read -r -a EVAL_ARG_ARRAY <<< "$EVAL_ARGS"
     python -m src.evaluate_hexels \
         --config="$CONFIG_FILE" \
+        --eval_val_hexels \
         "${EVAL_ARG_ARRAY[@]}"
 else
     echo "Skipping hexel evaluation because RUN_HEXEL_EVAL=${RUN_HEXEL_EVAL}"
