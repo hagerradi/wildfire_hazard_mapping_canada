@@ -26,7 +26,10 @@ from matplotlib.colors import Normalize, TwoSlopeNorm
 from data_preparation.paths import Paths
 from data_preparation.spatial.utils import load_spatial_raster
 from src.datasets.fuel_utils import normalize_hex_id
-from src.datasets.postprocessing.counterfactual import load_counterfactual_config
+from src.datasets.postprocessing.counterfactual import (
+    load_counterfactual_config,
+    resolve_counterfactual_paths,
+)
 from src.datasets.postprocessing.counterfactual_fuel_intervention_map import (
     burnable_fuel_support,
     load_evaluated_fuel_pair,
@@ -345,15 +348,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--endpoint", required=True, choices=sorted(ENDPOINT_SPECS), help="Prediction endpoint to render.")
     parser.add_argument("--scenario", required=True, help="Scenario name from scenario_prediction_index.csv.")
     parser.add_argument("--label", default=None, help="Human-readable scenario label for titles (defaults to the name).")
-    parser.add_argument("--experiment_dir", type=Path, default=Path("experiments/counterfactual_fuel_hex16"))
     parser.add_argument("--config", type=Path, default=Path("configs/counterfactual_fuel.yaml"))
+    parser.add_argument("--experiment_dir", type=Path, default=None, help="Overrides save_dir from --config.")
     parser.add_argument("--hex_id", type=str, default="16")
     parser.add_argument("--downsample", type=int, default=3, help="Stride factor for map display only.")
-    parser.add_argument(
-        "--raw_data_dir",
-        type=Path,
-        default=Path("/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA"),
-    )
+    parser.add_argument("--raw_data_dir", type=Path, default=None, help="Overrides raw_data_dir from --config.")
     parser.add_argument("--patch_window", type=int, default=400, help="Side length (pixels) of patch zoom windows.")
     parser.add_argument("--hotspot_block", type=int, default=64, help="Block size for locating high-response windows.")
     parser.add_argument("--patch_count", type=int, default=3, help="Number of distinct high-response windows to render.")
@@ -366,13 +365,15 @@ def main() -> None:
     args = parse_args()
     args.hex_id = normalize_hex_id(args.hex_id)
     label = args.label if args.label is not None else args.scenario
-    out_dir = args.out_dir if args.out_dir is not None else args.experiment_dir / "figures" / f"{args.scenario}_{args.endpoint}"
-    prediction_dirs = prediction_dirs_from_index(args.experiment_dir)
-
     config = load_counterfactual_config(args.config)
-    scenario_cfg = next((item for item in config.scenarios if item.name == args.scenario), None)
-    if scenario_cfg is None:
-        raise KeyError(f"Scenario {args.scenario!r} not found in {args.config}.")
+    experiment_dir, raw_data_dir = resolve_counterfactual_paths(
+        config,
+        experiment_dir=args.experiment_dir,
+        raw_data_dir=args.raw_data_dir,
+    )
+    out_dir = args.out_dir if args.out_dir is not None else experiment_dir / "figures" / f"{args.scenario}_{args.endpoint}"
+    prediction_dirs = prediction_dirs_from_index(experiment_dir)
+    scenario_cfg = config.scenario(args.scenario)
 
     nonfuel_ids: list[int] | None = None
     fuel_edit = scenario_cfg.fuel_edit()
@@ -380,10 +381,10 @@ def main() -> None:
         nonfuel_ids = [int(value) for value in fuel_edit["nonfuel_ids"]]
 
     ground_truth, baseline, scenario_values, delta, extent, reference_profile = load_endpoint_response(
-        args.experiment_dir,
+        experiment_dir,
         prediction_dirs,
         args.hex_id,
-        args.raw_data_dir,
+        raw_data_dir,
         scenario=args.scenario,
         endpoint=args.endpoint,
         nonfuel_ids=nonfuel_ids,
@@ -391,7 +392,7 @@ def main() -> None:
     zone_labels = None
     if args.zone_overlay:
         zone_labels = load_zone_labels_on_prediction_grid(
-            raw_data_dir=args.raw_data_dir,
+            raw_data_dir=raw_data_dir,
             reference_profile=reference_profile,
             hex_id=args.hex_id,
             support=prediction_footprint(prediction_dirs, args.hex_id, endpoint=args.endpoint),

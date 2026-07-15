@@ -117,35 +117,35 @@ python -m src.evaluate_counterfactual --config configs/counterfactual_fuel.yaml 
     --endpoint bp --endpoint fi --scenario remove_barriers_adjacent_modal --scenario remove_barriers_fixed_c2
 ```
 
-Plotting scripts operate on one hexel/scenario/endpoint at a time and read from the
-`scenario_prediction_index.csv` written by the evaluation step, so they only require that
-scenario/endpoint pair to have already been evaluated:
+Plotting scripts operate on one hexel/scenario/endpoint at a time and read paths from the
+counterfactual config plus the `scenario_prediction_index.csv` written by evaluation.
+`--experiment_dir` and `--raw_data_dir` are optional overrides:
 
 ```bash
 # Plot the fuel intervention map
 python -m src.datasets.postprocessing.counterfactual_fuel_intervention_map \
-    --experiment_dir experiments/counterfactual_fuel_hex16 \
+    --config configs/counterfactual_fuel.yaml \
     --scenario remove_barriers_adjacent_modal --endpoint bp --hex_id 16
 
 # Plot GT/baseline/scenario/Δ response maps + patch zoom for one endpoint
 python -m src.datasets.postprocessing.counterfactual_response_maps \
-    --experiment_dir experiments/counterfactual_fuel_hex16 \
+    --config configs/counterfactual_fuel.yaml \
     --scenario remove_barriers_adjacent_modal --endpoint fi --hex_id 16
 
 # Plot local zoom panels on selected evaluated-edit neighborhoods (uses bp + fi)
 python -m src.datasets.postprocessing.counterfactual_local_zoom_panels \
-    --experiment_dir experiments/counterfactual_fuel_hex16 \
     --config configs/counterfactual_fuel.yaml \
     --scenario remove_barriers_adjacent_modal --hex_id 16
 
 # Summarize the prediction change distribution
 python -m src.datasets.postprocessing.counterfactual_change_distribution \
-    --experiment_dir experiments/counterfactual_fuel_hex16 \
+    --config configs/counterfactual_fuel.yaml \
     --scenario remove_barriers_adjacent_modal --endpoint bp
 ```
 
 Run `--help` on any script for the full set of options (e.g. `--zone_overlay` to draw
 firezone boundaries, `--downsample` for lower-resolution map rendering).
 
-See `run_files/counterfactual_fuel_iROS.sh` and `run_files/counterfactual_c2_plots.sh` for
-example SLURM job scripts chaining all three steps.
+Submit `run_files/counterfactual_fuel_iROS.sh` for GPU evaluation, then
+`run_files/counterfactual_fuel_plots.sh` for all configured intervention, response,
+local-zoom, and change-distribution plots.

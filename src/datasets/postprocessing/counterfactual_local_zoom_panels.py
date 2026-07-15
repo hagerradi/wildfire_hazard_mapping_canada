@@ -21,7 +21,10 @@ from matplotlib.colors import Normalize
 from matplotlib.patches import Patch
 
 from src.datasets.fuel_utils import normalize_hex_id
-from src.datasets.postprocessing.counterfactual import load_counterfactual_config
+from src.datasets.postprocessing.counterfactual import (
+    load_counterfactual_config,
+    resolve_counterfactual_paths,
+)
 from src.datasets.postprocessing.counterfactual_fuel_intervention_map import (
     FUEL_GROUP_COLOURS,
     FUEL_GROUP_LABELS,
@@ -550,9 +553,10 @@ def write_local_neighborhood_panels(
     out_dir: Path | None = None,
 ) -> tuple[Path, Path, Path]:
     config = load_counterfactual_config(config_path)
-    scenario_config = next((item for item in config.scenarios if item.name == scenario), None)
-    if scenario_config is None:
-        raise KeyError(f"Scenario {scenario!r} not found in {config_path}.")
+    try:
+        scenario_config = config.scenario(scenario)
+    except KeyError as error:
+        raise KeyError(f"Scenario {scenario!r} not found in {config_path}.") from error
     fuel_edit = scenario_config.fuel_edit()
     if fuel_edit is None:
         raise ValueError(f"Scenario {scenario!r} is not a fuel intervention.")
@@ -705,13 +709,9 @@ def write_local_neighborhood_panels(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--experiment_dir", type=Path, default=Path("experiments/counterfactual_fuel_hex16"))
     parser.add_argument("--config", type=Path, default=Path("configs/counterfactual_fuel.yaml"))
-    parser.add_argument(
-        "--raw_data_dir",
-        type=Path,
-        default=Path("/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA"),
-    )
+    parser.add_argument("--experiment_dir", type=Path, default=None, help="Overrides save_dir from --config.")
+    parser.add_argument("--raw_data_dir", type=Path, default=None, help="Overrides raw_data_dir from --config.")
     parser.add_argument("--scenario", default=SCENARIO)
     parser.add_argument("--hex_id", default="16")
     parser.add_argument("--n_windows", type=int, default=3)
@@ -727,9 +727,15 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    fi_plot_path, hazard_plot_path, summary_path = write_local_neighborhood_panels(
+    config = load_counterfactual_config(args.config)
+    experiment_dir, raw_data_dir = resolve_counterfactual_paths(
+        config,
         experiment_dir=args.experiment_dir,
         raw_data_dir=args.raw_data_dir,
+    )
+    fi_plot_path, hazard_plot_path, summary_path = write_local_neighborhood_panels(
+        experiment_dir=experiment_dir,
+        raw_data_dir=raw_data_dir,
         config_path=args.config,
         scenario=args.scenario,
         hex_id=normalize_hex_id(args.hex_id),

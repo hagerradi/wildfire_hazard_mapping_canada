@@ -81,6 +81,31 @@ class CounterfactualConfig:
     endpoints: dict[str, EndpointConfig]
     scenarios: list[ScenarioConfig]
 
+    def scenario(self, name: str) -> ScenarioConfig:
+        for scenario in self.scenarios:
+            if scenario.name == name:
+                return scenario
+        raise KeyError(f"Scenario {name!r} is not defined.")
+
+
+def resolve_project_path(path: Path | str, project_root: Path | None = None) -> Path:
+    root = (project_root or Path.cwd()).resolve()
+    value = Path(path)
+    return value if value.is_absolute() else root / value
+
+
+def resolve_counterfactual_paths(
+    config: CounterfactualConfig,
+    *,
+    experiment_dir: Path | None = None,
+    raw_data_dir: Path | None = None,
+    project_root: Path | None = None,
+) -> tuple[Path, Path]:
+    return (
+        resolve_project_path(experiment_dir or config.save_dir, project_root),
+        resolve_project_path(raw_data_dir or config.raw_data_dir, project_root),
+    )
+
 
 def _parse_hex_ids(raw_hex_ids: object) -> list[str]:
     if not isinstance(raw_hex_ids, list | tuple) or not raw_hex_ids:

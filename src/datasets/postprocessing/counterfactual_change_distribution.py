@@ -12,7 +12,10 @@ import pandas as pd
 import rasterio
 from scipy.ndimage import distance_transform_edt
 
-from src.datasets.postprocessing.counterfactual import load_counterfactual_config
+from src.datasets.postprocessing.counterfactual import (
+    load_counterfactual_config,
+    resolve_counterfactual_paths,
+)
 from src.datasets.postprocessing.counterfactual_fuel_intervention_map import (
     burnable_fuel_support,
     load_evaluated_fuel_pair,
@@ -267,9 +270,10 @@ def write_change_distribution(
         The three paths written: [distance_plot, change_summary_csv, distance_summary_csv].
     """
     config = load_counterfactual_config(config_path)
-    scenario_config = next((item for item in config.scenarios if item.name == scenario), None)
-    if scenario_config is None:
-        raise KeyError(f"Scenario {scenario!r} not found in {config_path}.")
+    try:
+        scenario_config = config.scenario(scenario)
+    except KeyError as error:
+        raise KeyError(f"Scenario {scenario!r} not found in {config_path}.") from error
     fuel_edit = scenario_config.fuel_edit()
     if fuel_edit is None:
         raise ValueError(f"Scenario {scenario!r} is not a fuel intervention.")
@@ -327,8 +331,8 @@ def write_change_distribution(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--experiment_dir", type=Path, default=Path("experiments/counterfactual_fuel_hex16"))
     parser.add_argument("--config", type=Path, default=Path("configs/counterfactual_fuel.yaml"))
+    parser.add_argument("--experiment_dir", type=Path, default=None, help="Overrides save_dir from --config.")
     parser.add_argument("--scenario", default=SCENARIO)
     parser.add_argument("--endpoint", required=True)
     parser.add_argument("--hex_id", default="16")
@@ -338,8 +342,10 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    config = load_counterfactual_config(args.config)
+    experiment_dir, _ = resolve_counterfactual_paths(config, experiment_dir=args.experiment_dir)
     paths = write_change_distribution(
-        experiment_dir=args.experiment_dir,
+        experiment_dir=experiment_dir,
         config_path=args.config,
         scenario=args.scenario,
         endpoint=args.endpoint,

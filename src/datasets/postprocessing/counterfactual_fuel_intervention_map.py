@@ -15,7 +15,10 @@ from matplotlib.patches import Patch
 from data_preparation.paths import Paths
 from data_preparation.spatial.utils import FUEL_GROUP_MAP, load_spatial_raster
 from src.datasets.fuel_counterfactual import fuel_intervention_raster_path
-from src.datasets.postprocessing.counterfactual import load_counterfactual_config
+from src.datasets.postprocessing.counterfactual import (
+    load_counterfactual_config,
+    resolve_counterfactual_paths,
+)
 from src.datasets.postprocessing.counterfactual_viz import (
     DEFAULT_ZONE_OVERLAY_ALPHA,
     DEFAULT_ZONE_OVERLAY_COLOR,
@@ -445,16 +448,17 @@ def write_fuel_intervention_map(
 
     Loads the scenario's fuel edit from `config_path`, diffs baseline vs. edited fuel on
     the prediction grid, plots the result to `out_dir` (default: `<experiment_dir>/figures
-    /fuel_intervention`), and appends the pixel-count summary to
+    /fuel_intervention`), and writes the pixel-count summary to
     `<experiment_dir>/counterfactual_<scenario>_fuel_intervention_summary.csv`.
 
     Returns:
         The (plot_path, summary_path) that were written.
     """
     config = load_counterfactual_config(config_path)
-    scenario_config = next((item for item in config.scenarios if item.name == scenario), None)
-    if scenario_config is None:
-        raise ValueError(f"Scenario {scenario!r} is not defined in {config_path}.")
+    try:
+        scenario_config = config.scenario(scenario)
+    except KeyError as error:
+        raise ValueError(f"Scenario {scenario!r} is not defined in {config_path}.") from error
     if scenario_config.fuel_edit() is None:
         raise ValueError(f"Scenario {scenario!r} is not a fuel intervention.")
 
@@ -504,14 +508,10 @@ def write_fuel_intervention_map(
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Plot the fuel intervention for the local-modal counterfactual.")
-    parser.add_argument("--experiment_dir", type=Path, default=Path("experiments/counterfactual_fuel_hex16"))
+    parser = argparse.ArgumentParser(description="Plot an evaluated fuel intervention.")
     parser.add_argument("--config", type=Path, default=Path("configs/counterfactual_fuel.yaml"))
-    parser.add_argument(
-        "--raw_data_dir",
-        type=Path,
-        default=Path("/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA"),
-    )
+    parser.add_argument("--experiment_dir", type=Path, default=None, help="Overrides save_dir from --config.")
+    parser.add_argument("--raw_data_dir", type=Path, default=None, help="Overrides raw_data_dir from --config.")
     parser.add_argument("--scenario", default=SCENARIO)
     parser.add_argument("--endpoint", default="bp", choices=("bp", "ros", "fi"))
     parser.add_argument("--hex_id", default="16")
@@ -523,9 +523,15 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    plot_path, summary_path = write_fuel_intervention_map(
+    config = load_counterfactual_config(args.config)
+    experiment_dir, raw_data_dir = resolve_counterfactual_paths(
+        config,
         experiment_dir=args.experiment_dir,
         raw_data_dir=args.raw_data_dir,
+    )
+    plot_path, summary_path = write_fuel_intervention_map(
+        experiment_dir=experiment_dir,
+        raw_data_dir=raw_data_dir,
         scenario=args.scenario,
         endpoint=args.endpoint,
         hex_id=str(args.hex_id).zfill(2),

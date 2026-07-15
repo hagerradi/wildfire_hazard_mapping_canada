@@ -12,7 +12,13 @@ import pandas as pd
 
 from src.datasets.fuel_counterfactual import FuelCounterfactualTransform
 from src.datasets.fuel_utils import normalize_hex_id
-from src.datasets.postprocessing.counterfactual import EndpointConfig, ScenarioConfig, load_counterfactual_config
+from src.datasets.postprocessing.counterfactual import (
+    EndpointConfig,
+    ScenarioConfig,
+    load_counterfactual_config,
+    resolve_counterfactual_paths,
+    resolve_project_path,
+)
 from src.evaluate_hexels import load_config
 from src.evaluate_hexels import main as evaluate_hexels
 
@@ -33,11 +39,6 @@ def _select_endpoints(
     if endpoint_names is None:
         return list(endpoints.values())
     return [endpoint for name, endpoint in endpoints.items() if name in endpoint_names]
-
-
-def _resolve_path(path: Path | str, project_root: Path) -> Path:
-    value = Path(path)
-    return value if value.is_absolute() else project_root / value
 
 
 def _select_scenarios(scenarios: list[ScenarioConfig], scenario_names: set[str] | None) -> list[ScenarioConfig]:
@@ -139,8 +140,7 @@ def run_counterfactual_evaluation(
     """
     project_root = (project_root or Path.cwd()).resolve()
     config = load_counterfactual_config(config_path)
-    save_dir = _resolve_path(config.save_dir, project_root)
-    raw_data_dir = _resolve_path(config.raw_data_dir, project_root)
+    save_dir, raw_data_dir = resolve_counterfactual_paths(config, project_root=project_root)
     hex_ids = set(config.hex_ids)
     endpoints = _select_endpoints(config.endpoints, endpoint_names)
     scenarios = _select_scenarios(config.scenarios, scenario_names)
@@ -154,10 +154,10 @@ def run_counterfactual_evaluation(
     summary_frames = []
     component_frames = []
     for endpoint in endpoints:
-        endpoint_config_path = _resolve_path(endpoint.config_path, project_root)
+        endpoint_config_path = resolve_project_path(endpoint.config_path, project_root)
         base_config = load_config(str(endpoint_config_path))
-        source_save_dir = _resolve_path(base_config.save_dir, project_root)
-        data_root = _resolve_path(endpoint.baseline_data_root or base_config.data.root_dir, project_root)
+        source_save_dir = resolve_project_path(base_config.save_dir, project_root)
+        data_root = resolve_project_path(endpoint.baseline_data_root or base_config.data.root_dir, project_root)
         metadata = pd.read_csv(data_root / base_config.data.test_split)
         if "valid_ratio" in metadata.columns:
             metadata = metadata.loc[metadata["valid_ratio"] > base_config.data.valid_mask_threshold]
