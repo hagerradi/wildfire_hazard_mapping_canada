@@ -1,7 +1,9 @@
 import functools
 import json
 import os
+import time
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -45,6 +47,12 @@ class TargetPostprocessingSettings:
     out_norm: str
     target_log_mean: float | None
     target_log_std: float | None
+
+
+@dataclass(frozen=True)
+class PatchMetadata:
+    shape: tuple[int, int]
+    mask: np.ndarray
 
 
 def get_mask_scope_save_dir(save_dir: str, mask_scope: str) -> str:
@@ -219,6 +227,45 @@ def save_predicted_hexels(
         dst.write(write_array, 1)
 
 
+def _get_patch_mask(array: np.ndarray, target_channel_index: int, prediction_mask_channel_indices: list[int] | None) -> np.ndarray:
+    if target_channel_index >= array.shape[2]:
+        raise ValueError(f"target_channel_index={target_channel_index} is out of bounds for patch with shape {array.shape}.")
+    if prediction_mask_channel_indices is None:
+        return np.isfinite(array[:, :, target_channel_index])
+    if not prediction_mask_channel_indices:
+        raise ValueError("prediction_mask_channel_indices cannot be empty.")
+    invalid_indices = [index for index in prediction_mask_channel_indices if index < 0 or index >= array.shape[2]]
+    if invalid_indices:
+        raise ValueError(f"prediction mask channel indices {invalid_indices} are out of bounds for patch with shape {array.shape}.")
+    return np.logical_and.reduce([np.isfinite(array[:, :, index]) for index in prediction_mask_channel_indices])
+
+
+def build_patch_metadata_cache(
+    *,
+    base_dir: str,
+    relative_paths: list[str],
+    target_channel_index: int,
+    prediction_mask_channel_indices: list[int] | None,
+    max_workers: int = 1,
+) -> dict[str, PatchMetadata]:
+    def _load_patch_metadata(relative_path: str) -> tuple[str, PatchMetadata]:
+        array = np.load(os.path.join(base_dir, relative_path))
+        patch_h, patch_w = array.shape[:2]
+        mask = _get_patch_mask(
+            array=array,
+            target_channel_index=target_channel_index,
+            prediction_mask_channel_indices=prediction_mask_channel_indices,
+        )
+        return relative_path, PatchMetadata(shape=(patch_h, patch_w), mask=mask.reshape((patch_h, patch_w)))
+
+    unique_paths = sorted(set(relative_paths))
+    if max_workers <= 1 or len(unique_paths) <= 1:
+        return dict(_load_patch_metadata(path) for path in unique_paths)
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        return dict(executor.map(_load_patch_metadata, unique_paths))
+
+
 def get_stitched_windows(
     base_dir: str,
     df: pd.DataFrame,
@@ -228,26 +275,26 @@ def get_stitched_windows(
     target_channel_index: int = 0,
     prediction_mask_channel_indices: list[int] | None = None,
     stitch_mode: str = "mean",
+    patch_metadata_by_relpath: dict[str, PatchMetadata] | None = None,
 ) -> np.ndarray:
     """
     Accumulate and stitch all the windows together to build the hexel
     """
     all_data_points, all_locations, all_masks = [], [], []
-    for i, data in enumerate(np.array(df)):
-        path = data[0]
-        array = np.load(os.path.join(base_dir, path))
-        if target_channel_index >= array.shape[2]:
-            raise ValueError(f"target_channel_index={target_channel_index} is out of bounds for patch with shape {array.shape}.")
-        if prediction_mask_channel_indices is None:
-            mask = np.isfinite(array[:, :, target_channel_index])
+    for i, data in enumerate(df.itertuples(index=False, name=None)):
+        path = str(data[0])
+        patch_metadata = patch_metadata_by_relpath.get(path) if patch_metadata_by_relpath else None
+        if patch_metadata is None:
+            array = np.load(os.path.join(base_dir, path))
+            patch_h, patch_w = array.shape[:2]
+            mask = _get_patch_mask(
+                array=array,
+                target_channel_index=target_channel_index,
+                prediction_mask_channel_indices=prediction_mask_channel_indices,
+            )
         else:
-            if not prediction_mask_channel_indices:
-                raise ValueError("prediction_mask_channel_indices cannot be empty.")
-            invalid_indices = [index for index in prediction_mask_channel_indices if index < 0 or index >= array.shape[2]]
-            if invalid_indices:
-                raise ValueError(f"prediction mask channel indices {invalid_indices} are out of bounds for patch with shape {array.shape}.")
-            mask = np.logical_and.reduce([np.isfinite(array[:, :, index]) for index in prediction_mask_channel_indices])
-        patch_h, patch_w = array.shape[:2]
+            patch_h, patch_w = patch_metadata.shape
+            mask = patch_metadata.mask
         all_data_points.append(predictions[start_idx + i].reshape((patch_h, patch_w)))
         all_locations.append((data[5], data[6]))
         all_masks.append(mask.reshape((patch_h, patch_w)))
@@ -277,6 +324,7 @@ def get_predicted_hexel(
     target_channel_index: int = 0,
     prediction_mask_channel_indices: list[int] | None = None,
     mask_scope: str = "actual",
+    patch_metadata_by_relpath: dict[str, PatchMetadata] | None = None,
 ) -> tuple[np.ndarray, Profile]:
     """
     Returns the reconstructed hexel
@@ -304,6 +352,7 @@ def get_predicted_hexel(
             target_channel_index=target_channel_index,
             stitch_mode=stitch_mode,
             prediction_mask_channel_indices=prediction_mask_channel_indices,
+            patch_metadata_by_relpath=patch_metadata_by_relpath,
         )
         reconstructed_hexel_denorm = denormalize_model_target(
             data=reconstructed_hexel,
@@ -328,6 +377,7 @@ def get_predicted_hexel(
                 target_channel_index=target_channel_index,
                 stitch_mode=stitch_mode,
                 prediction_mask_channel_indices=prediction_mask_channel_indices,
+                patch_metadata_by_relpath=patch_metadata_by_relpath,
             )
             reconstructed_season_cause_hexel_denorm = denormalize_burn_count(
                 data=reconstructed_season_cause_hexel, min_val=min_target_val, max_val=max_target_val
@@ -574,6 +624,7 @@ def evaluate_and_visualize_hexels(
     save_plots: bool = True,
     robust_plot_percentile: float | None = None,
     mask_scope: str = "actual",
+    parallel_workers: int = 1,
 ) -> dict[str, float]:
     """
     A util function to re-construct predicted hexels out of test predictions, and visualize side-by-side with the Groundtruth.
@@ -588,55 +639,115 @@ def evaluate_and_visualize_hexels(
 
     all_hexel_metrics: list[tuple[str, str | None, str | None, dict[str, float]]] = []
     current_hex_id: str | None = None
+    reconstruction_time_s = 0.0
+    metrics_time_s = 0.0
+    artifact_time_s = 0.0
+    total_start_time = time.perf_counter()
+    effective_workers = max(1, int(parallel_workers))
 
-    for stitched_hexel in reconstruct_denormalized_hexels(
+    percentiles_to_plot = (
+        [
+            fn.keywords["percentile"]
+            for _, fn in metric_functions.items()
+            if isinstance(fn, functools.partial) and "percentile" in fn.keywords
+        ]
+        if metric_functions is not None
+        else []
+    )
+
+    def _collect_hexel_metric_entries(stitched_hexel) -> list[tuple[str, str | None, str | None, dict[str, float]]]:
+        if metric_functions is None:
+            return []
+        grid_gt = stitched_hexel.gt_grid
+        reconstructed_hexel_denorm = stitched_hexel.pred_grid
+        metric_entries: list[tuple[str, str | None, str | None, dict[str, float]]] = []
+
+        hex_metrics = calculate_hexel_metrics_pytorch(
+            gt_grid=grid_gt,
+            pred_grid=reconstructed_hexel_denorm,
+            device=device,
+            metric_functions=metric_functions,
+        )
+        metric_scope: str | None = None if scope == "actual" else scope
+        metric_entries.append((stitched_hexel.hex_id, None, metric_scope, hex_metrics))
+
+        if scope == "buffer" and stitched_hexel.actual_support_mask is not None:
+            actual_gt, actual_pred = mask_grids_by_support(
+                gt_grid=grid_gt,
+                pred_grid=reconstructed_hexel_denorm,
+                support_mask=stitched_hexel.actual_support_mask,
+            )
+            buffer_only_gt, buffer_only_pred = mask_grids_by_support(
+                gt_grid=grid_gt,
+                pred_grid=reconstructed_hexel_denorm,
+                support_mask=np.isfinite(reconstructed_hexel_denorm) & ~stitched_hexel.actual_support_mask,
+            )
+            actual_metrics = calculate_hexel_metrics_pytorch(
+                gt_grid=actual_gt,
+                pred_grid=actual_pred,
+                device=device,
+                metric_functions=metric_functions,
+            )
+            buffer_only_metrics = calculate_hexel_metrics_pytorch(
+                gt_grid=buffer_only_gt,
+                pred_grid=buffer_only_pred,
+                device=device,
+                metric_functions=metric_functions,
+            )
+            metric_entries.append((stitched_hexel.hex_id, None, "actual", actual_metrics))
+            metric_entries.append((stitched_hexel.hex_id, None, "buffer_only", buffer_only_metrics))
+        return metric_entries
+
+    reconstructed_hexels = []
+    stitched_hexel_iterator = reconstruct_denormalized_hexels(
         test_predictions=test_predictions,
         config=config,
         out_norm=out_norm,
         stitch_mode=stitch_mode,
         mask_scope=scope,
-    ):
-        if stitched_hexel.hex_id != current_hex_id:
-            if current_hex_id is not None and save_artifacts:
-                artifact_label = "subplots" if save_plots else "predicted rasters"
-                print(f"=======Saved {artifact_label} for hex{current_hex_id}==============")
-            current_hex_id = stitched_hexel.hex_id
-            print(f"======Working with hex{current_hex_id}========")
+    )
 
-        target = stitched_hexel.target
-        target_name_for_artifacts = None
-        grid_gt = stitched_hexel.gt_grid
-        reconstructed_hexel_denorm = stitched_hexel.pred_grid
-        actual_support_mask = stitched_hexel.actual_support_mask
-        buffer_support_mask = stitched_hexel.buffer_support_mask
+    while True:
+        reconstruct_start = time.perf_counter()
+        try:
+            stitched_hexel = next(stitched_hexel_iterator)
+        except StopIteration:
+            break
+        reconstruction_time_s += time.perf_counter() - reconstruct_start
+        reconstructed_hexels.append(stitched_hexel)
 
-        if save_artifacts:
-            save_predicted_hexels(
-                reconstructed_hexel_denorm,
-                stitched_hexel.profile,
-                stitched_hexel.hex_id,
-                artifacts_save_dir,
-                target_name=target_name_for_artifacts,
-            )
-            if save_plots:
-                visualize_target_grids(
-                    gt_grid=grid_gt,
-                    pred_grid=reconstructed_hexel_denorm,
-                    hex_id=stitched_hexel.hex_id,
-                    save_dir=artifacts_save_dir,
-                    experiment_logger=experiment_logger,
-                    target_label=target.label,
+    if not save_artifacts and metric_functions is not None and effective_workers > 1 and str(device) == "cpu":
+        metrics_start = time.perf_counter()
+        with ThreadPoolExecutor(max_workers=effective_workers) as executor:
+            for metric_entries in executor.map(_collect_hexel_metric_entries, reconstructed_hexels):
+                all_hexel_metrics.extend(metric_entries)
+        metrics_time_s += time.perf_counter() - metrics_start
+    else:
+        for stitched_hexel in reconstructed_hexels:
+            if stitched_hexel.hex_id != current_hex_id:
+                if current_hex_id is not None and save_artifacts:
+                    artifact_label = "subplots" if save_plots else "predicted rasters"
+                    print(f"=======Saved {artifact_label} for hex{current_hex_id}==============")
+                current_hex_id = stitched_hexel.hex_id
+                print(f"======Working with hex{current_hex_id}========")
+
+            target = stitched_hexel.target
+            target_name_for_artifacts = None
+            grid_gt = stitched_hexel.gt_grid
+            reconstructed_hexel_denorm = stitched_hexel.pred_grid
+            actual_support_mask = stitched_hexel.actual_support_mask
+            buffer_support_mask = stitched_hexel.buffer_support_mask
+
+            if save_artifacts:
+                artifact_start = time.perf_counter()
+                save_predicted_hexels(
+                    reconstructed_hexel_denorm,
+                    stitched_hexel.profile,
+                    stitched_hexel.hex_id,
+                    artifacts_save_dir,
                     target_name=target_name_for_artifacts,
-                    actual_support_mask=actual_support_mask,
-                    buffer_support_mask=buffer_support_mask,
-                    prediction_support_label=prediction_support_label,
-                    show_prediction_support_outline=show_prediction_support_outline,
                 )
-                target_robust_plot_percentile = effective_robust_plot_percentile(
-                    target=target,
-                    robust_plot_percentile=robust_plot_percentile,
-                )
-                if target_robust_plot_percentile is not None:
+                if save_plots:
                     visualize_target_grids(
                         gt_grid=grid_gt,
                         pred_grid=reconstructed_hexel_denorm,
@@ -645,91 +756,77 @@ def evaluate_and_visualize_hexels(
                         experiment_logger=experiment_logger,
                         target_label=target.label,
                         target_name=target_name_for_artifacts,
-                        value_percentile=target_robust_plot_percentile,
-                        diff_percentile=target_robust_plot_percentile,
-                        filename_suffix=f"_p{target_robust_plot_percentile:g}",
                         actual_support_mask=actual_support_mask,
                         buffer_support_mask=buffer_support_mask,
                         prediction_support_label=prediction_support_label,
                         show_prediction_support_outline=show_prediction_support_outline,
                     )
-                plot_hexbin_distribution(
-                    gt_grid=grid_gt,
-                    pred_grid=reconstructed_hexel_denorm,
-                    hex_id=stitched_hexel.hex_id,
-                    save_dir=artifacts_save_dir,
-                    experiment_logger=experiment_logger,
-                    target_label=target.label,
-                    probability_scale=target.probability_scale,
-                    target_name=target_name_for_artifacts,
-                )
-                plot_histogram_distribution(
-                    gt_grid=grid_gt,
-                    pred_grid=reconstructed_hexel_denorm,
-                    hex_id=stitched_hexel.hex_id,
-                    save_dir=artifacts_save_dir,
-                    experiment_logger=experiment_logger,
-                    target_label=target.label,
-                    probability_scale=target.probability_scale,
-                    target_name=target_name_for_artifacts,
-                )
-
-        # compute per-hexel metrics
-        if metric_functions is not None:
-            hex_metrics = calculate_hexel_metrics_pytorch(
-                gt_grid=grid_gt, pred_grid=reconstructed_hexel_denorm, device=device, metric_functions=metric_functions
-            )
-            metric_scope: str | None = None if scope == "actual" else scope
-            all_hexel_metrics.append((stitched_hexel.hex_id, None, metric_scope, hex_metrics))
-
-            if scope == "buffer" and actual_support_mask is not None:
-                actual_gt, actual_pred = mask_grids_by_support(
-                    gt_grid=grid_gt,
-                    pred_grid=reconstructed_hexel_denorm,
-                    support_mask=actual_support_mask,
-                )
-                buffer_only_gt, buffer_only_pred = mask_grids_by_support(
-                    gt_grid=grid_gt,
-                    pred_grid=reconstructed_hexel_denorm,
-                    support_mask=np.isfinite(reconstructed_hexel_denorm) & ~actual_support_mask,
-                )
-                actual_metrics = calculate_hexel_metrics_pytorch(
-                    gt_grid=actual_gt,
-                    pred_grid=actual_pred,
-                    device=device,
-                    metric_functions=metric_functions,
-                )
-                buffer_only_metrics = calculate_hexel_metrics_pytorch(
-                    gt_grid=buffer_only_gt,
-                    pred_grid=buffer_only_pred,
-                    device=device,
-                    metric_functions=metric_functions,
-                )
-                all_hexel_metrics.append((stitched_hexel.hex_id, None, "actual", actual_metrics))
-                all_hexel_metrics.append((stitched_hexel.hex_id, None, "buffer_only", buffer_only_metrics))
-
-            percentiles_to_plot = [
-                fn.keywords["percentile"]
-                for _, fn in metric_functions.items()
-                if isinstance(fn, functools.partial) and "percentile" in fn.keywords
-            ]
-
-            if save_artifacts and save_plots:
-                for p in percentiles_to_plot:
-                    pred_bin, gt_bin = get_hexel_binary_maps(reconstructed_hexel_denorm, grid_gt, percentile=p)
-                    visualize_hexel_iou(
-                        grid_gt,
-                        reconstructed_hexel_denorm,
-                        gt_bin,
-                        pred_bin,
-                        stitched_hexel.hex_id,
-                        artifacts_save_dir,
-                        p,
-                        target_label=target.label,
-                        target_name=target_name_for_artifacts,
-                        actual_support_mask=actual_support_mask,
-                        buffer_support_mask=buffer_support_mask,
+                    target_robust_plot_percentile = effective_robust_plot_percentile(
+                        target=target,
+                        robust_plot_percentile=robust_plot_percentile,
                     )
+                    if target_robust_plot_percentile is not None:
+                        visualize_target_grids(
+                            gt_grid=grid_gt,
+                            pred_grid=reconstructed_hexel_denorm,
+                            hex_id=stitched_hexel.hex_id,
+                            save_dir=artifacts_save_dir,
+                            experiment_logger=experiment_logger,
+                            target_label=target.label,
+                            target_name=target_name_for_artifacts,
+                            value_percentile=target_robust_plot_percentile,
+                            diff_percentile=target_robust_plot_percentile,
+                            filename_suffix=f"_p{target_robust_plot_percentile:g}",
+                            actual_support_mask=actual_support_mask,
+                            buffer_support_mask=buffer_support_mask,
+                            prediction_support_label=prediction_support_label,
+                            show_prediction_support_outline=show_prediction_support_outline,
+                        )
+                    plot_hexbin_distribution(
+                        gt_grid=grid_gt,
+                        pred_grid=reconstructed_hexel_denorm,
+                        hex_id=stitched_hexel.hex_id,
+                        save_dir=artifacts_save_dir,
+                        experiment_logger=experiment_logger,
+                        target_label=target.label,
+                        probability_scale=target.probability_scale,
+                        target_name=target_name_for_artifacts,
+                    )
+                    plot_histogram_distribution(
+                        gt_grid=grid_gt,
+                        pred_grid=reconstructed_hexel_denorm,
+                        hex_id=stitched_hexel.hex_id,
+                        save_dir=artifacts_save_dir,
+                        experiment_logger=experiment_logger,
+                        target_label=target.label,
+                        probability_scale=target.probability_scale,
+                        target_name=target_name_for_artifacts,
+                    )
+                artifact_time_s += time.perf_counter() - artifact_start
+
+            if metric_functions is not None:
+                metrics_start = time.perf_counter()
+                all_hexel_metrics.extend(_collect_hexel_metric_entries(stitched_hexel))
+                metrics_time_s += time.perf_counter() - metrics_start
+
+                if save_artifacts and save_plots:
+                    artifact_start = time.perf_counter()
+                    for p in percentiles_to_plot:
+                        pred_bin, gt_bin = get_hexel_binary_maps(reconstructed_hexel_denorm, grid_gt, percentile=p)
+                        visualize_hexel_iou(
+                            grid_gt,
+                            reconstructed_hexel_denorm,
+                            gt_bin,
+                            pred_bin,
+                            stitched_hexel.hex_id,
+                            artifacts_save_dir,
+                            p,
+                            target_label=target.label,
+                            target_name=target_name_for_artifacts,
+                            actual_support_mask=actual_support_mask,
+                            buffer_support_mask=buffer_support_mask,
+                        )
+                    artifact_time_s += time.perf_counter() - artifact_start
 
     if current_hex_id is not None and save_artifacts:
         artifact_label = "subplots" if save_plots else "predicted rasters"
@@ -757,6 +854,15 @@ def evaluate_and_visualize_hexels(
             mean_val = float(np.mean(finite_values)) if finite_values else float("nan")
             # we create keys such as "all/mse" or "all/bp_mse"
             hexel_metrics[f"all/{key}"] = mean_val
+
+    total_time_s = time.perf_counter() - total_start_time
+    print(
+        "[PostprocessTiming] "
+        f"reconstruct={reconstruction_time_s:.3f}s "
+        f"metrics={metrics_time_s:.3f}s "
+        f"artifacts={artifact_time_s:.3f}s "
+        f"total={total_time_s:.3f}s"
+    )
 
     return hexel_metrics
 

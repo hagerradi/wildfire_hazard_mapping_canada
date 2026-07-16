@@ -7,6 +7,7 @@ buffer extents instead of materializing every reconstructed raster at once.
 from __future__ import annotations
 
 import os
+import time
 from collections.abc import Iterator
 from dataclasses import dataclass
 
@@ -65,11 +66,30 @@ def reconstruct_denormalized_hexels(
         grid_params=post_utils.get_config_grid_params(config),
         prediction_support_policy=config.evaluation.prediction_support_policy,
     )
+    patch_relative_paths = test_df["filename"].astype(str).tolist()
+    grouped_hexes = list(test_df.groupby("hex_id", sort=False))
+    metadata_cache_by_target: dict[int, dict[str, post_utils.PatchMetadata]] = {}
+    metadata_cache_start = time.perf_counter()
+    max_patch_workers = min(8, max(1, os.cpu_count() or 1))
+    for settings in settings_list:
+        if settings.target_channel_index in metadata_cache_by_target:
+            continue
+        metadata_cache_by_target[settings.target_channel_index] = post_utils.build_patch_metadata_cache(
+            base_dir=config.data.root_dir,
+            relative_paths=patch_relative_paths,
+            target_channel_index=settings.target_channel_index,
+            prediction_mask_channel_indices=prediction_mask_channel_indices,
+            max_workers=max_patch_workers,
+        )
+    metadata_cache_elapsed = time.perf_counter() - metadata_cache_start
+    print(
+        "[Postprocess] Prepared patch metadata " f"for {len(set(patch_relative_paths))} patches in {metadata_cache_elapsed:.3f}s.",
+        flush=True,
+    )
 
-    for raw_hex_id in test_df["hex_id"].unique():
+    for raw_hex_id, one_hexel_df in grouped_hexes:
         hex_id = str(raw_hex_id).zfill(2)
-        one_hexel_df = test_df[test_df["hex_id"] == raw_hex_id]
-        hexel_indices = test_df[test_df["hex_id"] == raw_hex_id].index.tolist()
+        hexel_indices = one_hexel_df.index.tolist()
         hex_test_predictions = test_predictions[hexel_indices]
 
         for settings in settings_list:
@@ -97,6 +117,7 @@ def reconstruct_denormalized_hexels(
                 target_channel_index=settings.target_channel_index,
                 prediction_mask_channel_indices=prediction_mask_channel_indices,
                 mask_scope=scope,
+                patch_metadata_by_relpath=metadata_cache_by_target[settings.target_channel_index],
             )
             paths = Paths(hex_id=hex_id, root_dir=config.data.raw_data_dir)
             gt_grid, pred_grid = post_utils.load_target_grid_for_mask_scope(

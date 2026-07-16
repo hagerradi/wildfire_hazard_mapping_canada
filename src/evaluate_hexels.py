@@ -58,6 +58,11 @@ def parse_args() -> argparse.Namespace:
         help="Do not save patch-level test_predictions.npy.",
     )
     parser.add_argument(
+        "--fast_eval",
+        action="store_true",
+        help="Enable speed-focused eval defaults: metrics-only and skip writing prediction arrays/plots.",
+    )
+    parser.add_argument(
         "--robust_plot_percentile",
         type=float,
         default=None,
@@ -69,6 +74,12 @@ def parse_args() -> argparse.Namespace:
         default="mean",
         choices=["mean", "max"],
         help="How to combine overlapping patch predictions when reconstructing hexels.",
+    )
+    parser.add_argument(
+        "--parallel_workers",
+        type=int,
+        default=1,
+        help="Number of CPU workers for stitched metric computation when artifacts are disabled.",
     )
     parser.add_argument(
         "--mask_scope",
@@ -94,6 +105,10 @@ def load_config(path: str) -> Config:
 
 def main() -> None:
     args = parse_args()
+    if args.fast_eval:
+        args.metrics_only = True
+        args.skip_hexel_plots = True
+        args.no_save_predictions = True
     config = load_config(args.config)
 
     # ---------- Set Seed ----------
@@ -183,6 +198,7 @@ def main() -> None:
             if args.robust_plot_percentile is not None
             else config.evaluation.robust_plot_percentile,
             mask_scope=args.mask_scope,
+            parallel_workers=args.parallel_workers,
         )
 
         # print metrics in terminal and log into comet
