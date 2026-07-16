@@ -82,8 +82,9 @@ def reconstruct_denormalized_hexels(
             max_workers=max_patch_workers,
         )
     metadata_cache_elapsed = time.perf_counter() - metadata_cache_start
+    cached_patch_count = len(next(iter(metadata_cache_by_target.values()))) if metadata_cache_by_target else 0
     print(
-        "[Postprocess] Prepared patch metadata " f"for {len(set(patch_relative_paths))} patches in {metadata_cache_elapsed:.3f}s.",
+        "[Postprocess] Prepared patch metadata " f"for {cached_patch_count} patches in {metadata_cache_elapsed:.3f}s.",
         flush=True,
     )
 

@@ -281,7 +281,8 @@ def get_stitched_windows(
     Accumulate and stitch all the windows together to build the hexel
     """
     all_data_points, all_locations, all_masks = [], [], []
-    for i, data in enumerate(df.itertuples(index=False, name=None)):
+    prediction_windows = predictions[start_idx : start_idx + len(df)]
+    for prediction_window, data in zip(prediction_windows, df.itertuples(index=False, name=None), strict=False):
         path = str(data[0])
         patch_metadata = patch_metadata_by_relpath.get(path) if patch_metadata_by_relpath else None
         if patch_metadata is None:
@@ -295,7 +296,7 @@ def get_stitched_windows(
         else:
             patch_h, patch_w = patch_metadata.shape
             mask = patch_metadata.mask
-        all_data_points.append(predictions[start_idx + i].reshape((patch_h, patch_w)))
+        all_data_points.append(prediction_window.reshape((patch_h, patch_w)))
         all_locations.append((data[5], data[6]))
         all_masks.append(mask.reshape((patch_h, patch_w)))
     reconstructed_hexel = stitch_windows(
@@ -716,7 +717,8 @@ def evaluate_and_visualize_hexels(
         reconstruction_time_s += time.perf_counter() - reconstruct_start
         reconstructed_hexels.append(stitched_hexel)
 
-    if not save_artifacts and metric_functions is not None and effective_workers > 1 and str(device) == "cpu":
+    device_type = device.type if isinstance(device, torch.device) else str(device)
+    if not save_artifacts and metric_functions is not None and effective_workers > 1 and device_type == "cpu":
         metrics_start = time.perf_counter()
         with ThreadPoolExecutor(max_workers=effective_workers) as executor:
             for metric_entries in executor.map(_collect_hexel_metric_entries, reconstructed_hexels):
