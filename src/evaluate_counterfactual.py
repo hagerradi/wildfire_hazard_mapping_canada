@@ -185,11 +185,11 @@ def run_counterfactual_evaluation(
             patch_transform = None
             if scenario.kind == "fuel":
                 patch_transform = FuelCounterfactualTransform.from_metadata(
-                    data_root=data_root,
                     metadata=metadata,
                     fuel_channel=_fuel_channel(data_root, run_config.modelling_approach),
                     scenario=scenario,
                     filename_col=base_config.data.filename_col,
+                    mask_scope=_evaluation_args().mask_scope,
                     prediction_dir=prediction_dir,
                     raw_data_dir=raw_data_dir,
                 )

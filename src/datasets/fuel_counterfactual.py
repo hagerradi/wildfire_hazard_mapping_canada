@@ -15,7 +15,6 @@ from data_preparation.spatial.utils import load_spatial_raster
 from src.datasets.fuel_utils import normalize_hex_id
 from src.datasets.postprocessing.counterfactual import ScenarioConfig
 from src.datasets.postprocessing.counterfactual_fuel import FUEL_NODATA, apply_fuel_edit
-from src.datasets.postprocessing.stitch_hexel import stitch_windows
 
 
 @dataclass(frozen=True)
@@ -23,7 +22,6 @@ class PatchFuelWindow:
     hex_id: str
     row: int
     col: int
-    shape: tuple[int, int]
 
 
 def fuel_intervention_raster_path(
@@ -48,29 +46,17 @@ def _write_intervention_rasters(
     *,
     baseline_fuel: np.ndarray,
     scenario_fuel: np.ndarray,
-    raw_data_dir: Path,
+    profile: dict,
     prediction_dir: Path,
     hex_id: str,
 ) -> None:
-    paths = Paths(hex_id=hex_id, root_dir=raw_data_dir)
-    reference_grid, profile = load_spatial_raster(
-        path=paths.elevation_grid(hex_id),
-        mask_path=paths.mask_grid_actual(hex_id),
-    )
-    height, width = reference_grid.shape
-    if baseline_fuel.shape[0] < height or baseline_fuel.shape[1] < width:
-        raise ValueError(f"Stitched fuel grid {baseline_fuel.shape} is smaller than prediction grid {(height, width)} for hex {hex_id}.")
-
-    support = ~np.ma.getmaskarray(reference_grid)
-    baseline = np.where(support, baseline_fuel[:height, :width], np.nan)
-    scenario = np.where(support, scenario_fuel[:height, :width], np.nan)
     _write_fuel_raster(
-        baseline,
+        baseline_fuel,
         profile,
         fuel_intervention_raster_path(prediction_dir, hex_id, "baseline"),
     )
     _write_fuel_raster(
-        scenario,
+        scenario_fuel,
         profile,
         fuel_intervention_raster_path(prediction_dir, hex_id, "scenario"),
     )
@@ -79,10 +65,10 @@ def _write_intervention_rasters(
 class FuelCounterfactualTransform:
     """Dataset patch transform that overlays a per-hexel fuel-edit scenario.
 
-    Instances are built once per scenario via `from_metadata`, which stitches each
-    hexel's patches into a full fuel grid and applies the edit once. `__call__` slices
-    the corresponding window from that edited grid and substitutes the patch's fuel
-    channel at data-loading time.
+    Instances are built once per scenario via `from_metadata`, which loads each
+    hexel's raw fuel raster directly from `raw_data_dir` and applies the edit once
+    on the full grid. `__call__` slices the corresponding window from that edited
+    grid and substitutes the patch's fuel channel at data-loading time.
     """
 
     def __init__(
@@ -106,20 +92,22 @@ class FuelCounterfactualTransform:
     def from_metadata(
         cls,
         *,
-        data_root: Path,
         metadata: pd.DataFrame,
         fuel_channel: int,
         scenario: ScenarioConfig,
+        raw_data_dir: Path,
         filename_col: str = "filename",
+        mask_scope: str = "actual",
         prediction_dir: Path | None = None,
-        raw_data_dir: Path | None = None,
     ) -> FuelCounterfactualTransform:
-        """Precompute the edited fuel channel for every patch listed in `metadata`.
+        """Precompute the edited fuel channel for every hexel referenced in `metadata`.
 
-        For each hexel, patches are stitched into a single fuel grid (averaging
-        overlapping windows) and the scenario's edit is applied once on that grid.
-        When output paths are supplied, the exact baseline and edited grids are also
-        persisted on the prediction raster grid for downstream analysis.
+        Each hexel's raw fuel raster is loaded directly from `raw_data_dir` (the same
+        raster patches were generated from) and the scenario's edit is applied once on
+        the full grid. `metadata` is only used to enumerate the (hex_id, row, col)
+        patch windows that need the edited fuel channel; patch files are never read
+        here. When `prediction_dir` is supplied, the exact baseline and edited fuel
+        rasters are also persisted for downstream analysis.
         """
         params = dict(scenario.fuel_edit() or {})
         mode = str(params.pop("mode", "nonfuel_to_burnable_local_adjacent_modal"))
@@ -128,8 +116,6 @@ class FuelCounterfactualTransform:
             raise ValueError(f"Fuel scenario {scenario.name!r} must define nonfuel_ids.")
         if "hex_id" not in metadata.columns:
             raise ValueError("Patch metadata is missing required column 'hex_id'.")
-        if (prediction_dir is None) != (raw_data_dir is None):
-            raise ValueError("prediction_dir and raw_data_dir must be provided together.")
 
         normalized_hex_ids = metadata["hex_id"].astype(str).map(normalize_hex_id)
         edited_hexels: dict[str, np.ndarray] = {}
@@ -139,49 +125,33 @@ class FuelCounterfactualTransform:
 
         for hex_id in sorted(normalized_hex_ids.unique()):
             hex_metadata = metadata.loc[normalized_hex_ids == hex_id].drop_duplicates(filename_col)
-            records = []
-            windows = []
-            masks = []
-            coords = []
-            max_row = 0
-            max_col = 0
-            for _, item in hex_metadata.iterrows():
-                relative_path = Path(str(item[filename_col]))
-                patch = np.load(data_root / relative_path, mmap_mode="r")
-                fuel = np.asarray(patch[:, :, fuel_channel], dtype=np.float32)
-                row = int(item["row"])
-                col = int(item["col"])
-                records.append((relative_path.as_posix(), row, col, fuel.shape))
-                windows.append(fuel)
-                masks.append(np.isfinite(fuel))
-                coords.append((row, col))
-                max_row = max(max_row, row + fuel.shape[0])
-                max_col = max(max_col, col + fuel.shape[1])
+            paths = Paths(hex_id=hex_id, root_dir=raw_data_dir)
+            fuel_grid, profile = load_spatial_raster(
+                path=paths.fuel_grid(hex_id),
+                mask_path=paths.mask_grid(hex_id, mask_scope=mask_scope),
+            )
+            baseline = np.ma.filled(fuel_grid.astype(np.float32), np.nan)
 
-            stitched = stitch_windows(windows, coords, masks, (max_row, max_col), mode="mean")
             result = apply_fuel_edit(
-                stitched,
+                baseline,
                 [int(value) for value in nonfuel_ids],
                 mode=mode,
                 scenario_name=scenario.name,
                 params=params,
             )
             edited_hexels[hex_id] = np.asarray(result.fuel, dtype=np.float32)
-            for key, row, col, shape in records:
+
+            for _, item in hex_metadata.iterrows():
+                key = Path(str(item[filename_col])).as_posix()
                 if key in patch_windows:
                     raise ValueError(f"Duplicate patch filename in counterfactual metadata: {key}")
-                patch_windows[key] = PatchFuelWindow(
-                    hex_id=hex_id,
-                    row=row,
-                    col=col,
-                    shape=shape,
-                )
+                patch_windows[key] = PatchFuelWindow(hex_id=hex_id, row=int(item["row"]), col=int(item["col"]))
 
-            if prediction_dir is not None and raw_data_dir is not None:
+            if prediction_dir is not None:
                 _write_intervention_rasters(
-                    baseline_fuel=stitched,
+                    baseline_fuel=baseline,
                     scenario_fuel=result.fuel,
-                    raw_data_dir=raw_data_dir,
+                    profile=profile,
                     prediction_dir=prediction_dir,
                     hex_id=hex_id,
                 )
@@ -211,11 +181,12 @@ class FuelCounterfactualTransform:
         if patch_window is None:
             raise KeyError(f"No counterfactual fuel channel was prepared for patch {key}.")
         edited_hexel = self.edited_hexels[patch_window.hex_id]
-        row_end = patch_window.row + patch_window.shape[0]
-        col_end = patch_window.col + patch_window.shape[1]
+        height, width = data.shape[:2]
+        row_end = patch_window.row + height
+        col_end = patch_window.col + width
         edited_channel = edited_hexel[patch_window.row : row_end, patch_window.col : col_end]
-        if edited_channel.shape != patch_window.shape:
-            raise ValueError(f"Edited fuel slice for patch {key} has shape {edited_channel.shape}; expected {patch_window.shape}.")
+        if edited_channel.shape != (height, width):
+            raise ValueError(f"Edited fuel slice for patch {key} has shape {edited_channel.shape}; expected {(height, width)}.")
         edited = np.array(data, copy=True)
         edited[:, :, self.fuel_channel] = edited_channel.astype(edited.dtype, copy=False)
         return edited

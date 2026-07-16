@@ -10,7 +10,7 @@ from src.datasets.fuel_counterfactual import FuelCounterfactualTransform, fuel_i
 from src.datasets.postprocessing.counterfactual import ScenarioConfig
 
 
-def test_fuel_counterfactual_reuses_stitching_and_writes_exact_intervention(
+def test_fuel_counterfactual_loads_raw_fuel_grid_and_writes_exact_intervention(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -23,15 +23,10 @@ def test_fuel_counterfactual_reuses_stitching_and_writes_exact_intervention(
         dtype=np.float32,
     )
     patch_specs = [
-        ("left.npy", 0, 0, global_fuel[:, :3]),
-        ("right.npy", 0, 1, global_fuel[:, 1:]),
+        ("left.npy", 0, 0),
+        ("right.npy", 0, 1),
     ]
-    for filename, _, _, fuel in patch_specs:
-        patch = np.zeros((*fuel.shape, 2), dtype=np.float32)
-        patch[:, :, 0] = fuel
-        np.save(tmp_path / filename, patch)
-
-    metadata = pd.DataFrame([{"filename": filename, "hex_id": 16, "row": row, "col": col} for filename, row, col, _ in patch_specs])
+    metadata = pd.DataFrame([{"filename": filename, "hex_id": 16, "row": row, "col": col} for filename, row, col in patch_specs])
     scenario = ScenarioConfig(
         name="remove_barriers",
         kind="fuel",
@@ -53,12 +48,11 @@ def test_fuel_counterfactual_reuses_stitching_and_writes_exact_intervention(
     }
     monkeypatch.setattr(
         "src.datasets.fuel_counterfactual.load_spatial_raster",
-        lambda **_: (np.ma.masked_array(np.ones((3, 4), dtype=np.float32), mask=False), reference_profile),
+        lambda **_: (np.ma.masked_array(global_fuel, mask=False), reference_profile),
     )
     prediction_dir = tmp_path / "predictions" / scenario.name / "bp"
 
     transform = FuelCounterfactualTransform.from_metadata(
-        data_root=tmp_path,
         metadata=metadata,
         fuel_channel=0,
         scenario=scenario,
@@ -66,8 +60,10 @@ def test_fuel_counterfactual_reuses_stitching_and_writes_exact_intervention(
         raw_data_dir=tmp_path,
     )
 
-    left = transform(np.load(tmp_path / "left.npy"), metadata.iloc[0].to_dict())
-    right = transform(np.load(tmp_path / "right.npy"), metadata.iloc[1].to_dict())
+    left_patch = np.zeros((3, 3, 2), dtype=np.float32)
+    right_patch = np.zeros((3, 3, 2), dtype=np.float32)
+    left = transform(left_patch, metadata.iloc[0].to_dict())
+    right = transform(right_patch, metadata.iloc[1].to_dict())
     assert left[1, 1, 0] == 1
     assert right[1, 0, 0] == 1
     assert transform.summary["edited_pixels"].tolist() == [1]
