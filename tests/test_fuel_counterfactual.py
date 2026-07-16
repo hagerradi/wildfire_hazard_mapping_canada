@@ -53,6 +53,10 @@ def test_fuel_counterfactual_loads_raw_fuel_grid_and_writes_exact_intervention(
         "src.datasets.postprocessing.counterfactual.fuel_counterfactual_transform.load_spatial_raster",
         lambda **_: (np.ma.masked_array(global_fuel, mask=False), reference_profile),
     )
+    monkeypatch.setattr(
+        "src.datasets.postprocessing.counterfactual.fuel_counterfactual_transform.load_fuel_grid",
+        lambda **_: np.ma.masked_array(global_fuel, mask=False),
+    )
     prediction_dir = tmp_path / "predictions" / scenario.name / "bp"
 
     transform = FuelCounterfactualTransform.from_metadata(
@@ -105,6 +109,10 @@ def test_fuel_counterfactual_pads_patches_extending_past_raster_bounds(
     monkeypatch.setattr(
         "src.datasets.postprocessing.counterfactual.fuel_counterfactual_transform.load_spatial_raster",
         lambda **_: (np.ma.masked_array(global_fuel, mask=False), reference_profile),
+    )
+    monkeypatch.setattr(
+        "src.datasets.postprocessing.counterfactual.fuel_counterfactual_transform.load_fuel_grid",
+        lambda **_: np.ma.masked_array(global_fuel, mask=False),
     )
     transform = FuelCounterfactualTransform.from_metadata(
         metadata=metadata,

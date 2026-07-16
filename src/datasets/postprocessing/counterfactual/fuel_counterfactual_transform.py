@@ -11,6 +11,7 @@ import pandas as pd
 import rasterio
 
 from data_preparation.paths import Paths
+from data_preparation.spatial.fuel import load_fuel_grid
 from data_preparation.spatial.utils import load_spatial_raster
 from src.datasets.fuel_utils import normalize_hex_id
 from src.datasets.postprocessing.counterfactual.counterfactual_base import ScenarioConfig
@@ -126,10 +127,21 @@ class FuelCounterfactualTransform:
         for hex_id in sorted(normalized_hex_ids.unique()):
             hex_metadata = metadata.loc[normalized_hex_ids == hex_id].drop_duplicates(filename_col)
             paths = Paths(hex_id=hex_id, root_dir=raw_data_dir)
-            fuel_grid, profile = load_spatial_raster(
-                path=paths.fuel_grid(hex_id),
+            # Reproject onto the elevation grid's reference profile, mirroring
+            # load_spatial_features_per_hexel's patch-generation path. Without this,
+            # the fuel raster reprojects to an unrelated default CRS/grid, so patch
+            # (row, col) windows no longer index the same pixels.
+            _, reference_profile = load_spatial_raster(
+                path=paths.elevation_grid(hex_id),
                 mask_path=paths.mask_grid(hex_id, mask_scope=mask_scope),
             )
+            fuel_grid = load_fuel_grid(
+                root_dir=str(raw_data_dir),
+                hex_id=hex_id,
+                reference_profile=reference_profile,
+                mask_scope=mask_scope,
+            )
+            profile = reference_profile
             baseline = np.ma.filled(fuel_grid.astype(np.float32), np.nan)
 
             result = apply_fuel_edit(
