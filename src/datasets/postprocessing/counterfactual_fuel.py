@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 
 import numpy as np
@@ -97,48 +96,6 @@ def modal_adjacent_burnable_fuel(
     if global_values.size == 0:
         raise ValueError("No burnable fuel candidates found.")
     return _modal_int(global_values), int(global_values.size), "fallback modal global burnable fuel"
-
-
-def modal_adjacent_burnable_fuel_across_grids(
-    fuel_grids: Iterable[np.ndarray],
-    nonfuel_ids: list[int] | tuple[int, ...],
-    *,
-    nodata_value: int = FUEL_NODATA,
-) -> tuple[int, int, str]:
-    """Pick one replacement fuel ID from adjacent burnable support across grids.
-
-    This is useful for patch-based counterfactual datasets: overlapping patches
-    should use a single replacement fuel so the same geographic pixel is not
-    represented with different fuel codes in different windows.
-    """
-
-    adjacent_counts: Counter[int] = Counter()
-    global_burnable_counts: Counter[int] = Counter()
-    structure = np.ones((3, 3), dtype=bool)
-    seen_any_grid = False
-
-    for fuel in fuel_grids:
-        seen_any_grid = True
-        fuel_arr = np.asarray(fuel)
-        base_nonfuel = nonfuel_mask(fuel_arr, nonfuel_ids, nodata_value=nodata_value)
-        base_burnable = burnable_mask(fuel_arr, nonfuel_ids, nodata_value=nodata_value)
-
-        adjacent = binary_dilation(base_nonfuel, structure=structure) & ~base_nonfuel & base_burnable
-        adjacent_counts.update(map(int, fuel_arr[adjacent].ravel()))
-        global_burnable_counts.update(map(int, fuel_arr[base_burnable].ravel()))
-
-    if not seen_any_grid:
-        raise ValueError("Cannot choose a replacement fuel from an empty grid iterable.")
-
-    if adjacent_counts:
-        replacement, count = max(adjacent_counts.items(), key=lambda item: (item[1], -item[0]))
-        return int(replacement), int(sum(adjacent_counts.values())), "modal adjacent burnable fuel across grids"
-
-    if global_burnable_counts:
-        replacement, count = max(global_burnable_counts.items(), key=lambda item: (item[1], -item[0]))
-        return int(replacement), int(sum(global_burnable_counts.values())), "fallback modal global burnable fuel across grids"
-
-    raise ValueError("No burnable fuel candidates found across grids.")
 
 
 def replace_nonfuel_with_burnable(

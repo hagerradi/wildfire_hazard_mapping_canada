@@ -13,7 +13,6 @@ from src.datasets.postprocessing.counterfactual_fuel import (
     apply_fuel_edit,
     burnable_mask,
     modal_adjacent_burnable_fuel,
-    modal_adjacent_burnable_fuel_across_grids,
     nonfuel_mask,
     replace_burnable_with_nonfuel,
     replace_nonfuel_components_with_adjacent_modal,
@@ -227,17 +226,6 @@ def test_intervention_layers_on_prediction_grid_loads_evaluated_fuel_artifacts(t
     assert replacement_map[0, 0] == 0.0
     assert np.isnan(replacement_map[0, 1])
     assert burnable_changes.tolist() == [[True, False, False], [False, False, False]]
-
-
-def test_modal_adjacent_burnable_across_grids_picks_consistent_replacement() -> None:
-    grids = [
-        np.array([[1, 101, 2], [1, 101, 2]], dtype=np.int32),
-        np.array([[2, 101, 2], [3, 3, 2]], dtype=np.int32),
-    ]
-    replacement, candidate_pixels, note = modal_adjacent_burnable_fuel_across_grids(grids, [101])
-    assert replacement == 2
-    assert candidate_pixels > 0
-    assert "across grids" in note
 
 
 def test_replace_nonfuel_with_burnable_uses_fixed_replacement() -> None:
