@@ -24,15 +24,15 @@ scenarios=(
 endpoints=("bp" "fi" "ros")
 
 for scenario in "${scenarios[@]}"; do
-    python -m src.datasets.postprocessing.counterfactual_fuel_intervention_map \
+    python -m src.datasets.postprocessing.counterfactual.plotting.counterfactual_fuel_intervention_map \
         --config "${config}" --scenario "${scenario}" --endpoint bp --hex_id "${hex_id}"
-    python -m src.datasets.postprocessing.counterfactual_local_zoom_panels \
+    python -m src.datasets.postprocessing.counterfactual.plotting.counterfactual_local_zoom_panels \
         --config "${config}" --scenario "${scenario}" --hex_id "${hex_id}"
 
     for endpoint in "${endpoints[@]}"; do
-        python -m src.datasets.postprocessing.counterfactual_response_maps \
+        python -m src.datasets.postprocessing.counterfactual.plotting.counterfactual_response_maps \
             --config "${config}" --scenario "${scenario}" --endpoint "${endpoint}" --hex_id "${hex_id}"
-        python -m src.datasets.postprocessing.counterfactual_change_distribution \
+        python -m src.datasets.postprocessing.counterfactual.plotting.counterfactual_change_distribution \
             --config "${config}" --scenario "${scenario}" --endpoint "${endpoint}" --hex_id "${hex_id}"
     done
 done

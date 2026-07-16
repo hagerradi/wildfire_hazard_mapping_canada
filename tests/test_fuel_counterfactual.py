@@ -6,8 +6,11 @@ import pytest
 import rasterio
 from rasterio.transform import from_origin
 
-from src.datasets.fuel_counterfactual import FuelCounterfactualTransform, fuel_intervention_raster_path
-from src.datasets.postprocessing.counterfactual import ScenarioConfig
+from src.datasets.postprocessing.counterfactual.counterfactual_base import ScenarioConfig
+from src.datasets.postprocessing.counterfactual.fuel_counterfactual_transform import (
+    FuelCounterfactualTransform,
+    fuel_intervention_raster_path,
+)
 
 
 def test_fuel_counterfactual_loads_raw_fuel_grid_and_writes_exact_intervention(
@@ -47,7 +50,7 @@ def test_fuel_counterfactual_loads_raw_fuel_grid_and_writes_exact_intervention(
         "nodata": -9999,
     }
     monkeypatch.setattr(
-        "src.datasets.fuel_counterfactual.load_spatial_raster",
+        "src.datasets.postprocessing.counterfactual.fuel_counterfactual_transform.load_spatial_raster",
         lambda **_: (np.ma.masked_array(global_fuel, mask=False), reference_profile),
     )
     prediction_dir = tmp_path / "predictions" / scenario.name / "bp"

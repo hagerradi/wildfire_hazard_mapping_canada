@@ -26,16 +26,16 @@ from matplotlib.colors import Normalize, TwoSlopeNorm
 from data_preparation.paths import Paths
 from data_preparation.spatial.utils import load_spatial_raster
 from src.datasets.fuel_utils import normalize_hex_id
-from src.datasets.postprocessing.counterfactual import (
+from src.datasets.postprocessing.counterfactual.counterfactual_base import (
     load_counterfactual_config,
     resolve_counterfactual_paths,
 )
-from src.datasets.postprocessing.counterfactual_fuel_intervention_map import (
+from src.datasets.postprocessing.counterfactual.plotting.counterfactual_fuel_intervention_map import (
     burnable_fuel_support,
     load_evaluated_fuel_pair,
     load_zone_labels_on_prediction_grid,
 )
-from src.datasets.postprocessing.counterfactual_viz import (
+from src.datasets.postprocessing.counterfactual.plotting.counterfactual_viz import (
     DEFAULT_ZONE_OVERLAY_ALPHA,
     DEFAULT_ZONE_OVERLAY_COLOR,
     DEFAULT_ZONE_OVERLAY_LINEWIDTH,

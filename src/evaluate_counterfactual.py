@@ -10,15 +10,15 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.datasets.fuel_counterfactual import FuelCounterfactualTransform
 from src.datasets.fuel_utils import normalize_hex_id
-from src.datasets.postprocessing.counterfactual import (
+from src.datasets.postprocessing.counterfactual.counterfactual_base import (
     EndpointConfig,
     ScenarioConfig,
     load_counterfactual_config,
     resolve_counterfactual_paths,
     resolve_project_path,
 )
+from src.datasets.postprocessing.counterfactual.fuel_counterfactual_transform import FuelCounterfactualTransform
 from src.evaluate_hexels import load_config
 from src.evaluate_hexels import main as evaluate_hexels
 

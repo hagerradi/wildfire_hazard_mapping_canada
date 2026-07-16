@@ -13,7 +13,7 @@ configs/counterfactual_fuel.yaml
 src/evaluate_counterfactual.py            # 1. Evaluate baseline + selected scenario(s), per endpoint
         │
         ▼
-src/datasets/postprocessing/
+src/datasets/postprocessing/counterfactual/plotting/
   counterfactual_fuel_intervention_map.py # 2. Plot the fuel edit itself (original vs. replacement fuel)
   counterfactual_response_maps.py         # 3. Plot GT/baseline/scenario/Δ prediction maps + hotspot patch zoom
   counterfactual_local_zoom_panels.py     #    Fuel-specific zoom on selected evaluated-edit neighborhoods
@@ -22,7 +22,7 @@ src/datasets/postprocessing/
 
 1. **Evaluate** (`evaluate_counterfactual.py`): runs the `baseline` scenario (unmodified
    fuel) and each selected `fuel` scenario, for each selected endpoint. Fuel scenarios
-   apply a `FuelCounterfactualTransform` (see `src/datasets/fuel_counterfactual.py`) that
+   apply a `FuelCounterfactualTransform` (see `fuel_counterfactual_transform.py` in this folder) that
    edits the fuel channel of each patch before it reaches the model. Writes predicted
    hexel rasters under `<save_dir>/predictions/<scenario>/<endpoint>/`, an index mapping
    `(scenario, endpoint) -> prediction_dir` (`scenario_prediction_index.csv`), evaluation
@@ -123,22 +123,22 @@ counterfactual config plus the `scenario_prediction_index.csv` written by evalua
 
 ```bash
 # Plot the fuel intervention map
-python -m src.datasets.postprocessing.counterfactual_fuel_intervention_map \
+python -m src.datasets.postprocessing.counterfactual.plotting.counterfactual_fuel_intervention_map \
     --config configs/counterfactual_fuel.yaml \
     --scenario remove_barriers_adjacent_modal --endpoint bp --hex_id 16
 
 # Plot GT/baseline/scenario/Δ response maps + patch zoom for one endpoint
-python -m src.datasets.postprocessing.counterfactual_response_maps \
+python -m src.datasets.postprocessing.counterfactual.plotting.counterfactual_response_maps \
     --config configs/counterfactual_fuel.yaml \
     --scenario remove_barriers_adjacent_modal --endpoint fi --hex_id 16
 
 # Plot local zoom panels on selected evaluated-edit neighborhoods (uses bp + fi)
-python -m src.datasets.postprocessing.counterfactual_local_zoom_panels \
+python -m src.datasets.postprocessing.counterfactual.plotting.counterfactual_local_zoom_panels \
     --config configs/counterfactual_fuel.yaml \
     --scenario remove_barriers_adjacent_modal --hex_id 16
 
 # Summarize the prediction change distribution
-python -m src.datasets.postprocessing.counterfactual_change_distribution \
+python -m src.datasets.postprocessing.counterfactual.plotting.counterfactual_change_distribution \
     --config configs/counterfactual_fuel.yaml \
     --scenario remove_barriers_adjacent_modal --endpoint bp
 ```

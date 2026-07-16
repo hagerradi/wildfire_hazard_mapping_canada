@@ -309,6 +309,73 @@ def overlay_zone_boundaries(
     ax.add_collection(LineCollection(list(segments), colors=color, linewidths=linewidth, alpha=alpha, zorder=5, clip_on=False))
 
 
+EDIT_OVERLAY_STYLES = ("none", "contour", "hatch")
+DEFAULT_EDIT_OVERLAY_COLOR = "#000000"
+DEFAULT_EDIT_OVERLAY_LINEWIDTH = 0.6
+DEFAULT_EDIT_OVERLAY_ALPHA = 0.9
+DEFAULT_EDIT_OVERLAY_HATCH = "///"
+
+
+def add_edit_overlay_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--edit_overlay",
+        choices=EDIT_OVERLAY_STYLES,
+        default="none",
+        help="Mark directly-edited fuel pixels on map panels: a thin contour around the edit, or a hatch fill.",
+    )
+    parser.add_argument("--edit_overlay_color", default=DEFAULT_EDIT_OVERLAY_COLOR, help="Edit-mask overlay color.")
+    parser.add_argument(
+        "--edit_overlay_linewidth",
+        type=float,
+        default=DEFAULT_EDIT_OVERLAY_LINEWIDTH,
+        help="Edit-mask contour line width (style=contour only).",
+    )
+    parser.add_argument("--edit_overlay_alpha", type=float, default=DEFAULT_EDIT_OVERLAY_ALPHA, help="Edit-mask overlay alpha.")
+    parser.add_argument(
+        "--edit_overlay_hatch",
+        default=DEFAULT_EDIT_OVERLAY_HATCH,
+        help="Hatch pattern for the edit-mask overlay (style=hatch only).",
+    )
+
+
+def overlay_edit_mask(
+    ax: plt.Axes,
+    edit_mask: np.ndarray | None,
+    *,
+    style: str,
+    extent: tuple[float, float, float, float] | None = None,
+    color: str = DEFAULT_EDIT_OVERLAY_COLOR,
+    linewidth: float = DEFAULT_EDIT_OVERLAY_LINEWIDTH,
+    alpha: float = DEFAULT_EDIT_OVERLAY_ALPHA,
+    hatch: str = DEFAULT_EDIT_OVERLAY_HATCH,
+) -> None:
+    """Mark directly-edited fuel pixels on a map axis (no-op when ``style`` is ``"none"`` or the mask is empty).
+
+    ``style="contour"`` traces the boundary of the edited region (reusing the same pixel-grid
+    boundary tracer as :func:`overlay_zone_boundaries`); ``style="hatch"`` fills it with a hatch
+    pattern instead, leaving the underlying map colours visible.
+    """
+
+    if style == "none" or edit_mask is None or not np.any(edit_mask):
+        return
+    if style == "contour":
+        overlay_zone_boundaries(ax, edit_mask.astype(np.int64), extent=extent, color=color, linewidth=linewidth, alpha=alpha)
+    elif style == "hatch":
+        contour_set = ax.contourf(
+            edit_mask.astype(np.float64),
+            levels=[0.5, 1.5],
+            colors="none",
+            hatches=[hatch],
+            extent=extent,
+            origin="upper",
+        )
+        contour_set.set_edgecolor(color)
+        contour_set.set_linewidth(0.0)
+        contour_set.set_alpha(alpha)
+    else:
+        raise ValueError(f"Unknown edit overlay style {style!r}; expected one of {EDIT_OVERLAY_STYLES}.")
+
+
 def cumulative_abs_share(delta: np.ma.MaskedArray | np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Concentration curve of an output delta.
 
