@@ -282,7 +282,11 @@ def get_stitched_windows(
     """
     all_data_points, all_locations, all_masks = [], [], []
     prediction_windows = predictions[start_idx : start_idx + len(df)]
-    for prediction_window, data in zip(prediction_windows, df.itertuples(index=False, name=None), strict=False):
+    if len(prediction_windows) != len(df):
+        raise ValueError(
+            "Prediction window count does not match metadata rows: " f"predictions={len(prediction_windows)} metadata={len(df)}."
+        )
+    for prediction_window, data in zip(prediction_windows, df.itertuples(index=False, name=None), strict=True):
         path = str(data[0])
         patch_metadata = patch_metadata_by_relpath.get(path) if patch_metadata_by_relpath else None
         if patch_metadata is None:

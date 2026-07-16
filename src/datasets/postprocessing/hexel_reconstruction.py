@@ -20,6 +20,8 @@ from src.config import Config
 from src.datasets.postprocessing import utils as post_utils
 from src.datasets.targets import TargetSpec
 
+MAX_PATCH_METADATA_WORKERS = 8
+
 
 @dataclass(frozen=True)
 class StitchedHexel:
@@ -70,7 +72,7 @@ def reconstruct_denormalized_hexels(
     grouped_hexes = list(test_df.groupby("hex_id", sort=False))
     metadata_cache_by_target: dict[int, dict[str, post_utils.PatchMetadata]] = {}
     metadata_cache_start = time.perf_counter()
-    max_patch_workers = min(8, max(1, os.cpu_count() or 1))
+    max_patch_workers = min(MAX_PATCH_METADATA_WORKERS, max(1, os.cpu_count() or 1))
     for settings in settings_list:
         if settings.target_channel_index in metadata_cache_by_target:
             continue
@@ -84,7 +86,7 @@ def reconstruct_denormalized_hexels(
     metadata_cache_elapsed = time.perf_counter() - metadata_cache_start
     cached_patch_count = len(next(iter(metadata_cache_by_target.values()))) if metadata_cache_by_target else 0
     print(
-        "[Postprocess] Prepared patch metadata " f"for {cached_patch_count} patches in {metadata_cache_elapsed:.3f}s.",
+        f"[Postprocess] Prepared patch metadata for {cached_patch_count} patches in {metadata_cache_elapsed:.3f}s.",
         flush=True,
     )
 
