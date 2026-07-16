@@ -205,6 +205,13 @@ class FuelCounterfactualTransform:
             if pad_height < 0 or pad_width < 0:
                 raise ValueError(f"Edited fuel slice for patch {key} has shape {edited_channel.shape}; expected {(height, width)}.")
             edited_channel = np.pad(edited_channel, ((0, pad_height), (0, pad_width)), mode="constant", constant_values=np.nan)
+        # Patch generation masks NODATA as the union of every source grid's own mask
+        # (fuel, elevation, ignition, firezones - see hexel_loader.stack_sample), so a
+        # pixel can be NODATA in the patch even where the raw fuel raster has a valid
+        # value. Preserve the original fuel channel's NaNs so the substituted channel
+        # stays consistent with every other channel in the patch.
+        original_channel = data[:, :, self.fuel_channel]
+        edited_channel = np.where(np.isnan(original_channel), np.nan, edited_channel)
         edited = np.array(data, copy=True)
         edited[:, :, self.fuel_channel] = edited_channel.astype(edited.dtype, copy=False)
         return edited

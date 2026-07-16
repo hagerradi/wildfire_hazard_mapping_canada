@@ -126,3 +126,52 @@ def test_fuel_counterfactual_pads_patches_extending_past_raster_bounds(
     expected_channel = np.full((3, 3), np.nan, dtype=np.float32)
     expected_channel[:2, :2] = global_fuel[1:3, 2:4]
     np.testing.assert_array_equal(edited[:, :, 0], expected_channel)
+
+
+def test_fuel_counterfactual_preserves_original_nan_mask(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Patches encode NODATA as the union of every source grid's own mask, so a pixel
+    can be valid in the raw fuel raster yet NODATA in the patch (e.g. masked out via
+    elevation/ignition/firezones). The substituted channel must keep matching NaNs.
+    """
+    global_fuel = np.array([[1, 1, 2, 2], [1, 0, 2, 2], [1, 1, 2, 2]], dtype=np.float32)
+    metadata = pd.DataFrame([{"filename": "patch.npy", "hex_id": 16, "row": 0, "col": 0}])
+    scenario = ScenarioConfig(
+        name="remove_barriers",
+        kind="fuel",
+        description="",
+        params={"mode": "nonfuel_to_burnable_local_adjacent_modal", "nonfuel_ids": [0]},
+    )
+    reference_profile = {
+        "driver": "GTiff",
+        "height": 3,
+        "width": 4,
+        "count": 1,
+        "dtype": "float32",
+        "crs": "EPSG:4326",
+        "transform": from_origin(0, 3, 1, 1),
+        "nodata": -9999,
+    }
+    monkeypatch.setattr(
+        "src.datasets.postprocessing.counterfactual.fuel_counterfactual_transform.load_spatial_raster",
+        lambda **_: (np.ma.masked_array(global_fuel, mask=False), reference_profile),
+    )
+    monkeypatch.setattr(
+        "src.datasets.postprocessing.counterfactual.fuel_counterfactual_transform.load_fuel_grid",
+        lambda **_: np.ma.masked_array(global_fuel, mask=False),
+    )
+    transform = FuelCounterfactualTransform.from_metadata(
+        metadata=metadata,
+        fuel_channel=0,
+        scenario=scenario,
+        raw_data_dir=tmp_path,
+    )
+
+    # The raw fuel raster has a valid value at (0, 0), but the patch's own fuel
+    # channel is NaN there (masked out by another source grid at generation time).
+    patch = np.zeros((3, 4, 2), dtype=np.float32)
+    patch[0, 0, 0] = np.nan
+    edited = transform(patch, metadata.iloc[0].to_dict())
+    assert np.isnan(edited[0, 0, 0])
