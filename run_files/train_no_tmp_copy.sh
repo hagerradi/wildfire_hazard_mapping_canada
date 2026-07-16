@@ -1,15 +1,15 @@
 #!/bin/bash
 ##SBATCH --mail-type=all
 ##SBATCH --mail-user=name@mila.quebec
-#SBATCH --job-name=unet_full_data
+#SBATCH --job-name=unet_fi_ros
 #SBATCH --output=logs/job_%x_%j.out
 #SBATCH --error=logs/job_%x_%j.err
 #SBATCH --partition=long
 #SBATCH --ntasks=1
-#SBATCH --time=15:59:00
+#SBATCH --time=10:59:00
 #SBATCH --mem-per-cpu=40Gb
 #SBATCH --cpus-per-task=4
-#SBATCH --gres=gpu:a100:1
+#SBATCH --gres=gpu:1
 
 set -euo pipefail
 
@@ -47,14 +47,3 @@ read -r -a TRAIN_ARG_ARRAY <<< "$TRAIN_ARGS"
 python -m src.train \
     --config="$CONFIG_FILE" \
     "${TRAIN_ARG_ARRAY[@]}"
-
-if [[ "$RUN_HEXEL_EVAL" == "1" ]]; then
-    echo "Running evaluation with config: $CONFIG_FILE"
-    read -r -a EVAL_ARG_ARRAY <<< "$EVAL_ARGS"
-    python -m src.evaluate_hexels \
-        --config="$CONFIG_FILE" \
-        --eval_val_hexels \
-        "${EVAL_ARG_ARRAY[@]}"
-else
-    echo "Skipping hexel evaluation because RUN_HEXEL_EVAL=${RUN_HEXEL_EVAL}"
-fi
