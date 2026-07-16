@@ -39,3 +39,12 @@ scenarios:
       replacement_nonfuel_id: 101
       target_burnable_area_fraction: 0.10
       seed: 42
+
+  - name: "c2_to_mixedwood_fixed"
+    kind: "fuel"
+    description: "Replace every C-2 boreal spruce pixel with a fixed Boreal Mixedwood (M-1/M-2) fuel type."
+    params:
+      mode: "burnable_to_burnable_fixed"
+      nonfuel_ids: [100, 101, 102, 105, 106, 110]
+      source_fuel_ids: [2]
+      replacement_fuel_id: 620

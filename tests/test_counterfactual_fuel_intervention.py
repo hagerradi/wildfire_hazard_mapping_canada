@@ -13,6 +13,7 @@ from src.datasets.postprocessing.counterfactual.counterfactual_fuel import (
     burnable_mask,
     modal_adjacent_burnable_fuel,
     nonfuel_mask,
+    replace_burnable_with_fixed,
     replace_burnable_with_nonfuel,
     replace_nonfuel_components_with_adjacent_modal,
     replace_nonfuel_with_adjacent_modal,
@@ -263,6 +264,37 @@ def test_replace_burnable_with_nonfuel_only_edits_burnable_pixels() -> None:
     assert edited[0, 1] == 101
     assert edited[1, 2] == -32768
     assert report.edited_pixels == 4
+
+
+def test_replace_burnable_with_fixed_only_edits_source_fuel_pixels() -> None:
+    fuel = np.array([[1, 2, 101], [2, 100, -32768]], dtype=np.int32)
+    edited, edit_mask, report = replace_burnable_with_fixed(fuel, [100, 101], [2], 620)
+    assert edit_mask.tolist() == [[False, True, False], [True, False, False]]
+    assert edited.tolist() == [[1, 620, 101], [620, 100, -32768]]
+    assert report.edited_pixels == 2
+    assert report.replacement_fuel_id == 620
+
+
+def test_replace_burnable_with_fixed_rejects_nonfuel_source_or_replacement() -> None:
+    fuel = np.array([[1, 2, 101]], dtype=np.int32)
+    with pytest.raises(ValueError, match="must not overlap"):
+        replace_burnable_with_fixed(fuel, [100, 101], [101], 620)
+    with pytest.raises(ValueError, match="is a non-fuel ID"):
+        replace_burnable_with_fixed(fuel, [100, 101], [2], 101)
+
+
+def test_apply_fuel_edit_routes_burnable_to_burnable_fixed() -> None:
+    fuel = np.array([[1, 2, 101]], dtype=np.int32)
+    result = apply_fuel_edit(
+        fuel,
+        [100, 101],
+        mode="burnable_to_burnable_fixed",
+        scenario_name="c2_to_mixedwood_fixed",
+        params={"source_fuel_ids": [2], "replacement_fuel_id": 620},
+    )
+    assert result.edit_mask.tolist() == [[False, True, False]]
+    assert result.fuel.tolist() == [[1, 620, 101]]
+    assert result.report.replacement_fuel_id == 620
 
 
 def test_random_component_insertion_is_seeded_and_reaches_area_target() -> None:

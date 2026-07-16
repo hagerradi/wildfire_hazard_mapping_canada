@@ -16,6 +16,7 @@ FUEL_EDIT_MODES = (
     "nonfuel_to_burnable_local_adjacent_modal",
     "burnable_to_nonfuel",
     "burnable_components_to_nonfuel_random",
+    "burnable_to_burnable_fixed",
 )
 
 
@@ -310,6 +311,46 @@ def replace_burnable_with_nonfuel(
     return edited, selected, report
 
 
+def replace_burnable_with_fixed(
+    fuel: np.ndarray,
+    nonfuel_ids: list[int] | tuple[int, ...],
+    source_fuel_ids: list[int] | tuple[int, ...],
+    replacement_fuel_id: int,
+    *,
+    scenario_name: str = "fuel_type_substitution",
+    edit_mask: np.ndarray | None = None,
+    nodata_value: int = FUEL_NODATA,
+) -> tuple[np.ndarray, np.ndarray, FuelEditReport]:
+    """Replace pixels matching one burnable fuel ID with a different fixed burnable fuel ID."""
+
+    if not source_fuel_ids:
+        raise ValueError("At least one source fuel ID is required.")
+    if set(source_fuel_ids) & set(nonfuel_ids):
+        raise ValueError(f"source_fuel_ids={sorted(source_fuel_ids)} must not overlap nonfuel_ids={sorted(nonfuel_ids)}.")
+    if replacement_fuel_id in set(nonfuel_ids):
+        raise ValueError(f"replacement_fuel_id={replacement_fuel_id} is a non-fuel ID.")
+
+    fuel_arr = np.asarray(fuel)
+    base_nonfuel = nonfuel_mask(fuel_arr, nonfuel_ids, nodata_value=nodata_value)
+    base_burnable = burnable_mask(fuel_arr, nonfuel_ids, nodata_value=nodata_value)
+    base_source = base_burnable & np.isin(fuel_arr, list(source_fuel_ids))
+    selected = base_source if edit_mask is None else (np.asarray(edit_mask, dtype=bool) & base_source)
+
+    edited = fuel_arr.copy()
+    edited[selected] = int(replacement_fuel_id)
+    report = FuelEditReport(
+        scenario_name=scenario_name,
+        mode="burnable_to_burnable_fixed",
+        edited_pixels=int(selected.sum()),
+        replacement_fuel_id=int(replacement_fuel_id),
+        candidate_pixels=int(base_source.sum()),
+        original_nonfuel_pixels=int(base_nonfuel.sum()),
+        original_burnable_pixels=int(base_burnable.sum()),
+        note=f"source_fuel_ids={sorted(source_fuel_ids)} replaced with fixed burnable fuel",
+    )
+    return edited, selected, report
+
+
 def replace_random_burnable_components_with_nonfuel(
     fuel: np.ndarray,
     nonfuel_ids: list[int] | tuple[int, ...],
@@ -444,6 +485,20 @@ def apply_fuel_edit(
             np.asarray(params["insertion_mask"], dtype=bool),
             replacement_nonfuel_id=params.get("replacement_nonfuel_id"),
             scenario_name=scenario_name,
+        )
+        components = pd.DataFrame()
+    elif mode == "burnable_to_burnable_fixed":
+        required = {"source_fuel_ids", "replacement_fuel_id"}
+        missing = sorted(required - params.keys())
+        if missing:
+            raise ValueError(f"burnable_to_burnable_fixed requires parameters: {missing}.")
+        edited, edit_mask, report = replace_burnable_with_fixed(
+            fuel,
+            nonfuel_ids,
+            [int(value) for value in params["source_fuel_ids"]],
+            int(params["replacement_fuel_id"]),
+            scenario_name=scenario_name,
+            edit_mask=params.get("edit_mask"),
         )
         components = pd.DataFrame()
     elif mode == "burnable_components_to_nonfuel_random":
