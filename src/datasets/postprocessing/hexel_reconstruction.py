@@ -20,6 +20,7 @@ from src.config import Config
 from src.datasets.postprocessing import utils as post_utils
 from src.datasets.targets import TargetSpec
 
+# Cap worker count to avoid oversubscribing CPU/memory on large patch sets.
 MAX_PATCH_METADATA_WORKERS = 8
 
 
@@ -68,7 +69,7 @@ def reconstruct_denormalized_hexels(
         grid_params=post_utils.get_config_grid_params(config),
         prediction_support_policy=config.evaluation.prediction_support_policy,
     )
-    patch_relative_paths = test_df["filename"].astype(str).tolist()
+    patch_relative_paths = test_df["filename"].astype(str).unique().tolist()
     grouped_hexes = list(test_df.groupby("hex_id", sort=False))
     metadata_cache_by_target: dict[int, dict[str, post_utils.PatchMetadata]] = {}
     metadata_cache_start = time.perf_counter()

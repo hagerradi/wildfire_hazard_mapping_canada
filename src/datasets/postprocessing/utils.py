@@ -258,7 +258,7 @@ def build_patch_metadata_cache(
         )
         return relative_path, PatchMetadata(shape=(patch_h, patch_w), mask=mask.reshape((patch_h, patch_w)))
 
-    unique_paths = sorted(set(relative_paths))
+    unique_paths = list(dict.fromkeys(relative_paths))
     if max_workers <= 1 or len(unique_paths) <= 1:
         return dict(_load_patch_metadata(path) for path in unique_paths)
 
@@ -286,8 +286,8 @@ def get_stitched_windows(
         raise ValueError(
             "Prediction window count does not match metadata rows: " f"predictions={len(prediction_windows)} metadata={len(df)}."
         )
-    for prediction_window, data in zip(prediction_windows, df.itertuples(index=False, name=None), strict=True):
-        path = str(data[0])
+    for prediction_window, data in zip(prediction_windows, df.itertuples(index=False), strict=True):
+        path = str(getattr(data, "filename", data[0]))
         patch_metadata = patch_metadata_by_relpath.get(path) if patch_metadata_by_relpath else None
         if patch_metadata is None:
             array = np.load(os.path.join(base_dir, path))
@@ -301,7 +301,9 @@ def get_stitched_windows(
             patch_h, patch_w = patch_metadata.shape
             mask = patch_metadata.mask
         all_data_points.append(prediction_window.reshape((patch_h, patch_w)))
-        all_locations.append((data[5], data[6]))
+        row = getattr(data, "row", data[5])
+        col = getattr(data, "col", data[6])
+        all_locations.append((row, col))
         all_masks.append(mask.reshape((patch_h, patch_w)))
     reconstructed_hexel = stitch_windows(
         all_data_points,
