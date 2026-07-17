@@ -251,7 +251,7 @@ def test_evaluate_and_visualize_hexels_hides_support_outline_for_target_policy(t
 
     visualize_calls = []
 
-    monkeypatch.setattr(post_utils, "get_range_output", lambda *args, **kwargs: (1.0, 0.0))
+    monkeypatch.setattr(post_utils, "get_range_output_cached", lambda *args, **kwargs: (1.0, 0.0))
     monkeypatch.setattr(post_utils, "load_spatial_raster", lambda *args, **kwargs: (np.zeros((2, 2), dtype=np.float32), {}))
     monkeypatch.setattr(post_utils, "save_predicted_hexels", lambda *args, **kwargs: None)
     monkeypatch.setattr(post_utils, "visualize_target_grids", lambda **kwargs: visualize_calls.append(kwargs))
@@ -371,7 +371,7 @@ def test_evaluate_and_visualize_hexels_metrics_only_skips_artifacts(tmp_path, mo
     def fake_load_spatial_raster(*args, **kwargs):
         return np.zeros((2, 2), dtype=np.float32), {"dtype": "float32", "nodata": -9999}
 
-    monkeypatch.setattr(post_utils, "get_range_output", lambda *args, **kwargs: (1.0, 0.0))
+    monkeypatch.setattr(post_utils, "get_range_output_cached", lambda *args, **kwargs: (1.0, 0.0))
     monkeypatch.setattr(post_utils, "load_spatial_raster", fake_load_spatial_raster)
     monkeypatch.setattr(post_utils, "save_predicted_hexels", fail_artifact_call)
     monkeypatch.setattr(post_utils, "visualize_target_grids", fail_artifact_call)
@@ -450,7 +450,7 @@ def test_evaluate_and_visualize_hexels_uses_buffer_scope_paths_and_outputs(tmp_p
         mask_paths.append(str(kwargs["mask_path"]))
         return np.zeros((2, 2), dtype=np.float32), {"dtype": "float32", "nodata": -9999}
 
-    monkeypatch.setattr(post_utils, "get_range_output", lambda *args, **kwargs: (1.0, 0.0))
+    monkeypatch.setattr(post_utils, "get_range_output_cached", lambda *args, **kwargs: (1.0, 0.0))
     monkeypatch.setattr(post_utils, "load_spatial_raster", fake_load_spatial_raster)
     monkeypatch.setattr(post_utils, "save_predicted_hexels", lambda *args, **kwargs: save_dirs.append(kwargs.get("save_dir", args[3])))
     monkeypatch.setattr(post_utils, "visualize_target_grids", lambda **kwargs: None)
@@ -519,7 +519,7 @@ def test_buffer_scope_evaluation_reports_actual_and_buffer_only_splits(tmp_path,
     def fake_load_spatial_raster(*args, **kwargs):
         return np.zeros((2, 2), dtype=np.float32), {"dtype": "float32", "nodata": -9999, "crs": "EPSG:3978", "transform": "mock"}
 
-    monkeypatch.setattr(post_utils, "get_range_output", lambda *args, **kwargs: (1.0, 0.0))
+    monkeypatch.setattr(post_utils, "get_range_output_cached", lambda *args, **kwargs: (1.0, 0.0))
     monkeypatch.setattr(post_utils, "load_spatial_raster", fake_load_spatial_raster)
     monkeypatch.setattr(post_utils, "_actual_area_mask", lambda mask_path, profile, shape: np.array([[True, False], [False, False]]))
 
@@ -605,7 +605,7 @@ def test_evaluate_and_visualize_hexels_writes_optional_robust_plot(tmp_path, mon
     def fake_load_spatial_raster(*args, **kwargs):
         return np.zeros((2, 2), dtype=np.float32), {"dtype": "float32", "nodata": -9999}
 
-    monkeypatch.setattr(post_utils, "get_range_output", lambda *args, **kwargs: (1.0, 0.0))
+    monkeypatch.setattr(post_utils, "get_range_output_cached", lambda *args, **kwargs: (1.0, 0.0))
     monkeypatch.setattr(post_utils, "load_spatial_raster", fake_load_spatial_raster)
     monkeypatch.setattr(post_utils, "save_predicted_hexels", lambda *args, **kwargs: None)
     monkeypatch.setattr(post_utils, "visualize_target_grids", lambda **kwargs: visualize_calls.append(kwargs))

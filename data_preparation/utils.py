@@ -74,6 +74,12 @@ def process_fire_size_df(
             - If the file does not exist: parameters are fitted and saved for reuse.
             - If None: parameters are fitted but not saved.
     """
+    # Apply column aliases before validation so alternate naming conventions are accepted.
+    _FIRE_SIZE_COLUMN_ALIASES = {"FRU": "GRIDCODE", "Fsize": "SIZE_HA"}
+    cols_to_rename = {old: new for old, new in _FIRE_SIZE_COLUMN_ALIASES.items() if old in df_fire_size.columns}
+    if cols_to_rename:
+        df_fire_size = df_fire_size.rename(columns=cols_to_rename)
+
     # Validate that required columns are present before selecting them
     missing_cols = [col for col in FIRE_SIZE_FEATURE_COLS if col not in df_fire_size.columns]
     if missing_cols:

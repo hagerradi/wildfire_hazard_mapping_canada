@@ -19,7 +19,7 @@ from data_preparation.hexel_loader import load_spatial_features_per_hexel
 from data_preparation.paths import MASK_SCOPE_CHOICES, Paths, normalize_mask_scope, prepared_mask_scope
 from data_preparation.process_hexels_into_grids import get_split_hexel_window
 from data_preparation.process_tabular_data import build_weather_table, process_fire_size_distribution_table
-from data_preparation.spatial.utils import get_output_log_stats_cached, get_range_output
+from data_preparation.spatial.utils import get_output_log_stats_cached, get_range_output_cached
 from data_preparation.utils import find_hex_ids
 from inference.predictor import BurnRiskPredictor
 from src.datasets.dataset import MultiSourceDataset
@@ -282,7 +282,7 @@ def run_single_hexel_pipeline(
     logger.info("Step 7: Post-processing prediction patches into denormalized hexel...")
     target = get_target_spec_from_data_config(data_config)
     grid_params = get_grid_params_from_data_config(data_config)
-    max_target_val, min_target_val = get_range_output(root_dir=str(data_dir), output_type=target.output_type)
+    max_target_val, min_target_val = get_range_output_cached(root_dir=str(data_dir), output_type=target.output_type)
     target_channel_index = get_target_channel_index(
         data_dir=str(processed_data_dir),
         modelling_approach=str(data_prep_config["modelling_approach"]),

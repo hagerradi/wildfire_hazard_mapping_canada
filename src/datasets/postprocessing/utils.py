@@ -1,5 +1,6 @@
 import functools
 import json
+import logging
 import os
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -10,6 +11,8 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 import rasterio
+
+logger = logging.getLogger(__name__)
 import torch
 from rasterio.features import geometry_mask
 from rasterio.profiles import Profile
@@ -18,7 +21,7 @@ from data_preparation.paths import MaskScope, Paths, normalize_mask_scope
 from data_preparation.spatial.utils import (
     denormalize_burn_count,
     get_output_log_stats_cached,
-    get_range_output,
+    get_range_output_cached,
     load_spatial_raster,
     read_split_hex_ids,
 )

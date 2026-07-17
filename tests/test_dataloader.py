@@ -2,15 +2,12 @@ import json
 import os
 import shutil
 import tempfile
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pytest
-import rasterio
 import torch
 import torchvision.transforms.functional as F
-from rasterio.transform import from_origin
 
 from data_preparation.tabular.weather import preprocess_weather_list
 from data_preparation.utils import process_fire_size_df
@@ -176,7 +173,7 @@ def test_multi_source_integration(temp_data_dir):
 
 def test_grid_source_bp_nodata_as_zero_extends_bp_mask(temp_data_dir, monkeypatch):
     tmpdir, *_ = temp_data_dir
-    monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation", lambda *_args, **_kwargs: (1.0, 0.0))
+    monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation_cached", lambda *_args, **_kwargs: (1.0, 0.0))
 
     sample_path = os.path.join(tmpdir, "sample_0.npy")
     arr = np.load(sample_path)
@@ -200,8 +197,8 @@ def test_grid_source_bp_nodata_as_zero_extends_bp_mask(temp_data_dir, monkeypatc
 
 def test_grid_source_bp_nodata_as_zero_sets_minmax_range_to_zero(temp_data_dir, monkeypatch):
     tmpdir, *_ = temp_data_dir
-    monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation", lambda *_args, **_kwargs: (1.0, 0.0))
-    monkeypatch.setattr("src.datasets.sources.grids.get_range_output", lambda *_args, **_kwargs: (0.5, 1.0 / 30000.0))
+    monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation_cached", lambda *_args, **_kwargs: (1.0, 0.0))
+    monkeypatch.setattr("src.datasets.sources.grids.get_range_output_cached", lambda *_args, **_kwargs: (0.5, 1.0 / 30000.0))
 
     params = GridParams(
         feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],
@@ -324,8 +321,8 @@ def test_fire_size_processing_normalizes_with_train_gridcodes_only():
 
 def test_build_dataset_appends_spatialized_tabular_channels_to_grid(temp_data_dir, monkeypatch):
     tmpdir, train_csv, _, _, weather_csv, weather_feats, _, _ = temp_data_dir
-    monkeypatch.setattr("src.datasets.sources.grids.get_range_output", lambda *_args, **_kwargs: (1.0, 0.0))
-    monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation", lambda *_args, **_kwargs: (1.0, 0.0))
+    monkeypatch.setattr("src.datasets.sources.grids.get_range_output_cached", lambda *_args, **_kwargs: (1.0, 0.0))
+    monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation_cached", lambda *_args, **_kwargs: (1.0, 0.0))
 
     config = DataConfig(
         root_dir=tmpdir,
@@ -366,8 +363,8 @@ def test_build_dataset_appends_spatialized_tabular_channels_to_grid(temp_data_di
 
 def test_build_dataset_can_include_patch_metadata(temp_data_dir, monkeypatch):
     tmpdir, train_csv, _, _, _, _, _, _ = temp_data_dir
-    monkeypatch.setattr("src.datasets.sources.grids.get_range_output", lambda *_args, **_kwargs: (1.0, 0.0))
-    monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation", lambda *_args, **_kwargs: (1.0, 0.0))
+    monkeypatch.setattr("src.datasets.sources.grids.get_range_output_cached", lambda *_args, **_kwargs: (1.0, 0.0))
+    monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation_cached", lambda *_args, **_kwargs: (1.0, 0.0))
 
     config = DataConfig(
         root_dir=tmpdir,
@@ -408,8 +405,8 @@ def test_build_dataset_passes_raw_data_dir_to_grid_source(temp_data_dir, monkeyp
         seen["elevation"] = root_dir
         return 1000.0, 0.0
 
-    monkeypatch.setattr("src.datasets.sources.grids.get_range_output", fake_get_range_output)
-    monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation", fake_get_range_elevation)
+    monkeypatch.setattr("src.datasets.sources.grids.get_range_output_cached", fake_get_range_output)
+    monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation_cached", fake_get_range_elevation)
 
     config = DataConfig(
         root_dir=tmpdir,
@@ -485,10 +482,10 @@ def test_grid_source_rejects_invalid_explicit_raw_data_dir(temp_data_dir, monkey
     tmpdir, _, _, _, _, _, _, _ = temp_data_dir
 
     monkeypatch.setattr(
-        "src.datasets.sources.grids.get_range_output",
+        "src.datasets.sources.grids.get_range_output_cached",
         lambda root_dir, output_type, allowed_hex_ids=None: (float("-inf"), float("inf")),
     )
-    monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation", lambda root_dir, allowed_hex_ids=None: (1000.0, 0.0))
+    monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation_cached", lambda root_dir, allowed_hex_ids=None: (1000.0, 0.0))
 
     grid_params = GridParams(
         feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],
@@ -538,7 +535,7 @@ def test_grid_feature_names_list(temp_data_dir):
 
 def test_grid_source_appends_terrain_derivatives_from_elevation(temp_data_dir, monkeypatch):
     tmpdir, *_ = temp_data_dir
-    monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation", lambda *_args, **_kwargs: (3100.0, 0.0))
+    monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation_cached", lambda *_args, **_kwargs: (3100.0, 0.0))
 
     sample_path = os.path.join(tmpdir, "sample_0.npy")
     arr = np.zeros((32, 32, 7), dtype=np.float32)
@@ -566,7 +563,7 @@ def test_grid_source_appends_terrain_derivatives_from_elevation(temp_data_dir, m
 
 def test_grid_source_terrain_derivatives_are_computed_after_transforms(temp_data_dir, monkeypatch):
     tmpdir, *_ = temp_data_dir
-    monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation", lambda *_args, **_kwargs: (3100.0, 0.0))
+    monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation_cached", lambda *_args, **_kwargs: (3100.0, 0.0))
 
     sample_path = os.path.join(tmpdir, "sample_0.npy")
     arr = np.zeros((32, 32, 7), dtype=np.float32)
@@ -593,7 +590,7 @@ def test_grid_source_terrain_derivatives_are_computed_after_transforms(temp_data
 
 def test_grid_source_sets_flat_terrain_aspect_to_zero(temp_data_dir, monkeypatch):
     tmpdir, *_ = temp_data_dir
-    monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation", lambda *_args, **_kwargs: (1000.0, 0.0))
+    monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation_cached", lambda *_args, **_kwargs: (1000.0, 0.0))
 
     sample_path = os.path.join(tmpdir, "sample_0.npy")
     arr = np.zeros((32, 32, 7), dtype=np.float32)

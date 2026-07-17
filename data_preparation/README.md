@@ -49,8 +49,9 @@ python -m data_preparation.process_tabular_data \
 	--train_split_file="train_indices.csv" \
 	--modelling_approach=1
 ```
+For national data, this saves : `weather_norm_params.json` and `fire_size_norm_params.json` inside `save_dir`
 
-For new evaluation data, pass `--fire_size_norm_params_file` and `--weather_norm_params_file` to read train-only normalization parameters previously computed from national study
+[Important] For new evaluation data (NWT data), pass `--fire_size_norm_params_file` and `--weather_norm_params_file` to read train-only normalization parameters previously computed from national study
 
 Notes: If you used modelling approach 2, set `--save_dir` to `data_samples_approach_2`. The `process_tabular_data` script will look for the fire-size file in `--root_dir` first, then in `--save_dir`; ensure `df_fire_fru.csv` is present in one of those places.
 
@@ -63,12 +64,13 @@ This saves csv file in the root_dir called `fbp_curves_national_fuel.csv`
 
 Step 5 (optional): Precompute target log-stats for `log_standard` normalization (fire intensity / ROS)
 
-The `log_standard` target normalization needs train-only log1p mean/std constants. These are otherwise recomputed by scanning the raw rasters on every run; computing them once offline writes a `target_log_stats.json` into the `save_dir` so training/eval/inference just read the cached values.
+The `log_standard` target normalization needs train-only log1p mean/std constants. The `min/max normalization` for burn probability and elevation needs train-only data. These are otherwise recomputed by scanning the raw rasters on every run; computing them once offline writes a `dataset_norm_stats.json` into the `save_dir` so training/eval/inference just read the cached values.
 
 ```bash
-python -m data_preparation.compute_target_log_stats \
+python -m data_preparation.compute_dataset_normalization_stats \
 	--raw_data_dir="/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA" \
+	--root_dir="/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA/data_samples_v3" \
 	--save_dir="/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA/data_samples_v3" \
 	--train_split="train_indices.csv" \
-	--output_types fire_intensity fire_ros
+	--types elevation fuel_curve_iROS fuel_curve_HFI fire_intensity fire_ros fire_burn_probability
 ```
