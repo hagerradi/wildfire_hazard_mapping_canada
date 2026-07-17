@@ -303,7 +303,7 @@ def test_reconstruct_denormalized_hexels_yields_single_stitched_hexel(tmp_path, 
         data_prep=DataPrepConfig(win_h=2, win_w=2),
     )
 
-    monkeypatch.setattr(post_utils, "get_range_output", lambda *args, **kwargs: (2.0, 0.0))
+    monkeypatch.setattr(post_utils, "get_range_output_cached", lambda *args, **kwargs: (2.0, 0.0))
     monkeypatch.setattr(
         post_utils,
         "load_spatial_raster",
