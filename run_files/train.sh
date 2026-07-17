@@ -118,7 +118,7 @@ read -r -a TRAIN_ARG_ARRAY <<< "$TRAIN_ARGS"
 # Run as a proper SLURM job step (srun) rather than a plain child process so that
 # --signal/--requeue reliably reach the training process and resource usage is
 # accounted for correctly.
-srun python -m src.train --config="$RUN_CONFIG_FILE" "${TRAIN_ARG_ARRAY[@]}"
+python -m src.train --config="$RUN_CONFIG_FILE" "${TRAIN_ARG_ARRAY[@]}"
 
 if [[ -n "$ORIGINAL_DATA_ROOT_DIR" ]]; then
     echo "Restoring checkpoint config data.root_dir to persistent path: ${ORIGINAL_DATA_ROOT_DIR}"
@@ -150,7 +150,7 @@ fi
 if [[ "$RUN_HEXEL_EVAL" == "1" ]]; then
     echo "Running evaluation with config: $RUN_CONFIG_FILE"
     read -r -a EVAL_ARG_ARRAY <<< "$EVAL_ARGS"
-    srun python -m src.evaluate_hexels --config="$RUN_CONFIG_FILE" "${EVAL_ARG_ARRAY[@]}"
+    python -m src.evaluate_hexels --config="$RUN_CONFIG_FILE" "${EVAL_ARG_ARRAY[@]}"
 else
     echo "Skipping hexel evaluation because RUN_HEXEL_EVAL=${RUN_HEXEL_EVAL}"
 fi

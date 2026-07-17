@@ -57,9 +57,6 @@ echo "Using data.root_dir directly from config: $CONFIG_FILE"
 
 echo "Running training with config: $CONFIG_FILE"
 read -r -a TRAIN_ARG_ARRAY <<< "$TRAIN_ARGS"
-# Run as a proper SLURM job step (srun) rather than a plain child process so that
-# --signal/--requeue reliably reach the training process and resource usage is
-# accounted for correctly.
-srun python -m src.train \
+python -m src.train \
     --config="$CONFIG_FILE" \
     "${TRAIN_ARG_ARRAY[@]}"
