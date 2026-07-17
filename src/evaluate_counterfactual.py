@@ -19,8 +19,11 @@ from src.datasets.postprocessing.counterfactual.counterfactual_base import (
     resolve_project_path,
 )
 from src.datasets.postprocessing.counterfactual.fuel_counterfactual_transform import FuelCounterfactualTransform
+from src.datasets.postprocessing.counterfactual.weather_counterfactual_transform import materialize_weather_scenario
 from src.evaluate_hexels import load_config
 from src.evaluate_hexels import main as evaluate_hexels
+
+SPATIALIZED_WEATHER_SOURCE_NAME = "spatialized_weather"
 
 
 def _validate_requested_names(requested: set[str] | None, available: set[str], *, label: str) -> None:
@@ -68,6 +71,29 @@ def _fuel_channel(data_root: Path, modelling_approach: str) -> int:
     if not channels:
         raise ValueError(f"{path} has no fuel_grid channel.")
     return int(channels[0])
+
+
+def _override_spatialized_weather_csv(run_config, edited_csv_path: Path) -> None:
+    """Point every `spatialized_weather` input source at an absolute edited CSV path.
+
+    `SpatializedTabularSource` resolves its CSV as `os.path.join(root_dir, csv_name)`,
+    which returns `csv_name` unchanged when it is already absolute - so this doesn't
+    require duplicating the rest of `data.root_dir`.
+    """
+    matched = False
+    for source in run_config.data.input_sources:
+        if source.name == SPATIALIZED_WEATHER_SOURCE_NAME:
+            source.params.csv_name = str(edited_csv_path.resolve())
+            matched = True
+    if not matched:
+        raise ValueError(f"No {SPATIALIZED_WEATHER_SOURCE_NAME!r} input source configured; cannot apply a weather scenario.")
+
+
+def _spatialized_weather_csv_name(base_config) -> str:
+    for source in base_config.data.input_sources:
+        if source.name == SPATIALIZED_WEATHER_SOURCE_NAME:
+            return str(source.params.csv_name)
+    raise ValueError(f"No {SPATIALIZED_WEATHER_SOURCE_NAME!r} input source configured; cannot apply a weather scenario.")
 
 
 def _prepare_prediction_dir(
@@ -124,15 +150,16 @@ def run_counterfactual_evaluation(
     """Evaluate each selected endpoint under each selected scenario for the configured hexels.
 
     For every (endpoint, scenario) pair, this loads the endpoint's checkpoint config,
-    filters test metadata to `config.hex_ids`, applies the scenario's fuel-edit patch
-    transform (a no-op for the baseline scenario), and runs `evaluate_hexels` to write
-    predicted hexel rasters under `<save_dir>/predictions/<scenario>/<endpoint>/`. Also
-    writes, under `save_dir`: `scenario_prediction_index.csv` (returned), `counterfactual
-    _metrics.csv`, and (for fuel scenarios) `fuel_edit_summary.csv` / `fuel_component_
-    replacements.csv`.
+    filters test metadata to `config.hex_ids`, applies the scenario's edit - a fuel-edit
+    patch transform, an edited `weather_table_processed.csv` for `fwi` scenarios, or a
+    no-op for the baseline scenario - and runs `evaluate_hexels` to write predicted hexel
+    rasters under `<save_dir>/predictions/<scenario>/<endpoint>/`. Also writes, under
+    `save_dir`: `scenario_prediction_index.csv` (returned), `counterfactual_metrics.csv`,
+    and (for `fuel` scenarios) `fuel_edit_summary.csv` / `fuel_component_replacements.csv`,
+    or (for `fwi` scenarios) `weather_edit_summary.csv`.
 
     The baseline scenario is always evaluated regardless of `scenario_names`, since
-    downstream plotting scripts diff each fuel scenario against it.
+    downstream plotting scripts diff each scenario against it.
 
     Returns:
         The scenario/endpoint -> prediction_dir index, as also written to
@@ -153,6 +180,7 @@ def run_counterfactual_evaluation(
     metric_rows: list[dict[str, str | float]] = []
     summary_frames = []
     component_frames = []
+    weather_summary_frames = []
     for endpoint in endpoints:
         endpoint_config_path = resolve_project_path(endpoint.config_path, project_root)
         base_config = load_config(str(endpoint_config_path))
@@ -200,6 +228,18 @@ def run_counterfactual_evaluation(
                     components = patch_transform.components.copy()
                     components.insert(0, "endpoint", endpoint.name)
                     component_frames.append(components)
+            elif scenario.kind == "fwi":
+                weather_result = materialize_weather_scenario(
+                    scenario=scenario,
+                    raw_data_dir=raw_data_dir,
+                    processed_weather_csv=data_root / _spatialized_weather_csv_name(base_config),
+                    recipient_hex_ids=sorted(hex_ids),
+                    prediction_dir=prediction_dir,
+                )
+                _override_spatialized_weather_csv(run_config, weather_result.edited_csv_path)
+                summary = weather_result.summary.copy()
+                summary.insert(0, "endpoint", endpoint.name)
+                weather_summary_frames.append(summary)
 
             metrics = evaluate_hexels(
                 args=_evaluation_args(),
@@ -235,6 +275,10 @@ def run_counterfactual_evaluation(
     _write_optional_frame(
         pd.concat(component_frames, ignore_index=True) if component_frames else None,
         save_dir / "fuel_component_replacements.csv",
+    )
+    _write_optional_frame(
+        pd.concat(weather_summary_frames, ignore_index=True) if weather_summary_frames else None,
+        save_dir / "weather_edit_summary.csv",
     )
     return index
 

@@ -38,6 +38,17 @@ def test_select_endpoints_rejects_unknown_names() -> None:
 
 
 @dataclass
+class _DataSourceParams:
+    csv_name: str
+
+
+@dataclass
+class _DataSourceConfig:
+    name: str
+    params: _DataSourceParams
+
+
+@dataclass
 class _DataConfig:
     root_dir: str
     test_split: str = "test.csv"
@@ -45,6 +56,7 @@ class _DataConfig:
     filename_col: str = "filename"
     num_workers: int = 4
     raw_data_dir: str = ""
+    input_sources: list = field(default_factory=list)
 
 
 @dataclass
@@ -156,3 +168,84 @@ def test_run_counterfactual_evaluation_orchestrates_selected_scenario(
     assert (save_dir / "counterfactual_metrics.csv").exists()
     summary = pd.read_csv(save_dir / "fuel_edit_summary.csv")
     assert summary[["endpoint", "edited_pixels"]].to_dict("records") == [{"endpoint": "bp", "edited_pixels": 12}]
+
+
+class _FakeWeatherResult:
+    def __init__(self, edited_csv_path: Path) -> None:
+        self.edited_csv_path = edited_csv_path
+        self.summary = pd.DataFrame([{"scenario_name": "bc_extreme_fwi_transplant", "recipient_hex_id": "16", "donor_fwi": 99.0}])
+
+
+def test_run_counterfactual_evaluation_orchestrates_fwi_scenario(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project_root = tmp_path
+    data_root = project_root / "data"
+    source_dir = project_root / "trained"
+    save_dir = project_root / "counterfactual"
+    data_root.mkdir()
+    source_dir.mkdir()
+    (source_dir / "best.pt").write_bytes(b"checkpoint")
+    pd.DataFrame([{"hex_id": "16", "filename": "patch.npy", "valid_ratio": 1.0}]).to_csv(data_root / "test.csv", index=False)
+    config_path = project_root / "counterfactual.yaml"
+    with config_path.open("w") as handle:
+        yaml.safe_dump(
+            {
+                "raw_data_dir": "raw",
+                "save_dir": "counterfactual",
+                "hex_ids": ["16"],
+                "endpoints": {"bp": {"config_path": "bp.yaml"}},
+                "scenarios": [
+                    {"name": "baseline", "kind": "baseline"},
+                    {
+                        "name": "bc_extreme_fwi_transplant",
+                        "kind": "fwi",
+                        "params": {"mode": "external_extreme_transplant", "donor_hex_ids": ["17"]},
+                    },
+                ],
+            },
+            handle,
+        )
+
+    weather_source = _DataSourceConfig(name="spatialized_weather", params=_DataSourceParams(csv_name="weather_table_processed.csv"))
+    run_config = _EndpointRunConfig(
+        save_dir=str(source_dir),
+        data=_DataConfig(root_dir=str(data_root), input_sources=[weather_source]),
+    )
+    materialize_calls: list[dict] = []
+    edited_csv_path = tmp_path / "edited_weather.csv"
+    edited_csv_path.write_text("Order\n")
+
+    def _fake_materialize_weather_scenario(**kwargs):
+        materialize_calls.append(kwargs)
+        return _FakeWeatherResult(edited_csv_path)
+
+    def _fake_evaluate_hexels(**kwargs):
+        evaluation_calls.append(kwargs)
+        return {"mae": 1.5}
+
+    monkeypatch.setattr("src.evaluate_counterfactual.load_config", lambda _: run_config)
+    monkeypatch.setattr("src.evaluate_counterfactual.materialize_weather_scenario", _fake_materialize_weather_scenario)
+    monkeypatch.setattr("src.evaluate_counterfactual.evaluate_hexels", _fake_evaluate_hexels)
+
+    evaluation_calls: list[dict] = []
+    index = run_counterfactual_evaluation(
+        config_path,
+        endpoint_names={"bp"},
+        scenario_names={"bc_extreme_fwi_transplant"},
+        overwrite=False,
+        project_root=project_root,
+    )
+
+    assert index[["scenario", "endpoint"]].to_dict("records") == [
+        {"scenario": "baseline", "endpoint": "bp"},
+        {"scenario": "bc_extreme_fwi_transplant", "endpoint": "bp"},
+    ]
+    assert len(materialize_calls) == 1
+    assert materialize_calls[0]["recipient_hex_ids"] == ["16"]
+    # The fwi scenario's run config gets its spatialized_weather source repointed at the edited CSV.
+    assert evaluation_calls[0]["config"].data.input_sources[0].params.csv_name == "weather_table_processed.csv"
+    assert evaluation_calls[1]["config"].data.input_sources[0].params.csv_name == str(edited_csv_path.resolve())
+    weather_summary = pd.read_csv(save_dir / "weather_edit_summary.csv")
+    assert weather_summary[["endpoint", "donor_fwi"]].to_dict("records") == [{"endpoint": "bp", "donor_fwi": 99.0}]

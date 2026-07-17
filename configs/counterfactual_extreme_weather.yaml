@@ -1,0 +1,24 @@
+raw_data_dir: "/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA"
+save_dir: "experiments/counterfactual_extreme_weather_hex16"
+hex_ids: ["16"]
+
+endpoints:
+  bp:
+    config_path: "configs/bp_common_input_pipeline.yaml"
+  fi:
+    config_path: "configs/fi_common_input_pipeline.yaml"
+  ros:
+    config_path: "configs/ros_common_input_pipeline.yaml"
+
+scenarios:
+  - name: "baseline"
+    kind: "baseline"
+    description: "Unmodified prepared weather inputs."
+
+  - name: "bc_extreme_fwi_transplant"
+    kind: "fwi"
+    description: "Replace every hex16 weather row with the single highest-FireWeatherIndex day found across configured BC-area donor hexels."
+    params:
+      mode: "external_extreme_transplant"
+      rank_column: "FireWeatherIndex"
+      donor_hex_ids: ["17", "02", "19", "25", "26", "27", "40", "50", "52"]
