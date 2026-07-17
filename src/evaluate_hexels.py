@@ -7,6 +7,8 @@ import glob
 import json
 import os
 import time
+from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -15,6 +17,8 @@ import yaml
 from data_preparation.paths import MASK_SCOPE_CHOICES
 from src.config import Config, GridParams, apply_run_id_overrides
 from src.datasets.dataset import get_test_dataloader, get_val_dataloader
+from src.config import Config, GridParams
+from src.datasets.dataset import MultiSourceDataset, get_test_dataloader
 from src.datasets.postprocessing.utils import evaluate_and_visualize_hexels, print_and_log_eval_metrics
 from src.datasets.utils import get_dataset_dimensions
 from src.trainer import Trainer
@@ -105,9 +109,15 @@ def load_config(path: str) -> Config:
     return Config(**raw)
 
 
-def main() -> None:
-    args = parse_args()
-    config = load_config(args.config)
+def main(
+    *,
+    args: argparse.Namespace | None = None,
+    config: Config | None = None,
+    patch_transform: Callable[[np.ndarray, dict[str, Any]], np.ndarray] | None = None,
+    metadata_filter: Callable[[pd.DataFrame], pd.DataFrame] | None = None,
+) -> dict[str, float]:
+    args = args or parse_args()
+    config = config or load_config(args.config)
 
     if args.run_id is not None:
         run_seed = apply_run_id_overrides(config, args.run_id)
@@ -124,7 +134,13 @@ def main() -> None:
     # NOTE: If we need the stats on a particular hexel then modify the test_indices.csv in the config file with
     # meta_hex_{hex_id}.csv file
     start_time = time.time()
-    test_loader = get_test_dataloader(config=config.data, modelling_approach=config.modelling_approach, seed=seed)
+    test_loader = get_test_dataloader(
+        config=config.data,
+        modelling_approach=config.modelling_approach,
+        seed=seed,
+        patch_transform=patch_transform,
+        metadata_filter=metadata_filter,
+    )
 
     # Get all data sources from the test dataset
     spatial_channels, auxiliary_input_dims = get_dataset_dimensions(test_loader.dataset)
@@ -185,7 +201,10 @@ def main() -> None:
     if not args.no_save_predictions:
         np.save(os.path.join(config.save_dir, "test_predictions.npy"), test_predictions)
 
+    hexel_metrics: dict[str, float] = {}
     if isinstance(test_predictions, np.ndarray):
+        if not isinstance(test_loader.dataset, MultiSourceDataset):
+            raise TypeError(f"Expected MultiSourceDataset, got {type(test_loader.dataset).__name__}.")
         hexel_metrics = evaluate_and_visualize_hexels(
             test_predictions=test_predictions,
             config=config,
@@ -200,6 +219,7 @@ def main() -> None:
             if args.robust_plot_percentile is not None
             else config.evaluation.robust_plot_percentile,
             mask_scope=args.mask_scope,
+            test_metadata=test_loader.dataset.metadata,
         )
 
         # print metrics in terminal and log into comet
@@ -255,6 +275,7 @@ def main() -> None:
 
     print(f"=======Total Evaluation Time {round(time.time() - start_time, 3)}s========")
     print(f"=======Prediction Time {round(preds_time, 3)}s========")
+    return hexel_metrics
 
 
 if __name__ == "__main__":

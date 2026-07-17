@@ -576,6 +576,7 @@ def evaluate_and_visualize_hexels(
     mask_scope: str = "actual",
     split_csv: str | None = None,
     save_dir_suffix: str | None = None,
+    test_metadata: pd.DataFrame | None = None,
 ) -> dict[str, float]:
     """
     A util function to re-construct predicted hexels out of test predictions, and visualize side-by-side with the Groundtruth.
@@ -605,6 +606,7 @@ def evaluate_and_visualize_hexels(
         stitch_mode=stitch_mode,
         mask_scope=scope,
         split_csv=split_csv,
+        test_metadata=test_metadata,
     ):
         if stitched_hexel.hex_id != current_hex_id:
             if current_hex_id is not None and save_artifacts:
