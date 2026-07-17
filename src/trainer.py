@@ -228,12 +228,8 @@ class Trainer:
             target_log_mean, target_log_std = self._target_log_stats(target.name)
 
             if out_norm == "min_max":
-                root_dir = (
-                    self.config.data.root_dir
-                    if self.config.data.root_dir is not None
-                    else self.config.data.raw_data_dir
-                )
-                if root_dir is not None:
+                root_dir = self.config.data.root_dir or self.config.data.raw_data_dir
+                if root_dir:
                     target_max, target_min = get_range_output_cached(
                         root_dir=root_dir,
                         output_type=target.output_type,
