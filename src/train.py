@@ -4,6 +4,8 @@ End-to-end script for running training and evaluation
 
 import argparse
 import os
+import signal
+from types import FrameType
 
 import numpy as np
 import yaml
@@ -33,9 +35,10 @@ def parse_args() -> argparse.Namespace:
         default=True,
         help="Disable saving predicted hexels to comet (default: True)",
     )
+    # logging is enabled by default, unless you pass --no_log_val_predicted_hexels
     parser.add_argument(
         "--no_log_val_predicted_hexels",
-        dest="no_log_val_predicted_hexels",
+        dest="log_val_predicted_hexels",
         action="store_false",
         default=True,
         help="Disable saving predicted hexels to comet (default: True)",
@@ -48,6 +51,16 @@ def parse_args() -> argparse.Namespace:
         "Comet experiment name for parallel multi-seed runs (see run_files/train_no_tmp_copy_array.sh).",
     )
     return parser.parse_args()
+
+
+def _handle_sigterm(signum: int, _frame: FrameType | None) -> None:
+    """
+    Log receipt of SLURM's pre-timeout SIGTERM (see `--signal=B:TERM@300` in
+    run_files/train_no_tmp_copy.sh). The Trainer already checkpoints at each epoch
+    boundary and `--requeue` causes SLURM to resubmit the job, so no extra cleanup
+    is required here beyond a clear log message before the process is killed.
+    """
+    print(f"[Signal] Received {signal.Signals(signum).name}; job is being preempted/timed out and will be requeued.")
 
 
 def load_config(path: str) -> Config:
@@ -64,6 +77,8 @@ def load_config(path: str) -> Config:
 
 
 def main() -> None:
+    signal.signal(signal.SIGTERM, _handle_sigterm)
+
     args = parse_args()
     config = load_config(args.config)
 
@@ -143,7 +158,7 @@ def main() -> None:
     print_and_log_eval_metrics(test_metrics=test_metrics, hexel_metrics=hexel_metrics, experiment_logger=trainer.logger)
 
     # ---------- Validation Evaluation (optional) ----------
-    if args.log_validation:
+    if args.log_val_predicted_hexels:
         print("\n[Evaluation] Running on validation set...")
         val_metrics, val_predictions = trainer.test(val_loader, return_predictions=True)
 

@@ -394,11 +394,12 @@ def test_checkpoint_carries_resume_state(tmp_path, dummy_data):
     trainer.run_training(dummy_data, dummy_data)
 
     assert tmp_path.joinpath("last.pth").exists()
-    checkpoint = torch.load(tmp_path / "last.pth", map_location="cpu")
+    checkpoint = torch.load(tmp_path / "last.pth", map_location="cpu", weights_only=False)
     assert checkpoint["epoch"] == 1
     assert "scheduler_state" in checkpoint
     assert "best_metric_list" in checkpoint
     assert "global_step" in checkpoint
+    assert "rng_state" in checkpoint
 
 
 def test_maybe_resume_continues_from_last_checkpoint(tmp_path, dummy_data):
