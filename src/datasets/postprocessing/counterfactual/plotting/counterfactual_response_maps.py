@@ -85,7 +85,7 @@ class EndpointSpec:
 
 ENDPOINT_SPECS: dict[str, EndpointSpec] = {
     "bp": EndpointSpec("BP", "Burn probability", "viridis", lambda paths: paths.output_burn_prob()),
-    "fi": EndpointSpec("FI", "Fire intensity (kW/m)", "inferno", lambda paths: paths.output_fire_intensity()),
+    "fi": EndpointSpec("FI", "Fire intensity (kW/m)", "viridis", lambda paths: paths.output_fire_intensity()),
     "ros": EndpointSpec("ROS", "ROS (m/min)", "viridis", lambda paths: paths.output_ros()),
 }
 
