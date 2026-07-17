@@ -11,6 +11,7 @@ import pandas as pd
 import rasterio
 
 from data_preparation.paths import Paths
+from data_preparation.spatial.fuel import load_fuel_grid
 from data_preparation.spatial.utils import load_spatial_raster
 from src.datasets.fuel_utils import normalize_hex_id
 from src.datasets.postprocessing.counterfactual.counterfactual_base import ScenarioConfig
@@ -126,10 +127,21 @@ class FuelCounterfactualTransform:
         for hex_id in sorted(normalized_hex_ids.unique()):
             hex_metadata = metadata.loc[normalized_hex_ids == hex_id].drop_duplicates(filename_col)
             paths = Paths(hex_id=hex_id, root_dir=raw_data_dir)
-            fuel_grid, profile = load_spatial_raster(
-                path=paths.fuel_grid(hex_id),
+            # Reproject onto the elevation grid's reference profile, mirroring
+            # load_spatial_features_per_hexel's patch-generation path. Without this,
+            # the fuel raster reprojects to an unrelated default CRS/grid, so patch
+            # (row, col) windows no longer index the same pixels.
+            _, reference_profile = load_spatial_raster(
+                path=paths.elevation_grid(hex_id),
                 mask_path=paths.mask_grid(hex_id, mask_scope=mask_scope),
             )
+            fuel_grid = load_fuel_grid(
+                root_dir=str(raw_data_dir),
+                hex_id=hex_id,
+                reference_profile=reference_profile,
+                mask_scope=mask_scope,
+            )
+            profile = reference_profile
             baseline = np.ma.filled(fuel_grid.astype(np.float32), np.nan)
 
             result = apply_fuel_edit(
@@ -186,7 +198,20 @@ class FuelCounterfactualTransform:
         col_end = patch_window.col + width
         edited_channel = edited_hexel[patch_window.row : row_end, patch_window.col : col_end]
         if edited_channel.shape != (height, width):
-            raise ValueError(f"Edited fuel slice for patch {key} has shape {edited_channel.shape}; expected {(height, width)}.")
+            # Patches near a hex's edge extend past the raw raster's true extent (the
+            # patch-generation pipeline pads with NODATA before windowing); pad the same way.
+            pad_height = height - edited_channel.shape[0]
+            pad_width = width - edited_channel.shape[1]
+            if pad_height < 0 or pad_width < 0:
+                raise ValueError(f"Edited fuel slice for patch {key} has shape {edited_channel.shape}; expected {(height, width)}.")
+            edited_channel = np.pad(edited_channel, ((0, pad_height), (0, pad_width)), mode="constant", constant_values=np.nan)
+        # Patch generation masks NODATA as the union of every source grid's own mask
+        # (fuel, elevation, ignition, firezones - see hexel_loader.stack_sample), so a
+        # pixel can be NODATA in the patch even where the raw fuel raster has a valid
+        # value. Preserve the original fuel channel's NaNs so the substituted channel
+        # stays consistent with every other channel in the patch.
+        original_channel = data[:, :, self.fuel_channel]
+        edited_channel = np.where(np.isnan(original_channel), np.nan, edited_channel)
         edited = np.array(data, copy=True)
         edited[:, :, self.fuel_channel] = edited_channel.astype(edited.dtype, copy=False)
         return edited
