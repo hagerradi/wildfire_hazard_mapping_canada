@@ -303,13 +303,11 @@ class GridSource(DataSource):
         The results are stored in ``self.fuel_curve_mean`` and ``self.fuel_curve_std`` as float32
         numpy arrays of shape ``(1,)``.
         """
-        import json as _json
-
         cache_path = os.path.join(self.root_dir, NORM_STATS_JSON)
         cache_key = f"fuel_curve_{self.fuel_feats_encoding}"
         if os.path.exists(cache_path):
             with open(cache_path) as f:
-                cached = _json.load(f)
+                cached = json.load(f)
             entry = cached.get(cache_key, {})
             mean = entry.get("log_mean")
             std = entry.get("log_std")

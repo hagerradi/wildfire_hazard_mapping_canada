@@ -456,8 +456,9 @@ def get_target_postprocessing_settings(config: Config, out_norm: str) -> list[Ta
     settings = []
     for target in get_config_target_specs(config):
         target_channel_index = get_target_channel_index(data_dir=data_dir, modelling_approach=config.modelling_approach, target=target)
+        cache_root_dir = data_dir if data_dir is not None else raw_data_dir
         max_target_val, min_target_val = get_range_output_cached(
-            root_dir=data_dir or raw_data_dir,
+            root_dir=cache_root_dir,
             output_type=target.output_type,
             allowed_hex_ids=train_hex_ids,
             raw_data_dir=raw_data_dir,
