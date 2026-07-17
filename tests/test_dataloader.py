@@ -436,7 +436,7 @@ def test_build_dataset_passes_raw_data_dir_to_grid_source(temp_data_dir, monkeyp
 
 def test_get_test_dataloader_forwards_modelling_approach(temp_data_dir, monkeypatch):
     tmpdir, train_csv, val_csv, test_csv, *_ = temp_data_dir
-    monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation", lambda *_args, **_kwargs: (1000.0, 0.0))
+    monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation_cached", lambda *_args, **_kwargs: (1000.0, 0.0))
     channel_map_2 = {
         "fuel_grid": [2],
         "elevation_grid": [1],
