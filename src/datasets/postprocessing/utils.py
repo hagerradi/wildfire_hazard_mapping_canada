@@ -616,6 +616,7 @@ def evaluate_and_visualize_hexels(
     save_plots: bool = True,
     robust_plot_percentile: float | None = None,
     mask_scope: str | None = None,
+    test_metadata: pd.DataFrame | None = None,
 ) -> dict[str, float]:
     """
     A util function to re-construct predicted hexels out of test predictions, and visualize side-by-side with the Groundtruth.
@@ -638,6 +639,7 @@ def evaluate_and_visualize_hexels(
         out_norm=out_norm,
         stitch_mode=stitch_mode,
         mask_scope=scope,
+        test_metadata=test_metadata,
     ):
         if stitched_hexel.hex_id != current_hex_id:
             if current_hex_id is not None and save_artifacts:

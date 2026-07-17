@@ -18,7 +18,7 @@ from src.config import (
     SpatializedTabularParams,
     TabularParams,
 )
-from src.datasets.dataset import MultiSourceDataset, build_dataset
+from src.datasets.dataset import MultiSourceDataset, build_dataset, get_test_dataloader, get_train_val_dataloader
 from src.datasets.sources import GridSource, SpatializedTabularSource, TabularSource
 from src.datasets.transforms import get_transforms, setup_augmentations
 from src.datasets.utils import get_dataset_dimensions
@@ -432,6 +432,51 @@ def test_build_dataset_passes_raw_data_dir_to_grid_source(temp_data_dir, monkeyp
     assert seen["output"]["raw_data_dir"] == raw_data_dir
     assert seen["output"]["output_type"] == "fire_burn_probability"
     assert seen["elevation"]["raw_data_dir"] == raw_data_dir
+
+
+def test_get_test_dataloader_forwards_modelling_approach(temp_data_dir, monkeypatch):
+    tmpdir, train_csv, val_csv, test_csv, *_ = temp_data_dir
+    monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation", lambda *_args, **_kwargs: (1000.0, 0.0))
+    channel_map_2 = {
+        "fuel_grid": [2],
+        "elevation_grid": [1],
+        "ignition_grid": [0],
+        "firezones_grid": [3],
+        "bp_out_grid": [4],
+        "fi_out_grid": [5],
+        "ros_out_grid": [6],
+    }
+    with open(os.path.join(tmpdir, "feature_channel_map_2.json"), "w") as f:
+        json.dump(channel_map_2, f)
+
+    config = DataConfig(
+        root_dir=tmpdir,
+        raw_data_dir=tmpdir,
+        train_split=train_csv,
+        val_split=val_csv,
+        test_split=test_csv,
+        input_sources=[
+            DataSourceConfig(
+                name="grid",
+                params=GridParams(
+                    feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],
+                    out_norm="min_max",
+                    fuel_feats_encoding="ordinal",
+                ),
+            )
+        ],
+    )
+
+    # feature_channel_map_1.json (the default) has fuel_grid at a different index than
+    # feature_channel_map_2.json; if modelling_approach isn't forwarded past
+    # get_test_dataloader/get_train_val_dataloader, GridSource silently falls back to "1"
+    # and loads the wrong channel map instead of raising.
+    test_loader = get_test_dataloader(config=config, modelling_approach="2")
+    assert test_loader.dataset.sources["grid"].channel_feature_map == channel_map_2
+
+    train_loader, val_loader = get_train_val_dataloader(config=config, modelling_approach="2")
+    assert train_loader.dataset.sources["grid"].channel_feature_map == channel_map_2
+    assert val_loader.dataset.sources["grid"].channel_feature_map == channel_map_2
 
 
 def test_grid_source_rejects_invalid_explicit_raw_data_dir(temp_data_dir, monkeypatch):

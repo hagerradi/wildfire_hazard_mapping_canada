@@ -75,7 +75,7 @@ def read_curves(
     missing_cols = required_cols - set(df.columns)
 
     if missing_cols:
-        raise ValueError("Missing required columns in ROS CSV: " f"{sorted(missing_cols)}")
+        raise ValueError(f"Missing required columns in ROS CSV: {sorted(missing_cols)}")
 
     df = df[
         [
@@ -133,7 +133,7 @@ def read_curves(
         )
 
         raise ValueError(
-            "Multiple feature values were found for the same " "fbp_code, SeasonState, and ISI:\n" f"{duplicates.to_string(index=False)}"
+            f"Multiple feature values were found for the same fbp_code, SeasonState, and ISI:\n{duplicates.to_string(index=False)}"
         )
 
     curves_by_code: dict[int, dict[str, pd.Series]] = {}
@@ -201,7 +201,7 @@ def _read_hex_season_weights(
     distribution_path = Path(distribution_path)
 
     if not distribution_path.exists():
-        raise FileNotFoundError("Ignition distribution CSV not found: " f"{distribution_path}")
+        raise FileNotFoundError(f"Ignition distribution CSV not found: {distribution_path}")
 
     distribution_df = pd.read_csv(distribution_path)
 
@@ -253,7 +253,7 @@ def _read_hex_season_weights(
     total_weight = sum(season_state_weights.values())
 
     if total_weight <= 0:
-        raise ValueError("The ignition distribution contains no positive " f"season weight: {distribution_path}")
+        raise ValueError(f"The ignition distribution contains no positive season weight: {distribution_path}")
 
     return {season_state: weight / total_weight for season_state, weight in season_state_weights.items()}
 
@@ -304,9 +304,7 @@ def _combine_season_curves(
 
     if total_applicable_weight <= 0:
         raise ValueError(
-            "The applicable ignition season weights sum to zero "
-            f"for fbp_code={fbp_code}, hex_id={hex_id}. "
-            f"Weights={applicable_weights}"
+            f"The applicable ignition season weights sum to zero for fbp_code={fbp_code}, hex_id={hex_id}. Weights={applicable_weights}"
         )
 
     # Re-normalize over only the states that apply to this FBP code.
@@ -369,7 +367,7 @@ def _build_season_mapping_from_greenup(greenup_path: str | Path) -> dict[str, st
     missing_cols = required_cols - set(df.columns)
 
     if missing_cols:
-        raise ValueError(f"Missing required columns in GreenUp table {greenup_path}: " f"{sorted(missing_cols)}")
+        raise ValueError(f"Missing required columns in GreenUp table {greenup_path}: {sorted(missing_cols)}")
 
     df["Season"] = df["Season"].astype(str).str.strip()
     df["GreenUp"] = df["GreenUp"].astype(str).str.strip()
@@ -428,7 +426,7 @@ def build_fuel_curve_lookup(
         (e.g. ``"iROS"`` or ``"HFI"``).
     """
     if feature_name not in _FEATURE_CSV:
-        raise ValueError(f"Unknown feature_name={feature_name!r}. " f"Supported values: {sorted(_FEATURE_CSV)}")
+        raise ValueError(f"Unknown feature_name={feature_name!r}. Supported values: {sorted(_FEATURE_CSV)}")
 
     csv_filename, feature_col = _FEATURE_CSV[feature_name]
 
