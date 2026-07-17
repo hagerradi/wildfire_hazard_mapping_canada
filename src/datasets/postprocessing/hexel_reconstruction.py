@@ -51,7 +51,7 @@ def reconstruct_denormalized_hexels(
     config: Config,
     out_norm: str,
     stitch_mode: str = "mean",
-    mask_scope: str = "actual",
+    mask_scope: str | None = "actual",
     test_metadata: pd.DataFrame | None = None,
 ) -> Iterator[StitchedHexel]:
     """Yield stitched, denormalized hexel grids using the same settings as training/evaluation."""
@@ -65,7 +65,8 @@ def reconstruct_denormalized_hexels(
         test_df = load_filtered_test_metadata(config=config, mask_scope=scope)
     else:
         test_df = test_metadata.reset_index(drop=True).copy()
-        post_utils.validate_patch_metadata_mask_scope(test_df, scope)
+        if scope is not None:
+            post_utils.validate_patch_metadata_mask_scope(test_df, scope)
     prediction_mask_channel_indices = post_utils.get_prediction_mask_channel_indices(
         data_dir=config.data.root_dir,
         modelling_approach=config.modelling_approach,
