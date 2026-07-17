@@ -146,7 +146,9 @@ def burnable_fuel_support(
 ) -> np.ndarray:
     """Return valid pixels whose raw fuel ID is not a configured non-fuel ID."""
 
-    values = np.asarray(np.ma.asarray(fuel).filled(np.nan), dtype=np.float64)
+    # Cast to float before filling: integer-dtype fuel rasters (e.g. from load_fuel_grid)
+    # can't take a NaN fill value directly.
+    values = np.asarray(np.ma.asarray(fuel).astype(np.float64).filled(np.nan), dtype=np.float64)
     valid = np.isfinite(values)
     fuel_ids = np.full(values.shape, -9999, dtype=np.int32)
     fuel_ids[valid] = values[valid].astype(np.int32)
