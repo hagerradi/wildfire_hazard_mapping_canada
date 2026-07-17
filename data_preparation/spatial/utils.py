@@ -434,7 +434,7 @@ def get_output_log_stats_cached(
     """
     import json as _json
 
-    cache_path = os.path.join(root_dir, NORM_STATS_JSON)
+    cache_path = os.path.join(root_dir, "dataset_norm_stats.json")
     if os.path.exists(cache_path):
         with open(cache_path) as f:
             cached = _json.load(f)
