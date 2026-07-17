@@ -25,12 +25,11 @@ model:
 optimizer:
   name: "AdamW"
   lr: 7.0e-4
-  loss: ["kl", "ccc", "hex_mean_pairwise_rank", "hex_top10_pairwise_rank"]
+  loss: ["huber", "raw_pearson"]
+  huber_beta: 1.0
   loss_weights:
-    kl: 0.45
-    ccc: 0.45
-    hex_mean_pairwise_rank: 0.05
-    hex_top10_pairwise_rank: 0.05
+    huber: 0.7
+    raw_pearson: 0.3
 
 lr_scheduler:
   name: "cosine_warmup"
@@ -57,7 +56,6 @@ data:
   batch_size: 64
   num_workers: 2
   valid_mask_threshold: 0.01
-  include_patch_metadata: true
 
   input_sources:
     - name: "grid"
