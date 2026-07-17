@@ -126,12 +126,11 @@ def reconstruct_denormalized_hexels(
                     profile=profile,
                     shape=pred_grid.shape,
                 )
-                if scope is not None:
-                    buffer_support_mask = post_utils._actual_area_mask(
-                        mask_path=paths.mask_grid(hex_id=hex_id, mask_scope=scope),
-                        profile=profile,
-                        shape=pred_grid.shape,
-                    )
+                buffer_support_mask = post_utils._actual_area_mask(
+                    mask_path=paths.mask_grid(hex_id=hex_id, mask_scope=scope),
+                    profile=profile,
+                    shape=pred_grid.shape,
+                )
             yield StitchedHexel(
                 hex_id=hex_id,
                 target=settings.target,
