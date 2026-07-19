@@ -511,7 +511,12 @@ class Trainer:
             # above may have moved other checkpoint tensors to an accelerator device.
             torch.random.set_rng_state(rng_state["torch_random_state"].cpu())
             if torch.cuda.is_available() and rng_state.get("torch_cuda_random_state") is not None:
-                torch.cuda.set_rng_state_all(rng_state["torch_cuda_random_state"])
+                # Like the CPU RNG state above, each per-device state tensor must stay on
+                # CPU (as a plain torch.ByteTensor) even though `map_location` may have
+                # moved it onto an accelerator device; `set_rng_state_all` rejects
+                # anything that isn't a CPU ByteTensor.
+                cuda_rng_states = [state.cpu() for state in rng_state["torch_cuda_random_state"]]
+                torch.cuda.set_rng_state_all(cuda_rng_states)
 
         last_epoch = int(checkpoint.get("epoch", 0))
         print(f"[Resume] Resuming from {last_path}: completed epoch {last_epoch}, continuing at epoch {last_epoch + 1}.")
