@@ -61,6 +61,7 @@ class SpatializedTabularSource(DataSource):
         self.aggregation = params.aggregation.lower()
         self.include_missing_firezone_mask = params.include_missing_firezone_mask
         self.missing_value_strategy = params.missing_value_strategy.lower()
+        self.global_fill_csv_name = params.global_fill_csv_name
         self.shuffle_lut = params.shuffle_lut
         self.shuffle_seed = params.shuffle_seed
 
@@ -83,7 +84,13 @@ class SpatializedTabularSource(DataSource):
             raise ValueError(
                 f"Spatialized tabular LUT is empty for {self.csv_name!r}. Check zone column {self.zone_id_col!r} and selected features."
             )
-        self.global_fill = self._global_fill(df)
+        global_fill_df = df
+        if self.global_fill_csv_name is not None and self.missing_value_strategy == "global_mean":
+            global_fill_df = pd.read_csv(os.path.join(self.root_dir, self.global_fill_csv_name))
+            missing_fill_columns = [column for column in self.feature_names_list if column not in global_fill_df.columns]
+            if missing_fill_columns:
+                raise ValueError(f"Missing columns in global-fill CSV {self.global_fill_csv_name!r}: {missing_fill_columns}")
+        self.global_fill = self._global_fill(global_fill_df)
         if self.shuffle_lut:
             self._shuffle_lut_values()
 

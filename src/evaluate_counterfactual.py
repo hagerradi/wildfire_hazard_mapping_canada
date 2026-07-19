@@ -73,7 +73,12 @@ def _fuel_channel(data_root: Path, modelling_approach: str) -> int:
     return int(channels[0])
 
 
-def _override_spatialized_weather_csv(run_config, edited_csv_path: Path) -> None:
+def _override_spatialized_weather_csv(
+    run_config,
+    edited_csv_path: Path,
+    *,
+    baseline_csv_path: Path,
+) -> None:
     """Point every `spatialized_weather` input source at an absolute edited CSV path.
 
     `SpatializedTabularSource` resolves its CSV as `os.path.join(root_dir, csv_name)`,
@@ -84,6 +89,7 @@ def _override_spatialized_weather_csv(run_config, edited_csv_path: Path) -> None
     for source in run_config.data.input_sources:
         if source.name == SPATIALIZED_WEATHER_SOURCE_NAME:
             source.params.csv_name = str(edited_csv_path.resolve())
+            source.params.global_fill_csv_name = str(baseline_csv_path.resolve())
             matched = True
     if not matched:
         raise ValueError(f"No {SPATIALIZED_WEATHER_SOURCE_NAME!r} input source configured; cannot apply a weather scenario.")
@@ -229,14 +235,19 @@ def run_counterfactual_evaluation(
                     components.insert(0, "endpoint", endpoint.name)
                     component_frames.append(components)
             elif scenario.kind == "fwi":
+                baseline_weather_csv = data_root / _spatialized_weather_csv_name(base_config)
                 weather_result = materialize_weather_scenario(
                     scenario=scenario,
                     raw_data_dir=raw_data_dir,
-                    processed_weather_csv=data_root / _spatialized_weather_csv_name(base_config),
+                    processed_weather_csv=baseline_weather_csv,
                     recipient_hex_ids=sorted(hex_ids),
                     prediction_dir=prediction_dir,
                 )
-                _override_spatialized_weather_csv(run_config, weather_result.edited_csv_path)
+                _override_spatialized_weather_csv(
+                    run_config,
+                    weather_result.edited_csv_path,
+                    baseline_csv_path=baseline_weather_csv,
+                )
                 summary = weather_result.summary.copy()
                 summary.insert(0, "endpoint", endpoint.name)
                 weather_summary_frames.append(summary)

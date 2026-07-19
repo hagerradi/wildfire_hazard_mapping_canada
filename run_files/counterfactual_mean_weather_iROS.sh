@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=cf_extreme_weather_eval
+#SBATCH --job-name=cf_mean_weather_eval
 #SBATCH --output=logs/job_%x_%j.out
 #SBATCH --error=logs/job_%x_%j.err
 #SBATCH --partition=unkillable
@@ -15,4 +15,9 @@ cd "${SLURM_SUBMIT_DIR:-$(pwd)}"
 mkdir -p logs
 source .venv/bin/activate
 
-python -m src.evaluate_counterfactual --config configs/counterfactual_extreme_weather.yaml --overwrite
+python -m src.evaluate_counterfactual \
+    --config configs/counterfactual_mean_weather.yaml \
+    --endpoint bp \
+    --endpoint fi \
+    --endpoint ros \
+    --overwrite

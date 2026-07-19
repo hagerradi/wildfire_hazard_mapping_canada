@@ -272,6 +272,37 @@ def test_spatialized_tabular_global_mean_uses_all_rows(temp_data_dir):
     np.testing.assert_allclose(sample[1].numpy(), np.ones((4, 4), dtype=np.float32))
 
 
+def test_spatialized_tabular_global_mean_can_use_baseline_csv(temp_data_dir):
+    tmpdir, _, _, _, _, _, _, _ = temp_data_dir
+    intervention_csv = "weather_intervention.csv"
+    baseline_csv = "weather_baseline.csv"
+    pd.DataFrame({"WeatherZone": [100], "Temperature": [100.0]}).to_csv(
+        os.path.join(tmpdir, intervention_csv),
+        index=False,
+    )
+    pd.DataFrame({"WeatherZone": [100, 200], "Temperature": [1.0, 3.0]}).to_csv(
+        os.path.join(tmpdir, baseline_csv),
+        index=False,
+    )
+    missing_patch = np.zeros((4, 4, 7), dtype=np.float32)
+    missing_patch[:, :, 3] = np.nan
+    missing_patch_path = os.path.join(tmpdir, "missing_zone.npy")
+    np.save(missing_patch_path, missing_patch)
+
+    params = SpatializedTabularParams(
+        csv_name=intervention_csv,
+        global_fill_csv_name=baseline_csv,
+        feature_names_list=["Temperature"],
+        fire_weather_zone_id_col="WeatherZone",
+        missing_value_strategy="global_mean",
+    )
+    source = SpatializedTabularSource(root_dir=tmpdir, params=params, modelling_approach="1")
+
+    sample = source.get_sample({"file_path": missing_patch_path})
+
+    np.testing.assert_allclose(sample[0].numpy(), np.full((4, 4), 2.0, dtype=np.float32))
+
+
 def test_spatialized_tabular_lut_includes_all_zones(temp_data_dir):
     tmpdir, _, _, _, weather_csv, weather_feats, _, _ = temp_data_dir
 

@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=cf_extreme_weather_plots
+#SBATCH --job-name=cf_mean_weather_plots
 #SBATCH --output=logs/job_%x_%j.out
 #SBATCH --error=logs/job_%x_%j.err
 #SBATCH --partition=long-cpu
@@ -14,10 +14,10 @@ cd "${SLURM_SUBMIT_DIR:-$(pwd)}"
 mkdir -p logs
 source .venv/bin/activate
 
-config="configs/counterfactual_extreme_weather.yaml"
+config="configs/counterfactual_mean_weather.yaml"
 hex_id="16"
 scenarios=(
-    "bc_extreme_fwi_transplant"
+    "bc_mean_weather_transplant"
 )
 endpoints=("bp" "fi" "ros")
 

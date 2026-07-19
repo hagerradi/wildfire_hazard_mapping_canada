@@ -1,4 +1,4 @@
-"""Materializes an edited `weather_table_processed.csv` for one FWI counterfactual scenario."""
+"""Materialize an edited weather lookup table for one weather counterfactual."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import pandas as pd
 
 from src.datasets.fuel_utils import normalize_hex_id
 from src.datasets.postprocessing.counterfactual.counterfactual_base import ScenarioConfig
-from src.datasets.postprocessing.counterfactual.counterfactual_weather import apply_fwi_edit, load_all_raw_weather_with_wind_components
+from src.datasets.postprocessing.counterfactual.counterfactual_weather import apply_weather_edit, load_all_raw_weather_with_hex_ids
 
 WEATHER_INTERVENTION_CSV_NAME = "weather_table_processed.csv"
 
@@ -34,7 +34,7 @@ def materialize_weather_scenario(
     recipient_hex_ids: list[str],
     prediction_dir: Path,
 ) -> WeatherCounterfactualResult:
-    """Apply `scenario`'s FWI edit and write the resulting table under `prediction_dir`.
+    """Apply a configured weather edit and write its lookup table under `prediction_dir`.
 
     Loads `processed_weather_csv` (the endpoint's shared, unedited `weather_table_processed
     .csv`) and the raw per-hexel weather tables it was built from, applies the scenario's
@@ -43,17 +43,18 @@ def materialize_weather_scenario(
     `csv_name` with an absolute path.
     """
     params = dict(scenario.fwi_edit() or {})
-    mode = str(params.pop("mode", "external_extreme_transplant"))
+    mode = params.pop("mode", None)
+    if not isinstance(mode, str) or not mode.strip():
+        raise ValueError(f"Weather scenario {scenario.name!r} must define an explicit non-empty mode.")
 
     processed = pd.read_csv(processed_weather_csv)
-    raw_features = load_all_raw_weather_with_wind_components(raw_data_dir)
-    edited, reports = apply_fwi_edit(
+    raw_features = load_all_raw_weather_with_hex_ids(raw_data_dir)
+    edited, reports = apply_weather_edit(
         raw_features,
         processed,
         mode=mode,
         scenario_name=scenario.name,
         recipient_hex_ids=[normalize_hex_id(hex_id) for hex_id in recipient_hex_ids],
-        raw_data_dir=raw_data_dir,
         params=params,
     )
 

@@ -58,9 +58,9 @@ def test_load_counterfactual_config_supports_fwi_scenarios(tmp_path: Path) -> No
             "scenarios": [
                 {"name": "baseline", "kind": "baseline"},
                 {
-                    "name": "bc_extreme_fwi_transplant",
+                    "name": "bc_mean_weather_transplant",
                     "kind": "fwi",
-                    "params": {"mode": "external_extreme_transplant", "donor_hex_ids": ["17", "02"]},
+                    "params": {"mode": "external_mean_zone_transplant", "donor_hex_ids": ["17"]},
                 },
             ],
         },
@@ -68,7 +68,7 @@ def test_load_counterfactual_config_supports_fwi_scenarios(tmp_path: Path) -> No
 
     config = load_counterfactual_config(path)
 
-    assert config.scenarios[1].fwi_edit() == {"mode": "external_extreme_transplant", "donor_hex_ids": ["17", "02"]}
+    assert config.scenarios[1].fwi_edit() == {"mode": "external_mean_zone_transplant", "donor_hex_ids": ["17"]}
     assert config.scenarios[1].fuel_edit() is None
     with pytest.raises(KeyError, match="missing"):
         config.scenario("missing")

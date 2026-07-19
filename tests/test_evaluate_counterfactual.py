@@ -40,6 +40,7 @@ def test_select_endpoints_rejects_unknown_names() -> None:
 @dataclass
 class _DataSourceParams:
     csv_name: str
+    global_fill_csv_name: str | None = None
 
 
 @dataclass
@@ -173,7 +174,7 @@ def test_run_counterfactual_evaluation_orchestrates_selected_scenario(
 class _FakeWeatherResult:
     def __init__(self, edited_csv_path: Path) -> None:
         self.edited_csv_path = edited_csv_path
-        self.summary = pd.DataFrame([{"scenario_name": "bc_extreme_fwi_transplant", "recipient_hex_id": "16", "donor_fwi": 99.0}])
+        self.summary = pd.DataFrame([{"scenario_name": "bc_mean_weather_transplant", "recipient_hex_id": "16", "donor_fwi_mean": 29.0}])
 
 
 def test_run_counterfactual_evaluation_orchestrates_fwi_scenario(
@@ -199,9 +200,9 @@ def test_run_counterfactual_evaluation_orchestrates_fwi_scenario(
                 "scenarios": [
                     {"name": "baseline", "kind": "baseline"},
                     {
-                        "name": "bc_extreme_fwi_transplant",
+                        "name": "bc_mean_weather_transplant",
                         "kind": "fwi",
-                        "params": {"mode": "external_extreme_transplant", "donor_hex_ids": ["17"]},
+                        "params": {"mode": "external_mean_zone_transplant", "donor_hex_ids": ["17"]},
                     },
                 ],
             },
@@ -233,19 +234,22 @@ def test_run_counterfactual_evaluation_orchestrates_fwi_scenario(
     index = run_counterfactual_evaluation(
         config_path,
         endpoint_names={"bp"},
-        scenario_names={"bc_extreme_fwi_transplant"},
+        scenario_names={"bc_mean_weather_transplant"},
         overwrite=False,
         project_root=project_root,
     )
 
     assert index[["scenario", "endpoint"]].to_dict("records") == [
         {"scenario": "baseline", "endpoint": "bp"},
-        {"scenario": "bc_extreme_fwi_transplant", "endpoint": "bp"},
+        {"scenario": "bc_mean_weather_transplant", "endpoint": "bp"},
     ]
     assert len(materialize_calls) == 1
     assert materialize_calls[0]["recipient_hex_ids"] == ["16"]
     # The fwi scenario's run config gets its spatialized_weather source repointed at the edited CSV.
     assert evaluation_calls[0]["config"].data.input_sources[0].params.csv_name == "weather_table_processed.csv"
     assert evaluation_calls[1]["config"].data.input_sources[0].params.csv_name == str(edited_csv_path.resolve())
+    assert evaluation_calls[1]["config"].data.input_sources[0].params.global_fill_csv_name == str(
+        (data_root / "weather_table_processed.csv").resolve()
+    )
     weather_summary = pd.read_csv(save_dir / "weather_edit_summary.csv")
-    assert weather_summary[["endpoint", "donor_fwi"]].to_dict("records") == [{"endpoint": "bp", "donor_fwi": 99.0}]
+    assert weather_summary[["endpoint", "donor_fwi_mean"]].to_dict("records") == [{"endpoint": "bp", "donor_fwi_mean": 29.0}]
