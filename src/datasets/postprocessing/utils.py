@@ -43,8 +43,8 @@ from src.logger import CometLogger
 class TargetPostprocessingSettings:
     target: TargetSpec
     target_channel_index: int
-    max_target_val: float
-    min_target_val: float
+    max_target_val: float | None
+    min_target_val: float | None
     out_norm: str
     target_log_mean: float | None
     target_log_std: float | None
@@ -269,8 +269,8 @@ def get_predicted_hexel(
     raw_data_dir: str,
     test_df: pd.DataFrame,
     predictions: np.ndarray,
-    min_target_val: float,
-    max_target_val: float,
+    min_target_val: float | None,
+    max_target_val: float | None,
     hex_id: str,
     modelling_approach: str = "1",
     out_norm: str = "min_max",
@@ -297,6 +297,10 @@ def get_predicted_hexel(
     if out_norm in {"min_max", "log"}:
         predictions = np.clip(predictions, 0, 1)
 
+    requires_target_range = out_norm == "min_max" or modelling_approach != "1"
+    if requires_target_range and (min_target_val is None or max_target_val is None):
+        raise ValueError(f"min_target_val and max_target_val are required for out_norm={out_norm!r}.")
+
     if modelling_approach == "1":
         reconstructed_hexel = get_stitched_windows(
             base_dir=base_dir,
@@ -310,8 +314,8 @@ def get_predicted_hexel(
         )
         reconstructed_hexel_denorm = denormalize_model_target(
             data=reconstructed_hexel,
-            min_val=min_target_val,
-            max_val=max_target_val,
+            min_val=0.0 if min_target_val is None else min_target_val,
+            max_val=0.0 if max_target_val is None else max_target_val,
             out_norm=out_norm,
             target_log_mean=target_log_mean,
             target_log_std=target_log_std,
@@ -333,7 +337,9 @@ def get_predicted_hexel(
                 prediction_mask_channel_indices=prediction_mask_channel_indices,
             )
             reconstructed_season_cause_hexel_denorm = denormalize_burn_count(
-                data=reconstructed_season_cause_hexel, min_val=min_target_val, max_val=max_target_val
+                data=reconstructed_season_cause_hexel,
+                min_val=0.0 if min_target_val is None else min_target_val,
+                max_val=0.0 if max_target_val is None else max_target_val,
             )
             season_cause_hexels.append(reconstructed_season_cause_hexel_denorm)
             start_idx += len(filtered_season_cause_df)
@@ -341,7 +347,11 @@ def get_predicted_hexel(
         reconstructed_hexel_denorm = np.sum(np.stack(season_cause_hexels), axis=0)
         reconstructed_hexel_denorm = np.rint(reconstructed_hexel_denorm).astype("int32")
         # clip values to the true range, in case of outliers
-        reconstructed_hexel_denorm = np.clip(reconstructed_hexel_denorm, min_target_val, max_target_val)
+        reconstructed_hexel_denorm = np.clip(
+            reconstructed_hexel_denorm,
+            0.0 if min_target_val is None else min_target_val,
+            0.0 if max_target_val is None else max_target_val,
+        )
         gt_elevation_grid_profile.update(dtype="int32", compress="lzw", nodata=-9999)  # type: ignore
 
     return reconstructed_hexel_denorm, gt_elevation_grid_profile
@@ -458,9 +468,8 @@ def get_target_postprocessing_settings(config: Config, out_norm: str) -> list[Ta
         target_channel_index = get_target_channel_index(data_dir=data_dir, modelling_approach=config.modelling_approach, target=target)
         target_out_norm = get_target_out_norm(grid_params=grid_params, target=target, fallback_out_norm=out_norm)
 
-        # `denormalize_model_target` ignores min/max unless out_norm == "min_max".
-        max_target_val: float = 0.0
-        min_target_val: float = 0.0
+        max_target_val: float | None = None
+        min_target_val: float | None = None
         if target_out_norm == "min_max":
             max_target_val, min_target_val = get_range_output_cached(
                 root_dir=data_dir or raw_data_dir,
