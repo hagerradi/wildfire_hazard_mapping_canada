@@ -456,21 +456,25 @@ def get_target_postprocessing_settings(config: Config, out_norm: str) -> list[Ta
     settings = []
     for target in get_config_target_specs(config):
         target_channel_index = get_target_channel_index(data_dir=data_dir, modelling_approach=config.modelling_approach, target=target)
-        cache_root_dir = data_dir if data_dir is not None else raw_data_dir
-        max_target_val, min_target_val = get_range_output_cached(
-            root_dir=cache_root_dir,
-            output_type=target.output_type,
-            allowed_hex_ids=train_hex_ids,
-            raw_data_dir=raw_data_dir,
-        )
-        max_target_val, min_target_val = apply_bp_nodata_zero_range(
-            target_name=target.name,
-            max_value=max_target_val,
-            min_value=min_target_val,
-            bp_nodata_as_zero=config.evaluation.bp_nodata_as_zero,
-        )
-        target_log_mean, target_log_std = get_target_log_stats(grid_params=grid_params, target=target)
         target_out_norm = get_target_out_norm(grid_params=grid_params, target=target, fallback_out_norm=out_norm)
+
+        max_target_val: float | None = None
+        min_target_val: float | None = None
+        if target_out_norm == "min_max":
+            max_target_val, min_target_val = get_range_output_cached(
+                root_dir=data_dir or raw_data_dir,
+                output_type=target.output_type,
+                allowed_hex_ids=train_hex_ids,
+                raw_data_dir=raw_data_dir,
+                scenario_name=config.data_prep.scenario_name,
+            )
+            max_target_val, min_target_val = apply_bp_nodata_zero_range(
+                target_name=target.name,
+                max_value=max_target_val,
+                min_value=min_target_val,
+                bp_nodata_as_zero=config.evaluation.bp_nodata_as_zero,
+            )
+        target_log_mean, target_log_std = get_target_log_stats(grid_params=grid_params, target=target)
         if target_out_norm == "log_standard" and (target_log_mean is None or target_log_std is None):
             target_log_mean, target_log_std = get_output_log_stats_cached(
                 str(data_dir), target.output_type, allowed_hex_ids=train_hex_ids, raw_data_dir=raw_data_dir
