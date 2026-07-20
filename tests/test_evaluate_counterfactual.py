@@ -177,7 +177,7 @@ class _FakeWeatherResult:
         self.summary = pd.DataFrame([{"scenario_name": "bc_mean_weather_transplant", "recipient_hex_id": "16", "donor_fwi_mean": 29.0}])
 
 
-def test_run_counterfactual_evaluation_orchestrates_fwi_scenario(
+def test_run_counterfactual_evaluation_orchestrates_weather_scenario(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -201,7 +201,7 @@ def test_run_counterfactual_evaluation_orchestrates_fwi_scenario(
                     {"name": "baseline", "kind": "baseline"},
                     {
                         "name": "bc_mean_weather_transplant",
-                        "kind": "fwi",
+                        "kind": "weather",
                         "params": {"mode": "external_mean_zone_transplant", "donor_hex_ids": ["17"]},
                     },
                 ],
@@ -245,7 +245,7 @@ def test_run_counterfactual_evaluation_orchestrates_fwi_scenario(
     ]
     assert len(materialize_calls) == 1
     assert materialize_calls[0]["recipient_hex_ids"] == ["16"]
-    # The fwi scenario's run config gets its spatialized_weather source repointed at the edited CSV.
+    # The weather scenario's run config gets its spatialized_weather source repointed at the edited CSV.
     assert evaluation_calls[0]["config"].data.input_sources[0].params.csv_name == "weather_table_processed.csv"
     assert evaluation_calls[1]["config"].data.input_sources[0].params.csv_name == str(edited_csv_path.resolve())
     assert evaluation_calls[1]["config"].data.input_sources[0].params.global_fill_csv_name == str(

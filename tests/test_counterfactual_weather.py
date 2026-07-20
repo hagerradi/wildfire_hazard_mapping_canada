@@ -139,18 +139,18 @@ def test_apply_weather_edit_dispatches_mean_mode_and_rejects_invalid_configurati
         )
 
 
-def test_fwi_scenario_kind_and_mean_weather_accessor() -> None:
+def test_weather_scenario_kind_and_weather_edit_accessor() -> None:
     scenario = ScenarioConfig(
         name="bc_mean_weather_transplant",
-        kind="fwi",
+        kind="weather",
         description="",
         params={"mode": "external_mean_zone_transplant", "donor_hex_ids": ["17"]},
     )
-    assert scenario.fwi_edit() == {"mode": "external_mean_zone_transplant", "donor_hex_ids": ["17"]}
+    assert scenario.weather_edit() == {"mode": "external_mean_zone_transplant", "donor_hex_ids": ["17"]}
     assert scenario.fuel_edit() is None
 
     baseline = ScenarioConfig(name="baseline", kind="baseline", description="", params={})
-    assert baseline.fwi_edit() is None
+    assert baseline.weather_edit() is None
 
 
 def test_materialize_mean_weather_scenario_writes_compact_zone_lut(
@@ -166,7 +166,7 @@ def test_materialize_mean_weather_scenario_writes_compact_zone_lut(
     )
     scenario = ScenarioConfig(
         name="bc_mean_weather_transplant",
-        kind="fwi",
+        kind="weather",
         description="",
         params={"mode": "external_mean_zone_transplant", "donor_hex_ids": ["17"]},
     )
@@ -194,7 +194,7 @@ def test_materialize_weather_scenario_requires_explicit_mode(tmp_path: Path) -> 
     pd.DataFrame({"WeatherZone": [1], "FireWeatherIndex": [0.0]}).to_csv(processed_csv, index=False)
     scenario = ScenarioConfig(
         name="missing_mode",
-        kind="fwi",
+        kind="weather",
         description="",
         params={"donor_hex_ids": ["17"]},
     )

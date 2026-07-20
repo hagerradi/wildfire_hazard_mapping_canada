@@ -10,7 +10,7 @@ import yaml
 
 from src.datasets.fuel_utils import normalize_hex_id
 
-SCENARIO_KINDS = ("baseline", "fuel", "fwi")
+SCENARIO_KINDS = ("baseline", "fuel", "weather")
 
 
 @dataclass(frozen=True)
@@ -38,7 +38,7 @@ class EndpointConfig:
 
 @dataclass(frozen=True)
 class ScenarioConfig:
-    """A named counterfactual scenario: either the unmodified `baseline`, or a `fuel` edit."""
+    """A named baseline, fuel-edit, or weather-edit counterfactual scenario."""
 
     name: str
     kind: str
@@ -70,9 +70,9 @@ class ScenarioConfig:
         """Return this scenario's fuel-edit params, or None for the baseline scenario."""
         return self.params if self.kind == "fuel" else None
 
-    def fwi_edit(self) -> dict[str, Any] | None:
-        """Return this scenario's FWI/severe-weather-edit params, or None otherwise."""
-        return self.params if self.kind == "fwi" else None
+    def weather_edit(self) -> dict[str, Any] | None:
+        """Return this scenario's weather-edit params, or None otherwise."""
+        return self.params if self.kind == "weather" else None
 
 
 @dataclass(frozen=True)

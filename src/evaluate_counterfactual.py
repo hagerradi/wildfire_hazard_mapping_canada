@@ -157,12 +157,12 @@ def run_counterfactual_evaluation(
 
     For every (endpoint, scenario) pair, this loads the endpoint's checkpoint config,
     filters test metadata to `config.hex_ids`, applies the scenario's edit - a fuel-edit
-    patch transform, an edited `weather_table_processed.csv` for `fwi` scenarios, or a
+    patch transform, an edited `weather_table_processed.csv` for `weather` scenarios, or a
     no-op for the baseline scenario - and runs `evaluate_hexels` to write predicted hexel
     rasters under `<save_dir>/predictions/<scenario>/<endpoint>/`. Also writes, under
     `save_dir`: `scenario_prediction_index.csv` (returned), `counterfactual_metrics.csv`,
     and (for `fuel` scenarios) `fuel_edit_summary.csv` / `fuel_component_replacements.csv`,
-    or (for `fwi` scenarios) `weather_edit_summary.csv`.
+    or (for `weather` scenarios) `weather_edit_summary.csv`.
 
     The baseline scenario is always evaluated regardless of `scenario_names`, since
     downstream plotting scripts diff each scenario against it.
@@ -234,7 +234,7 @@ def run_counterfactual_evaluation(
                     components = patch_transform.components.copy()
                     components.insert(0, "endpoint", endpoint.name)
                     component_frames.append(components)
-            elif scenario.kind == "fwi":
+            elif scenario.kind == "weather":
                 baseline_weather_csv = data_root / _spatialized_weather_csv_name(base_config)
                 weather_result = materialize_weather_scenario(
                     scenario=scenario,

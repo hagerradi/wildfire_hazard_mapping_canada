@@ -42,7 +42,7 @@ def materialize_weather_scenario(
     ready to be pointed at by overriding the endpoint's `spatialized_weather` source
     `csv_name` with an absolute path.
     """
-    params = dict(scenario.fwi_edit() or {})
+    params = dict(scenario.weather_edit() or {})
     mode = params.pop("mode", None)
     if not isinstance(mode, str) or not mode.strip():
         raise ValueError(f"Weather scenario {scenario.name!r} must define an explicit non-empty mode.")

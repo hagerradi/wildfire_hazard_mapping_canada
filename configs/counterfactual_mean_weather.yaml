@@ -17,7 +17,7 @@ scenarios:
     description: "Unmodified prepared weather inputs."
 
   - name: "bc_mean_weather_transplant"
-    kind: "fwi"
+    kind: "weather"
     description: "Assign every hex16 weather zone the exact mean processed-weather vector across all hex17 rows, without dilution from other hexels sharing those zones."
     params:
       mode: "external_mean_zone_transplant"
