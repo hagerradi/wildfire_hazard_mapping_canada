@@ -536,10 +536,12 @@ class Trainer:
         running_metrics = {name: 0.0 for name in self._metric_result_keys()}
         running_loss_parts: dict[str, float] = {}
 
+        peak_mps_driver_allocated_gb = 0.0
+
         preds_list = []
         validation_loop = tqdm(loader, desc="Evaluating", leave=True)
 
-        for batch in validation_loop:
+        for batch_idx, batch in enumerate(validation_loop):
             predictions, loss, loss_parts, targets, masks = self._step(batch)
 
             if return_predictions:
@@ -559,6 +561,24 @@ class Trainer:
                     for k, v in loss_parts.items():
                         running_loss_parts[k] = running_loss_parts.get(k, 0.0) + v.item() * batch_size
 
+            # NOTE: MPS-only diagnostic -- captured BEFORE empty_cache() flushes it, so
+            # this reflects the real per-batch peak, not the post-flush snapshot. The
+            # earlier investigation confirmed individual batches genuinely peak near
+            # 30GB even though empty_cache() brings end-of-run allocation back down to
+            # a couple GB -- this line is what makes that visible.
+            if predictions.device.type == "mps" and hasattr(torch.mps, "driver_allocated_memory"):
+                batch_peak_gb = torch.mps.driver_allocated_memory() / 1024**3
+                peak_mps_driver_allocated_gb = max(peak_mps_driver_allocated_gb, batch_peak_gb)
+                print(f"[diag] batch {batch_idx + 1} peak driver_allocated: {batch_peak_gb:.3f} GB")
+
+            # NOTE: MPS-only -- the caching allocator retains freed batch memory
+            # without releasing it to the OS, so per-batch driver_allocated_memory
+            # climbs across the whole loop instead of resetting. empty_cache()
+            # after each batch prevents that accumulation. No-op cost on CPU/CUDA,
+            # so this is gated rather than applied unconditionally.
+            if predictions.device.type == "mps":
+                torch.mps.empty_cache()
+
         avg_loss = running_loss / max(1, running_batch_count)
         results = {"loss": avg_loss}
         if running_loss_parts:
@@ -568,6 +588,9 @@ class Trainer:
         # add averaged metrics to results
         for name, total_value in running_metrics.items():
             results[name] = total_value / max(1, running_batch_count)
+
+        if peak_mps_driver_allocated_gb > 0.0:
+            results["_peak_mps_driver_allocated_gb"] = peak_mps_driver_allocated_gb
 
         if return_predictions:
             return results, np.concatenate(preds_list, axis=0)

@@ -311,9 +311,12 @@ def main(
         # current_allocated_memory() is the live tensor footprint at call
         # time, not a tracked peak, so it's reported as a point-in-time
         # figure taken right after the run rather than a true running max.
+        peak_mps_driver_gb = test_metrics.pop("_peak_mps_driver_allocated_gb", None)
+        if peak_mps_driver_gb is not None:
+            print(f"=======Peak MPS Driver Allocated (per-batch, pre-flush) {round(peak_mps_driver_gb, 3)} GB========")
         if hasattr(torch.mps, "driver_allocated_memory"):
             mps_driver_gb = torch.mps.driver_allocated_memory() / 1024**3
-            print(f"=======MPS Driver Allocated {round(mps_driver_gb, 3)} GB========")
+            print(f"=======MPS Driver Allocated (post-run snapshot) {round(mps_driver_gb, 3)} GB========")
         if hasattr(torch.mps, "current_allocated_memory"):
             mps_current_gb = torch.mps.current_allocated_memory() / 1024**3
             print(f"=======MPS Current Allocated {round(mps_current_gb, 3)} GB========")
