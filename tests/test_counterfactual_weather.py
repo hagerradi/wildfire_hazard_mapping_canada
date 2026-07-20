@@ -15,21 +15,21 @@ from src.datasets.postprocessing.counterfactual.weather_counterfactual_transform
 def _weather_frames() -> tuple[pd.DataFrame, pd.DataFrame]:
     raw = pd.DataFrame(
         {
-            "__hex_id": ["16", "16", "17", "17", "01"],
-            "WeatherZone": [4, 9, 30, 31, 1],
-            "FireWeatherIndex": [10.0, 20.0, 30.0, 50.0, 5.0],
+            "__hex_id": ["16", "16", "17", "17", "01", "01"],
+            "WeatherZone": [4, 9, 30, 31, 1, 1],
+            "FireWeatherIndex": [10.0, 20.0, 30.0, 50.0, 5.0, 7.0],
         }
     )
     processed = pd.DataFrame(
         {
-            "Order": [1, 2, 3, 4, 5],
-            "Season": [1, 2, 1, 2, 1],
+            "Order": [1, 2, 3, 4, 5, 6],
+            "Season": [1, 2, 1, 2, 1, 2],
             "WeatherZone": raw["WeatherZone"],
-            "Temperature": [-1.0, 0.0, 1.0, 3.0, -2.0],
-            "WindDirection": [180.0, 200.0, 220.0, 240.0, 90.0],
-            "FireWeatherIndex": [-1.0, 0.0, 2.0, 4.0, -2.0],
-            "wind_x": [-0.5, -0.25, 0.5, 1.5, 0.0],
-            "wind_y": [0.0, 0.25, 1.0, 2.0, -0.5],
+            "Temperature": [-1.0, 0.0, 1.0, 3.0, -2.0, -4.0],
+            "WindDirection": [180.0, 200.0, 220.0, 240.0, 90.0, 270.0],
+            "FireWeatherIndex": [-1.0, 0.0, 2.0, 4.0, -2.0, -4.0],
+            "wind_x": [-0.5, -0.25, 0.5, 1.5, 0.0, -1.0],
+            "wind_y": [0.0, 0.25, 1.0, 2.0, -0.5, 0.5],
         }
     )
     return raw, processed
@@ -53,8 +53,8 @@ def test_apply_external_mean_zone_transplant_builds_exact_recipient_zone_lut() -
         assert row[donor_mean.index].to_numpy(dtype=np.float64) == pytest.approx(donor_mean.to_numpy(dtype=np.float64))
 
     untouched = edited.loc[edited["WeatherZone"] == 1].iloc[0]
-    assert untouched["FireWeatherIndex"] == pytest.approx(processed.loc[4, "FireWeatherIndex"])
-    assert edited.loc[edited["WeatherZone"].isin([4, 9]), "WindDirection"].to_numpy() == pytest.approx([180.0, 200.0])
+    assert untouched["FireWeatherIndex"] == pytest.approx(processed.loc[[4, 5], "FireWeatherIndex"].mean())
+    assert not (set(cw.NON_AVERAGE_COLUMNS) - {"WeatherZone"}).intersection(edited.columns)
 
     assert len(reports) == 1
     report = reports[0]

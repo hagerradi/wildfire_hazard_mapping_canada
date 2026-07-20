@@ -99,7 +99,7 @@ def apply_external_mean_zone_transplant(
     if not np.isfinite(donor_mean.to_numpy(dtype=np.float64)).all():
         raise ValueError("Donor mean weather vector contains non-finite values.")
 
-    edited = processed.groupby("WeatherZone", as_index=False).mean(numeric_only=True)
+    edited = processed.groupby("WeatherZone", as_index=False)[mean_columns].mean()
     combined_recipient_mask = np.logical_or.reduce(list(recipient_masks.values()))
     recipient_zones = set(processed.loc[combined_recipient_mask, "WeatherZone"].dropna().astype(int))
     edited_recipient_mask = edited["WeatherZone"].isin(recipient_zones)
