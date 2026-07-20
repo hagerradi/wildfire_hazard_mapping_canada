@@ -589,7 +589,7 @@ class Trainer:
         for name, total_value in running_metrics.items():
             results[name] = total_value / max(1, running_batch_count)
 
-        if peak_mps_driver_allocated_gb > 0.0:
+        if return_predictions and peak_mps_driver_allocated_gb > 0.0:
             results["_peak_mps_driver_allocated_gb"] = peak_mps_driver_allocated_gb
 
         if return_predictions:
