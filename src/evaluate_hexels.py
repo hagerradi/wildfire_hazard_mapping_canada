@@ -155,7 +155,7 @@ def main(
             try:
                 total = proc.memory_info().rss
                 total += sum(c.memory_info().rss for c in proc.children(recursive=True))
-            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            except psutil.Error:
                 pass
             else:
                 _peak_rss_bytes = max(_peak_rss_bytes, total)
