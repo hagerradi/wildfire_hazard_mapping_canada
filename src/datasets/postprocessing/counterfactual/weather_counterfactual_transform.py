@@ -36,11 +36,12 @@ def materialize_weather_scenario(
 ) -> WeatherCounterfactualResult:
     """Apply a configured weather edit and write its lookup table under `prediction_dir`.
 
-    Loads `processed_weather_csv` (the endpoint's shared, unedited `weather_table_processed
-    .csv`) and the raw per-hexel weather tables it was built from, applies the scenario's
-    edit, and writes the edited table to `weather_intervention_csv_path(prediction_dir)` -
-    ready to be pointed at by overriding the endpoint's `spatialized_weather` source
-    `csv_name` with an absolute path.
+    Loads `processed_weather_csv` (the endpoint's shared, unedited
+    `weather_table_processed.csv`) and the raw per-hexel weather tables it was built
+    from, applies the scenario's edit, and writes the edited table to
+    `weather_intervention_csv_path(prediction_dir)` - ready to be pointed at by
+    overriding the endpoint's `spatialized_weather` source `csv_name` with an
+    absolute path.
     """
     params = dict(scenario.weather_edit() or {})
     mode = params.pop("mode", None)
