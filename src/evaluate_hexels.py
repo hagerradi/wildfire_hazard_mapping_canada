@@ -222,6 +222,7 @@ def main(
     preds_start_time = time.time()
     test_metrics, test_predictions = trainer.test(test_loader, return_predictions=True)
     preds_time = time.time() - preds_start_time
+    peak_mps_driver_gb = test_metrics.pop("_peak_mps_driver_allocated_gb", None)
 
     if args.visualize_predictions and isinstance(test_predictions, np.ndarray):
         # get the channel mapping dict if it exists
@@ -311,7 +312,6 @@ def main(
         # current_allocated_memory() is the live tensor footprint at call
         # time, not a tracked peak, so it's reported as a point-in-time
         # figure taken right after the run rather than a true running max.
-        peak_mps_driver_gb = test_metrics.pop("_peak_mps_driver_allocated_gb", None)
         if peak_mps_driver_gb is not None:
             print(f"=======Peak MPS Driver Allocated (per-batch, pre-flush) {round(peak_mps_driver_gb, 3)} GB========")
         if hasattr(torch.mps, "driver_allocated_memory"):
