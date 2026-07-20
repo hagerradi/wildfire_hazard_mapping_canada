@@ -458,8 +458,9 @@ def get_target_postprocessing_settings(config: Config, out_norm: str) -> list[Ta
         target_channel_index = get_target_channel_index(data_dir=data_dir, modelling_approach=config.modelling_approach, target=target)
         target_out_norm = get_target_out_norm(grid_params=grid_params, target=target, fallback_out_norm=out_norm)
 
-        max_target_val = 0.0
-        min_target_val = 0.0
+        # `denormalize_model_target` ignores min/max unless out_norm == "min_max".
+        max_target_val: float = 0.0
+        min_target_val: float = 0.0
         if target_out_norm == "min_max":
             max_target_val, min_target_val = get_range_output_cached(
                 root_dir=data_dir or raw_data_dir,
