@@ -299,7 +299,9 @@ def get_predicted_hexel(
 
     requires_target_range = out_norm == "min_max" or modelling_approach != "1"
     if requires_target_range and (min_target_val is None or max_target_val is None):
-        raise ValueError(f"min_target_val and max_target_val are required for out_norm={out_norm!r}.")
+        raise ValueError(
+            f"min_target_val and max_target_val are required when out_norm={out_norm!r} or modelling_approach={modelling_approach!r}."
+        )
 
     if modelling_approach == "1":
         reconstructed_hexel = get_stitched_windows(
