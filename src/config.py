@@ -118,6 +118,7 @@ class SpatializedTabularParams(TabularParams):
     shuffle_seed: int = 42
     include_missing_firezone_mask: bool = False
     missing_value_strategy: str = "global_mean"
+    global_fill_csv_name: str | None = None
 
 
 class DataSourceConfig(BaseModel):
