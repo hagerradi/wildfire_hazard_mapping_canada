@@ -458,15 +458,14 @@ def get_target_postprocessing_settings(config: Config, out_norm: str) -> list[Ta
         target_channel_index = get_target_channel_index(data_dir=data_dir, modelling_approach=config.modelling_approach, target=target)
         target_out_norm = get_target_out_norm(grid_params=grid_params, target=target, fallback_out_norm=out_norm)
 
-        max_target_val: float | None = None
-        min_target_val: float | None = None
+        max_target_val = 0.0
+        min_target_val = 0.0
         if target_out_norm == "min_max":
             max_target_val, min_target_val = get_range_output_cached(
                 root_dir=data_dir or raw_data_dir,
                 output_type=target.output_type,
                 allowed_hex_ids=train_hex_ids,
                 raw_data_dir=raw_data_dir,
-                scenario_name=config.data_prep.scenario_name,
             )
             max_target_val, min_target_val = apply_bp_nodata_zero_range(
                 target_name=target.name,
