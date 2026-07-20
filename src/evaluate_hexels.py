@@ -6,12 +6,15 @@ import argparse
 import glob
 import json
 import os
+import threading
 import time
 from collections.abc import Callable
 from typing import Any
 
 import numpy as np
 import pandas as pd
+import psutil
+import torch
 import yaml
 
 from data_preparation.paths import MASK_SCOPE_CHOICES
@@ -59,6 +62,11 @@ def parse_args() -> argparse.Namespace:
         "--no_save_predictions",
         action="store_true",
         help="Do not save patch-level test_predictions.npy.",
+    )
+    parser.add_argument(
+        "--fast_eval",
+        action="store_true",
+        help="Enable speed-focused eval defaults: metrics-only and skip writing prediction arrays/plots.",
     )
     parser.add_argument(
         "--robust_plot_percentile",
@@ -110,6 +118,10 @@ def main(
     metadata_filter: Callable[[pd.DataFrame], pd.DataFrame] | None = None,
 ) -> dict[str, float]:
     args = args or parse_args()
+    if args.fast_eval:
+        args.metrics_only = True
+        args.skip_hexel_plots = True
+        args.no_save_predictions = True
     config = config or load_config(args.config)
 
     if args.run_id is not None:
@@ -127,6 +139,44 @@ def main(
     # NOTE: If we need the stats on a particular hexel then modify the test_indices.csv in the config file with
     # meta_hex_{hex_id}.csv file
     start_time = time.time()
+
+    # ---------- Memory tracking ----------
+    # NOTE: continuous in-process tracking, not interval polling -- short
+    # eval runs don't give coarse polling enough samples to reliably catch
+    # a peak, unlike BurnP3+'s multi-hour runs where 30s sstat polling was
+    # validated against a sustained multi-minute plateau.
+    _peak_rss_bytes = 0
+    _stop_sampler = threading.Event()
+
+    def _sample_memory(interval: float = 0.5) -> None:
+        nonlocal _peak_rss_bytes
+        proc = psutil.Process()
+        while not _stop_sampler.is_set():
+            try:
+                total = proc.memory_info().rss
+                total += sum(c.memory_info().rss for c in proc.children(recursive=True))
+            except psutil.NoSuchProcess:
+                pass
+            else:
+                _peak_rss_bytes = max(_peak_rss_bytes, total)
+            _stop_sampler.wait(interval)
+
+    sampler_thread = threading.Thread(target=_sample_memory, daemon=True)
+    sampler_thread.start()
+
+    if torch.cuda.is_available():
+        torch.cuda.reset_peak_memory_stats()
+
+    # ---------- Dataloader / normalization-range setup ----------
+    # NOTE: this is where GridSource scans raw training-hexel rasters under
+    # raw_data_dir to compute min_max normalization ranges -- on a network
+    # filesystem (e.g. Mila's /network/projects/...) with the real ~44-hexel
+    # training set, this step alone can take on the order of a minute, and
+    # was previously invisible (folded silently into "Total Evaluation Time"
+    # with no separate line to attribute it to). With the normalization
+    # caching PR in place, this should drop sharply whenever dataset_norm_stats.json
+    # is present, since GridSource's cached helpers skip the raw raster scan.
+    dataloader_start_time = time.time()
     test_loader = get_test_dataloader(
         config=config.data,
         modelling_approach=config.modelling_approach,
@@ -134,22 +184,27 @@ def main(
         patch_transform=patch_transform,
         metadata_filter=metadata_filter,
     )
+    dataloader_time = time.time() - dataloader_start_time
 
     # Get all data sources from the test dataset
     spatial_channels, auxiliary_input_dims = get_dataset_dimensions(test_loader.dataset)
     print(f"Detected Data Dimensions: Spatial={spatial_channels} | Auxiliary={auxiliary_input_dims}")
 
     # iROS stats come from the checkpoint (registered buffers), not re-computed at eval time.
+    trainer_init_start_time = time.time()
     trainer = Trainer(config, spatial_input_channels=spatial_channels, auxiliary_input_dims=auxiliary_input_dims)
+    trainer_init_time = time.time() - trainer_init_start_time
 
     # ---------- Load best checkpoint ----------
     # Try best.pth first, fall back to last.pth if needed
     model_ckpt = None
+    checkpoint_start_time = time.time()
     try:
         print(f"\n[Checkpoint] Loading {config.evaluation.checkpoint_filename} for evaluation...")
         model_ckpt = trainer.load_model(filename=config.evaluation.checkpoint_filename)
     except (FileNotFoundError, AttributeError):
         raise ValueError("[Checkpoint] checkpoint file not found or invalid...")  # noqa: B904
+    checkpoint_time = time.time() - checkpoint_start_time
 
     if model_ckpt is not None:
         print(f"[Checkpoint] Loaded epoch={model_ckpt.get('epoch', 'N/A')} Checkpoint Metrics={model_ckpt.get('metric_value', 'N/A')}")
@@ -231,8 +286,38 @@ def main(
         os.makedirs(config.save_dir, exist_ok=True)
         pd.DataFrame([test_metrics_row]).to_csv(os.path.join(config.save_dir, "test_metrics.csv"), index=False)
 
-    print(f"=======Total Evaluation Time {round(time.time() - start_time, 3)}s========")
+    # ---------- Stop memory tracking & report ----------
+    _stop_sampler.set()
+    sampler_thread.join(timeout=2.0)
+    peak_rss_gb = _peak_rss_bytes / 1024**3
+
+    total_eval_time = time.time() - start_time
+    print(f"=======Total Evaluation Time {round(total_eval_time, 3)}s========")
+    print(f"=======Dataloader Setup Time {round(dataloader_time, 3)}s========")
+    print(f"=======Trainer Init Time {round(trainer_init_time, 3)}s========")
+    print(f"=======Checkpoint Load Time {round(checkpoint_time, 3)}s========")
     print(f"=======Prediction Time {round(preds_time, 3)}s========")
+    print(f"=======Eval Time Excl. Dataloader Setup {round(total_eval_time - dataloader_time, 3)}s========")
+    print(f"=======Peak Host RSS {round(peak_rss_gb, 3)} GB========")
+    if torch.cuda.is_available():
+        peak_gpu_reserved_gb = torch.cuda.max_memory_reserved() / 1024**3
+        peak_gpu_allocated_gb = torch.cuda.max_memory_allocated() / 1024**3
+        print(f"=======Peak GPU Reserved {round(peak_gpu_reserved_gb, 3)} GB========")
+        print(f"=======Peak GPU Allocated {round(peak_gpu_allocated_gb, 3)} GB========")
+    elif torch.backends.mps.is_available():
+        # NOTE: MPS has no reserved-vs-allocated distinction like CUDA's
+        # caching allocator -- driver_allocated_memory() is the closest
+        # analog to CUDA's "reserved" (total claimed from the OS/driver),
+        # current_allocated_memory() is the live tensor footprint at call
+        # time, not a tracked peak, so it's reported as a point-in-time
+        # figure taken right after the run rather than a true running max.
+        if hasattr(torch.mps, "driver_allocated_memory"):
+            mps_driver_gb = torch.mps.driver_allocated_memory() / 1024**3
+            print(f"=======MPS Driver Allocated {round(mps_driver_gb, 3)} GB========")
+        if hasattr(torch.mps, "current_allocated_memory"):
+            mps_current_gb = torch.mps.current_allocated_memory() / 1024**3
+            print(f"=======MPS Current Allocated {round(mps_current_gb, 3)} GB========")
+
     return hexel_metrics
 
 

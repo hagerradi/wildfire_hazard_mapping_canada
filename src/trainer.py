@@ -352,6 +352,11 @@ class Trainer:
         return keys
 
     def _compute_metric_values(self, predictions: torch.Tensor, targets: torch.Tensor, masks: torch.Tensor) -> dict[str, torch.Tensor]:
+        if predictions.device.type == "mps":
+            predictions = predictions.cpu()
+            targets = targets.cpu()
+            masks = masks.cpu()
+
         if len(self._target_specs) == 1:
             return {name: metric_fn(predictions, targets, masks) for name, metric_fn in self.metric_functions.items()}
 
