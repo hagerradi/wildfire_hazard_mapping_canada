@@ -10,7 +10,7 @@ import yaml
 
 from src.datasets.fuel_utils import normalize_hex_id
 
-SCENARIO_KINDS = ("baseline", "fuel")
+SCENARIO_KINDS = ("baseline", "fuel", "weather")
 
 
 @dataclass(frozen=True)
@@ -38,7 +38,7 @@ class EndpointConfig:
 
 @dataclass(frozen=True)
 class ScenarioConfig:
-    """A named counterfactual scenario: either the unmodified `baseline`, or a `fuel` edit."""
+    """A named baseline, fuel-edit, or weather-edit counterfactual scenario."""
 
     name: str
     kind: str
@@ -70,6 +70,10 @@ class ScenarioConfig:
         """Return this scenario's fuel-edit params, or None for the baseline scenario."""
         return self.params if self.kind == "fuel" else None
 
+    def weather_edit(self) -> dict[str, Any] | None:
+        """Return this scenario's weather-edit params, or None otherwise."""
+        return self.params if self.kind == "weather" else None
+
 
 @dataclass(frozen=True)
 class CounterfactualConfig:
@@ -80,6 +84,11 @@ class CounterfactualConfig:
     hex_ids: list[str]
     endpoints: dict[str, EndpointConfig]
     scenarios: list[ScenarioConfig]
+    # Non-fuel IDs to exclude from response/delta maps for scenarios that don't edit fuel
+    # themselves (e.g. weather counterfactuals), where the fuel grid is static across
+    # baseline and scenario. Fuel-edit scenarios instead carry their own `nonfuel_ids` in
+    # `params`, since baseline/scenario fuel differs there.
+    nonfuel_ids: list[int] | None = None
 
     def scenario(self, name: str) -> ScenarioConfig:
         for scenario in self.scenarios:
@@ -119,6 +128,14 @@ def _parse_endpoints(raw_endpoints: object) -> dict[str, EndpointConfig]:
     return {str(name): EndpointConfig.from_mapping(str(name), raw) for name, raw in raw_endpoints.items()}
 
 
+def _parse_nonfuel_ids(raw_nonfuel_ids: object) -> list[int] | None:
+    if raw_nonfuel_ids is None:
+        return None
+    if not isinstance(raw_nonfuel_ids, list | tuple):
+        raise ValueError("Counterfactual config key 'nonfuel_ids' must be a list.")
+    return [int(value) for value in raw_nonfuel_ids]
+
+
 def _parse_scenarios(raw_scenarios: object) -> list[ScenarioConfig]:
     if not isinstance(raw_scenarios, list | tuple) or not raw_scenarios:
         raise ValueError("Counterfactual config key 'scenarios' must be a non-empty list.")
@@ -153,4 +170,5 @@ def load_counterfactual_config(path: Path) -> CounterfactualConfig:
         hex_ids=_parse_hex_ids(raw["hex_ids"]),
         endpoints=_parse_endpoints(raw["endpoints"]),
         scenarios=_parse_scenarios(raw["scenarios"]),
+        nonfuel_ids=_parse_nonfuel_ids(raw.get("nonfuel_ids")),
     )

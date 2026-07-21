@@ -44,6 +44,32 @@ def test_load_counterfactual_config_supports_custom_endpoints(tmp_path: Path) ->
     assert list(config.endpoints) == ["hazard"]
     assert config.scenarios[1].fuel_edit() == {"mode": "nonfuel_to_burnable_local_adjacent_modal"}
     assert config.scenario("remove_barriers") == config.scenarios[1]
+
+
+def test_load_counterfactual_config_supports_weather_scenarios(tmp_path: Path) -> None:
+    path = tmp_path / "counterfactual.yaml"
+    _write_config(
+        path,
+        {
+            "raw_data_dir": "/raw",
+            "save_dir": "/experiment",
+            "hex_ids": ["16"],
+            "endpoints": {"bp": {"config_path": "bp.yaml"}},
+            "scenarios": [
+                {"name": "baseline", "kind": "baseline"},
+                {
+                    "name": "bc_mean_weather_transplant",
+                    "kind": "weather",
+                    "params": {"mode": "external_mean_zone_transplant", "donor_hex_ids": ["17"]},
+                },
+            ],
+        },
+    )
+
+    config = load_counterfactual_config(path)
+
+    assert config.scenarios[1].weather_edit() == {"mode": "external_mean_zone_transplant", "donor_hex_ids": ["17"]}
+    assert config.scenarios[1].fuel_edit() is None
     with pytest.raises(KeyError, match="missing"):
         config.scenario("missing")
 

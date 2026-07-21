@@ -13,6 +13,7 @@ from matplotlib.colors import ListedColormap
 from matplotlib.patches import Patch
 
 from data_preparation.paths import Paths
+from data_preparation.spatial.fuel import load_fuel_grid
 from data_preparation.spatial.utils import FUEL_GROUP_MAP, load_spatial_raster
 from src.datasets.postprocessing.counterfactual.counterfactual_base import (
     load_counterfactual_config,
@@ -145,11 +146,31 @@ def burnable_fuel_support(
 ) -> np.ndarray:
     """Return valid pixels whose raw fuel ID is not a configured non-fuel ID."""
 
-    values = np.asarray(np.ma.asarray(fuel).filled(np.nan), dtype=np.float64)
+    # Cast to float before filling: integer-dtype fuel rasters (e.g. from load_fuel_grid)
+    # can't take a NaN fill value directly.
+    values = np.asarray(np.ma.asarray(fuel).astype(np.float64).filled(np.nan), dtype=np.float64)
     valid = np.isfinite(values)
     fuel_ids = np.full(values.shape, -9999, dtype=np.int32)
     fuel_ids[valid] = values[valid].astype(np.int32)
     return valid & ~np.isin(fuel_ids, nonfuel_ids)
+
+
+def load_static_burnable_support(
+    raw_data_dir: Path,
+    hex_id: str,
+    reference_profile: dict,
+    nonfuel_ids: list[int] | tuple[int, ...],
+) -> np.ndarray:
+    """Burnable-land support mask from the raw, unedited fuel grid.
+
+    For scenarios that never touch the fuel raster (e.g. weather counterfactuals),
+    baseline and scenario share the same fuel grid, so a single static support mask -
+    rather than the persisted baseline/scenario fuel-edit pair - is enough to exclude
+    non-burnable land from response/delta maps and stats, consistent with how fuel-edit
+    scenarios are handled.
+    """
+    fuel_grid = load_fuel_grid(root_dir=str(raw_data_dir), hex_id=hex_id, reference_profile=reference_profile)
+    return burnable_fuel_support(fuel_grid, nonfuel_ids)
 
 
 def load_zone_labels_on_prediction_grid(
