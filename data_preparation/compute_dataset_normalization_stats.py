@@ -1,7 +1,7 @@
 """
-Precompute the train-only ``target_log_stats.json`` artifact.
+Precompute the train-only ``dataset_norm_stats.json`` artifact.
 
-The log1p mean/std used by the ``log_standard`` target normalization are global
+The log1p mean/std and min/max used by the input and target normalization are global
 constants that must be identical across training, evaluation, and inference. They are
 derived solely from the training split so held-out hexes never leak into the
 normalization. This mirrors the train-only spatialized-tabular imputation-stats artifact.
@@ -11,7 +11,7 @@ import argparse
 import logging
 from pathlib import Path
 
-from data_preparation.spatial.utils import read_split_hex_ids, write_target_log_stats
+from data_preparation.spatial.utils import read_split_hex_ids, write_dataset_norm_stats
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -26,6 +26,13 @@ def parse_args() -> argparse.Namespace:
         help="Directory holding the per-hex output rasters (e.g. canada_bp3+_2026_MILA).",
     )
     parser.add_argument(
+        "--root_dir",
+        type=str,
+        default=None,
+        help="Prepared patch dataset directory (required for fuel_curve_* types; "
+        "contains the fuel curve CSV and per-hex ignition distribution tables).",
+    )
+    parser.add_argument(
         "--save_dir",
         type=str,
         required=True,
@@ -38,16 +45,18 @@ def parse_args() -> argparse.Namespace:
         help="Train split index CSV (relative to save_dir).",
     )
     parser.add_argument(
-        "--output_types",
+        "--types",
         type=str,
         nargs="+",
-        default=["fire_intensity", "fire_ros"],
-        help="Output types to compute log1p mean/std for.",
+        default=["elevation", "fire_intensity", "fire_ros", "fire_burn_probability"],
+        help="Types to compute normalization stats for. "
+        "Supported: elevation (min/max), fire_burn_probability (min/max), "
+        "fire_intensity (log_mean/log_std), fire_ros (log_mean/log_std).",
     )
     parser.add_argument(
         "--output_file",
         type=str,
-        default="target_log_stats.json",
+        default="dataset_norm_stats.json",
         help="Output JSON filename (relative to save_dir).",
     )
     parser.add_argument(
@@ -66,15 +75,16 @@ def main() -> None:
         raise FileExistsError(f"{output_path} already exists; pass --overwrite to replace it.")
 
     train_hex_ids = read_split_hex_ids(save_dir / args.train_split)
-    logger.info("Computing train-only target log-stats from %d hexes: %s", len(train_hex_ids), sorted(train_hex_ids))
+    logger.info("Computing train-only norm stats from %d hexes: %s", len(train_hex_ids), sorted(train_hex_ids))
 
-    stats = write_target_log_stats(
+    stats = write_dataset_norm_stats(
         raw_data_dir=args.raw_data_dir,
+        root_dir=args.root_dir,
         output_path=output_path,
-        output_types=args.output_types,
+        types=args.types,
         allowed_hex_ids=train_hex_ids,
     )
-    logger.info("Wrote train-only target log-stats to %s: %s", output_path, stats)
+    logger.info("Wrote train-only target norm stats to %s: %s", output_path, stats)
 
 
 if __name__ == "__main__":

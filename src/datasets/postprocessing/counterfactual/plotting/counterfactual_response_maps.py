@@ -33,6 +33,7 @@ from src.datasets.postprocessing.counterfactual.counterfactual_base import (
 from src.datasets.postprocessing.counterfactual.plotting.counterfactual_fuel_intervention_map import (
     burnable_fuel_support,
     load_evaluated_fuel_pair,
+    load_static_burnable_support,
     load_zone_labels_on_prediction_grid,
 )
 from src.datasets.postprocessing.counterfactual.plotting.counterfactual_viz import (
@@ -85,7 +86,7 @@ class EndpointSpec:
 
 ENDPOINT_SPECS: dict[str, EndpointSpec] = {
     "bp": EndpointSpec("BP", "Burn probability", "viridis", lambda paths: paths.output_burn_prob()),
-    "fi": EndpointSpec("FI", "Fire intensity (kW/m)", "inferno", lambda paths: paths.output_fire_intensity()),
+    "fi": EndpointSpec("FI", "Fire intensity (kW/m)", "viridis", lambda paths: paths.output_fire_intensity()),
     "ros": EndpointSpec("ROS", "ROS (m/min)", "viridis", lambda paths: paths.output_ros()),
 }
 
@@ -156,10 +157,19 @@ def load_endpoint_response(
     scenario: str,
     endpoint: str,
     nonfuel_ids: list[int] | None = None,
+    static_nonfuel_ids: list[int] | None = None,
 ) -> tuple[np.ma.MaskedArray, np.ma.MaskedArray, np.ma.MaskedArray, np.ma.MaskedArray, tuple[float, float, float, float], dict]:
-    """Load ground-truth and a support-aware baseline/scenario response."""
+    """Load ground-truth and a support-aware baseline/scenario response.
+
+    `nonfuel_ids` restricts to burnable land using the persisted baseline/scenario fuel
+    raster pair (for scenarios that edit fuel). `static_nonfuel_ids` instead restricts
+    using a single raw fuel raster shared by baseline and scenario (for scenarios, e.g.
+    weather counterfactuals, that leave fuel unchanged). At most one should be set.
+    """
     if endpoint not in ENDPOINT_SPECS:
         raise ValueError(f"Unknown endpoint {endpoint!r}; expected one of {sorted(ENDPOINT_SPECS)}.")
+    if nonfuel_ids is not None and static_nonfuel_ids is not None:
+        raise ValueError("nonfuel_ids and static_nonfuel_ids are mutually exclusive.")
 
     baseline, scenario_values = load_baseline_scenario_pair(prediction_dirs, hex_id, endpoint=endpoint, scenario=scenario)
     baseline_path = prediction_raster_path(prediction_dirs[("baseline", endpoint)], hex_id)
@@ -167,9 +177,7 @@ def load_endpoint_response(
     with rasterio.open(baseline_path) as src:
         reference_profile = src.profile.copy()
 
-    if nonfuel_ids is None:
-        response = build_endpoint_response(baseline, scenario_values)
-    else:
+    if nonfuel_ids is not None:
         baseline_fuel, scenario_fuel = load_evaluated_fuel_pair(
             experiment_dir=experiment_dir,
             scenario=scenario,
@@ -182,6 +190,11 @@ def load_endpoint_response(
             baseline_support=burnable_fuel_support(baseline_fuel, nonfuel_ids),
             scenario_support=burnable_fuel_support(scenario_fuel, nonfuel_ids),
         )
+    elif static_nonfuel_ids is not None:
+        support = load_static_burnable_support(raw_data_dir, hex_id, reference_profile, static_nonfuel_ids)
+        response = build_endpoint_response(baseline, scenario_values, baseline_support=support, scenario_support=support)
+    else:
+        response = build_endpoint_response(baseline, scenario_values)
 
     ground_truth = load_ground_truth(raw_data_dir, hex_id, reference_profile, endpoint=endpoint)
     if ground_truth.shape != baseline.shape:
@@ -379,9 +392,12 @@ def main() -> None:
     scenario_cfg = config.scenario(args.scenario)
 
     nonfuel_ids: list[int] | None = None
+    static_nonfuel_ids: list[int] | None = None
     fuel_edit = scenario_cfg.fuel_edit()
     if fuel_edit is not None:
         nonfuel_ids = [int(value) for value in fuel_edit["nonfuel_ids"]]
+    elif config.nonfuel_ids:
+        static_nonfuel_ids = config.nonfuel_ids
 
     ground_truth, baseline, scenario_values, delta, extent, reference_profile = load_endpoint_response(
         experiment_dir,
@@ -391,6 +407,7 @@ def main() -> None:
         scenario=args.scenario,
         endpoint=args.endpoint,
         nonfuel_ids=nonfuel_ids,
+        static_nonfuel_ids=static_nonfuel_ids,
     )
     zone_labels = None
     if args.zone_overlay:

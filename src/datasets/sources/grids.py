@@ -1,4 +1,5 @@
 import json
+import logging
 import math
 import os
 from collections.abc import Callable
@@ -8,9 +9,10 @@ import torch
 
 from data_preparation.spatial.utils import (
     FUEL_GROUP_MAP,
+    NORM_STATS_JSON,
     get_output_log_stats_cached,
-    get_range_elevation,
-    get_range_output,
+    get_range_elevation_cached,
+    get_range_output_cached,
     read_split_hex_ids,
 )
 from src.config import GridParams
@@ -23,6 +25,8 @@ from src.datasets.utils import (
     one_hot_encode,
     output_target_norm,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class GridSource(DataSource):
@@ -67,7 +71,25 @@ class GridSource(DataSource):
         # legacy full-scan behaviour (e.g. single-hex inference where no split is provided).
         self._train_hex_ids: set[int] | None = None
         if train_split_csv_name is not None:
-            self._train_hex_ids = read_split_hex_ids(os.path.join(self.root_dir, train_split_csv_name))
+            split_path = os.path.join(self.root_dir, train_split_csv_name)
+            if os.path.exists(split_path):
+                self._train_hex_ids = read_split_hex_ids(split_path)
+                logger.debug("Loaded %d train hex IDs from %s.", len(self._train_hex_ids), split_path)
+            else:
+                norm_stats_path = os.path.join(self.root_dir, NORM_STATS_JSON)
+                if os.path.exists(norm_stats_path):
+                    logger.info(
+                        "Train split %r not found — normalization stats will be read from %s.",
+                        split_path,
+                        norm_stats_path,
+                    )
+                else:
+                    logger.warning(
+                        "Train split %r not found and no %s cache exists — "
+                        "normalization stats will be computed over all hexels (no leakage protection).",
+                        split_path,
+                        norm_stats_path,
+                    )
 
         self.targets = get_target_specs(params.target_name)
         self.feature_names_list = params.feature_names_list
@@ -98,7 +120,9 @@ class GridSource(DataSource):
                 if self._target_out_norm(target.name) != "min_max":
                     continue
                 try:
-                    target_max, target_min = get_range_output(self.raw_data_dir, target.output_type, self._train_hex_ids)
+                    target_max, target_min = get_range_output_cached(
+                        self.root_dir, target.output_type, self._train_hex_ids, raw_data_dir=self.raw_data_dir
+                    )
                 except ValueError:
                     if self._validate_raw_ranges:
                         raise
@@ -190,7 +214,9 @@ class GridSource(DataSource):
                 self.elevation_input_channel_index = self.input_channel_indices.index(elev_feat_encoded_index)
         # 3. normalization for elevation grid
         try:
-            self.ELEVATION_MAX, self.ELEVATION_MIN = get_range_elevation(self.raw_data_dir, self._train_hex_ids)
+            self.ELEVATION_MAX, self.ELEVATION_MIN = get_range_elevation_cached(
+                self.root_dir, self._train_hex_ids, raw_data_dir=self.raw_data_dir
+            )
         except ValueError:
             if self._validate_raw_ranges:
                 raise
@@ -265,26 +291,48 @@ class GridSource(DataSource):
 
     def _compute_fuel_curve_normalization_stats(self) -> None:
         """
-        Compute a single global mean and std of log1p(ROS) from the iROS lookup table.
+        Compute a single global mean and std of log1p(curve values) from the fuel curve lookup.
 
-        When ``train_split_csv_name`` is provided, only vectors from those hexels
-        are used so that normalization constants are never contaminated by val/test
-        data.  When it is not provided, all hexels contribute (matching the
-        behaviour of ``get_range_elevation``).
+        Reads from ``dataset_norm_stats.json`` in ``root_dir`` if available (key
+        ``fuel_curve_<feature_name>``), avoiding an expensive recompute on every run.
+        Falls back to computing from the in-memory lookup table.
+
+        When ``train_split_csv_name`` is provided (and the JSON cache is absent), only
+        vectors from those hexels are used so that normalization constants are never
+        contaminated by val/test data.  When it is not provided, all hexels contribute.
         The results are stored in ``self.fuel_curve_mean`` and ``self.fuel_curve_std`` as float32
         numpy arrays of shape ``(1,)``.
         """
+        cache_path = os.path.join(self.root_dir, NORM_STATS_JSON)
+        cache_key = f"fuel_curve_{self.fuel_feats_encoding}"
+        if os.path.exists(cache_path):
+            with open(cache_path) as f:
+                cached = json.load(f)
+            entry = cached.get(cache_key, {})
+            mean = entry.get("log_mean")
+            std = entry.get("log_std")
+            if mean is not None and std is not None:
+                logger.debug(
+                    "Fuel curve norm stats for %r loaded from %s: mean=%.4f, std=%.4f",
+                    cache_key,
+                    cache_path,
+                    mean,
+                    std,
+                )
+                self.fuel_curve_mean = np.array([float(mean)], dtype=np.float32)
+                self.fuel_curve_std = np.array([float(std)], dtype=np.float32)
+                return
+        logger.warning("Fuel curve norm stats for %r not found in cache — computing from lookup table.", cache_key)
+
         if self._train_hex_ids is not None:
             train_hex_strs = {str(hid).zfill(2) for hid in self._train_hex_ids}
-            # Include hex-specific vectors from train hexes AND hex-independent
-            # vectors (key hex_id=None) which are not tied to any particular hex.
             vectors = [vec for (_, hex_id), vec in self.fuel_curve_lookup.items() if hex_id is None or hex_id in train_hex_strs]
         else:
             vectors = list(self.fuel_curve_lookup.values())
 
         if not vectors:
             raise ValueError(
-                "No iROS vectors found for the training hexels. "
+                "No fuel curve vectors found for the training hexels. "
                 "Check that train_split_csv_name refers to a valid split file "
                 "and that the training hexels have ignition distribution data."
             )
