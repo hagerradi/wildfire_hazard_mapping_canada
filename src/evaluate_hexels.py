@@ -262,7 +262,7 @@ def main(
         np.save(os.path.join(config.save_dir, "test_predictions.npy"), test_predictions)
 
     hexel_metrics: dict[str, float] = {}
-    
+
     if isinstance(test_predictions, np.ndarray):
         if not isinstance(test_loader.dataset, MultiSourceDataset):
             raise TypeError(f"Expected MultiSourceDataset, got {type(test_loader.dataset).__name__}.")
