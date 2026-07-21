@@ -8,6 +8,12 @@ hex_id: "all" # options: ["##", "all"] where ## is the hexel id (e.g., "01", "02
 # Data preparation settings
 prepare_data: True  # [True or False], Set to true if data needs to be prepared first
 
+# Normalization parameters to reuse at inference (avoids refitting on the target hexel(s)).
+# If a file exists, its parameters are loaded and applied; if it does not exist, it is fitted
+# and saved there. Set to null to fit without saving.
+weather_norm_params_path: "./inference/data_dir/data_samples_approach_1/weather_norm_params.json"
+fire_size_norm_params_path: "./inference/data_dir/data_samples_approach_1/fire_size_norm_params.json"
+
 # Inference settings
 batch_size: 32
 num_workers: 4
