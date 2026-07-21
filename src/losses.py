@@ -440,22 +440,22 @@ class HexSummaryLoss(nn.Module):
             target_values = torch.where(has_valid, target_sum / safe_counts, torch.zeros_like(target_sum))
             return pred_values, target_values
 
-        pred_values = []
-        target_values = []
+        top_pred_values: list[torch.Tensor] = []
+        top_target_values: list[torch.Tensor] = []
         for idx in range(probs.shape[0]):
             valid = mask_bool[idx, 0]
             pred_i = probs[idx, 0][valid]
             target_i = targets[idx, 0][valid]
             if pred_i.numel() == 0:
-                pred_values.append(probs.new_tensor(0.0))
-                target_values.append(targets.new_tensor(0.0))
+                top_pred_values.append(probs.new_tensor(0.0))
+                top_target_values.append(targets.new_tensor(0.0))
                 continue
             k = max(1, int(torch.ceil(target_i.new_tensor(float(target_i.numel() * self.top_fraction))).item()))
             top_indices = torch.topk(target_i, k=k, largest=True).indices
-            pred_values.append(pred_i[top_indices].mean())
-            target_values.append(target_i[top_indices].mean())
+            top_pred_values.append(pred_i[top_indices].mean())
+            top_target_values.append(target_i[top_indices].mean())
 
-        return torch.stack(pred_values), torch.stack(target_values)
+        return torch.stack(top_pred_values), torch.stack(top_target_values)
 
     def _pearson_loss(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         pred_centered = pred - pred.mean()

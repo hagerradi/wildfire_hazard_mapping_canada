@@ -220,7 +220,10 @@ def main(
         out_norm = grid_source.params.out_norm
 
     preds_start_time = time.time()
-    test_metrics, test_predictions = trainer.test(test_loader, return_predictions=True)
+    test_result = trainer.test(test_loader, return_predictions=True)
+    if not isinstance(test_result, tuple):
+        raise TypeError("Expected test() to return metrics and predictions when return_predictions=True.")
+    test_metrics, test_predictions = test_result
     preds_time = time.time() - preds_start_time
     peak_mps_driver_gb = test_metrics.pop("_peak_mps_driver_allocated_gb", None)
 

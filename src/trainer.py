@@ -569,7 +569,8 @@ class Trainer:
             if return_predictions and predictions.device.type == "mps" and hasattr(torch.mps, "driver_allocated_memory"):
                 batch_peak_gb = torch.mps.driver_allocated_memory() / 1024**3
                 peak_mps_driver_allocated_gb = max(peak_mps_driver_allocated_gb, batch_peak_gb)
-                if os.getenv("MPS_DIAG") == "1": print(f"[diag] batch {batch_idx + 1} peak driver_allocated: {batch_peak_gb:.3f} GB")
+                if os.getenv("MPS_DIAG") == "1":
+                    print(f"[diag] batch {batch_idx + 1} peak driver_allocated: {batch_peak_gb:.3f} GB")
 
             # NOTE: MPS-only -- the caching allocator retains freed batch memory
             # without releasing it to the OS, so per-batch driver_allocated_memory
