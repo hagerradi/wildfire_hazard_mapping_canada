@@ -3,7 +3,7 @@ import logging
 import os
 import random
 import time
-from typing import Any, cast
+from typing import Any, Literal, cast, overload
 
 import numpy as np
 import torch
@@ -529,6 +529,15 @@ class Trainer:
         return results
 
     @torch.no_grad()
+    @overload
+    def validate(self, loader: DataLoader, return_predictions: Literal[False] = False) -> dict[str, float]: ...
+
+    @overload
+    def validate(self, loader: DataLoader, return_predictions: Literal[True]) -> tuple[dict[str, float], np.ndarray]: ...
+
+    @overload
+    def validate(self, loader: DataLoader, return_predictions: bool) -> dict[str, float] | tuple[dict[str, float], np.ndarray]: ...
+
     def validate(self, loader: DataLoader, return_predictions: bool = False) -> dict[str, float] | tuple[dict[str, float], np.ndarray]:
         self.model.eval()
         running_loss = 0.0
@@ -599,6 +608,15 @@ class Trainer:
         return results
 
     @torch.no_grad()
+    @overload
+    def test(self, loader: DataLoader, return_predictions: Literal[False] = False) -> dict[str, float]: ...
+
+    @overload
+    def test(self, loader: DataLoader, return_predictions: Literal[True]) -> tuple[dict[str, float], np.ndarray]: ...
+
+    @overload
+    def test(self, loader: DataLoader, return_predictions: bool) -> dict[str, float] | tuple[dict[str, float], np.ndarray]: ...
+
     def test(self, loader: DataLoader, return_predictions: bool = False) -> dict[str, float] | tuple[dict[str, float], np.ndarray]:
         return self.validate(loader, return_predictions=return_predictions)
 
