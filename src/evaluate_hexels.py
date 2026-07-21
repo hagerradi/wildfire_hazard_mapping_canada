@@ -69,6 +69,11 @@ def parse_args() -> argparse.Namespace:
         help="Enable speed-focused eval defaults: metrics-only and skip writing prediction arrays/plots.",
     )
     parser.add_argument(
+        "--tif_only",
+        action="store_true",
+        help="Skip all metric computation (patch- and hexel-level) and plots. Still stitches and saves predicted hexel .tif rasters.",
+    )
+    parser.add_argument(
         "--robust_plot_percentile",
         type=float,
         default=None,
@@ -123,6 +128,10 @@ def main(
         args.skip_hexel_plots = True
         args.no_save_predictions = True
     config = config or load_config(args.config)
+
+    if args.tif_only:
+        args.metrics_only = False
+        args.skip_hexel_plots = True
 
     if args.run_id is not None:
         run_seed = apply_run_id_overrides(config, args.run_id)
@@ -194,6 +203,8 @@ def main(
     trainer_init_start_time = time.time()
     trainer = Trainer(config, spatial_input_channels=spatial_channels, auxiliary_input_dims=auxiliary_input_dims)
     trainer_init_time = time.time() - trainer_init_start_time
+    if args.tif_only:
+        trainer.metric_functions = {}
 
     # ---------- Load best checkpoint ----------
     # Try best.pth first, fall back to last.pth if needed
@@ -251,6 +262,7 @@ def main(
         np.save(os.path.join(config.save_dir, "test_predictions.npy"), test_predictions)
 
     hexel_metrics: dict[str, float] = {}
+    
     if isinstance(test_predictions, np.ndarray):
         if not isinstance(test_loader.dataset, MultiSourceDataset):
             raise TypeError(f"Expected MultiSourceDataset, got {type(test_loader.dataset).__name__}.")
@@ -260,10 +272,10 @@ def main(
             out_norm=out_norm,
             device=trainer.device,
             experiment_logger=None,
-            metric_functions=trainer.metric_functions,
+            metric_functions=None if args.tif_only else trainer.metric_functions,
             stitch_mode=args.stitch_mode,
-            save_artifacts=not args.metrics_only,
-            save_plots=not args.skip_hexel_plots,
+            save_artifacts=True if args.tif_only else not args.metrics_only,
+            save_plots=False if args.tif_only else not args.skip_hexel_plots,
             robust_plot_percentile=args.robust_plot_percentile
             if args.robust_plot_percentile is not None
             else config.evaluation.robust_plot_percentile,
