@@ -1,3 +1,4 @@
+import logging
 import os
 from collections.abc import Collection
 from pathlib import Path
@@ -15,6 +16,12 @@ from rasterio.warp import calculate_default_transform, reproject
 
 from data_preparation.paths import Paths
 from data_preparation.utils import find_hex_ids
+
+logger = logging.getLogger(__name__)
+
+# Canonical filename for the precomputed normalization stats JSON artifact.
+# Written by compute_dataset_normalization_stats; read by all cached range/stat functions.
+NORM_STATS_JSON = "dataset_norm_stats.json"
 
 # value for nodata in the rasters
 NODATA = np.nan
@@ -342,6 +349,32 @@ def get_range_elevation(root_dir: str, allowed_hex_ids: Collection[int] | None =
     return float(max_value), float(min_value)
 
 
+def get_range_elevation_cached(
+    root_dir: str,
+    allowed_hex_ids: Collection[int] | None = None,
+    raw_data_dir: str | None = None,
+) -> tuple[float, float]:
+    """Return (max, min) for elevation, reading from ``dataset_norm_stats.json`` if available.
+
+    Falls back to scanning raw rasters via ``get_range_elevation``.  ``raw_data_dir`` is the
+    raster tree location used for the fallback scan; defaults to ``root_dir`` if not provided.
+    """
+    import json as _json
+
+    cache_path = os.path.join(root_dir, NORM_STATS_JSON)
+    if os.path.exists(cache_path):
+        with open(cache_path) as f:
+            cached = _json.load(f)
+        entry = cached.get("elevation", {})
+        min_val = entry.get("min")
+        max_val = entry.get("max")
+        if min_val is not None and max_val is not None:
+            logger.debug("Elevation range loaded from %s: min=%.4f, max=%.4f", cache_path, min_val, max_val)
+            return float(max_val), float(min_val)
+    logger.warning("Elevation range not found in cache — scanning raw rasters (allowed_hex_ids=%s).", allowed_hex_ids)
+    return get_range_elevation(raw_data_dir if raw_data_dir is not None else root_dir, allowed_hex_ids)
+
+
 def get_range_output(root_dir: str, output_type: str, allowed_hex_ids: Collection[int] | None = None) -> tuple[float, float]:
     """
     Get global max and min for one output type across all valid hexels.
@@ -395,13 +428,13 @@ def get_output_log_stats_cached(
     Return log1p mean/std for a target, reading from a cached JSON file if available.
     Falls back to scanning raw rasters via get_output_log_stats.
 
-    The cached JSON (``target_log_stats.json``) is the canonical, train-only artifact
-    produced by ``compute_target_log_stats``. The fallback scan honours allowed_hex_ids
+    The cached JSON (``dataset_norm_stats.json``) is the canonical, train-only artifact
+    produced by ``compute_dataset_normalization_stats`` / ``write_dataset_norm_stats``. The fallback scan honours allowed_hex_ids
     (and an explicit raw_data_dir holding the per-hex rasters) so it stays train-only too.
     """
     import json as _json
 
-    cache_path = os.path.join(root_dir, "target_log_stats.json")
+    cache_path = os.path.join(root_dir, NORM_STATS_JSON)
     if os.path.exists(cache_path):
         with open(cache_path) as f:
             cached = _json.load(f)
@@ -409,8 +442,39 @@ def get_output_log_stats_cached(
         mean = entry.get("log_mean")
         std = entry.get("log_std")
         if mean is not None and std is not None:
+            logger.debug("Log stats for %r loaded from %s: mean=%.4f, std=%.4f", output_type, cache_path, mean, std)
             return float(mean), float(std)
+    logger.warning("Log stats for %r not found in cache — scanning raw rasters (allowed_hex_ids=%s).", output_type, allowed_hex_ids)
     return get_output_log_stats(raw_data_dir or root_dir, output_type, allowed_hex_ids)
+
+
+def get_range_output_cached(
+    root_dir: str,
+    output_type: str,
+    allowed_hex_ids: Collection[int] | None = None,
+    raw_data_dir: str | None = None,
+) -> tuple[float, float]:
+    """Return (max, min) for a target, reading from ``dataset_norm_stats.json`` if available.
+
+    Falls back to scanning raw rasters via ``get_range_output``.  ``raw_data_dir`` is the
+    raster tree location used for the fallback scan; defaults to ``root_dir`` if not provided.
+    The cached JSON is produced by ``compute_dataset_norm_stats`` and stores ``min``/``max``
+    for ``fire_burn_probability``.
+    """
+    import json as _json
+
+    cache_path = os.path.join(root_dir, NORM_STATS_JSON)
+    if os.path.exists(cache_path):
+        with open(cache_path) as f:
+            cached = _json.load(f)
+        entry = cached.get(output_type, {})
+        min_val = entry.get("min")
+        max_val = entry.get("max")
+        if min_val is not None and max_val is not None:
+            logger.debug("Range for %r loaded from %s: min=%.4f, max=%.4f", output_type, cache_path, min_val, max_val)
+            return float(max_val), float(min_val)
+    logger.warning("Range for %r not found in cache — scanning raw rasters (allowed_hex_ids=%s).", output_type, allowed_hex_ids)
+    return get_range_output(raw_data_dir if raw_data_dir is not None else root_dir, output_type, allowed_hex_ids)
 
 
 def get_output_log_stats(
@@ -460,25 +524,87 @@ def get_output_log_stats(
     return float(mean), std
 
 
-def write_target_log_stats(
+def write_dataset_norm_stats(
     *,
     raw_data_dir: str | Path,
+    root_dir: str | Path | None = None,
     output_path: str | Path,
-    output_types: Collection[str],
+    types: Collection[str],
     allowed_hex_ids: Collection[int],
 ) -> dict[str, dict[str, float]]:
-    """Compute train-only log1p mean/std for each output type and persist them to JSON.
+    """Compute train-only normalization stats for each requested type and persist to JSON.
 
-    Mirrors the train-only imputation-stats artifact: the statistics are derived solely
-    from allowed_hex_ids (the training split) so held-out hexes never leak into the target
-    normalization constants used by training, evaluation, and inference.
+    Supported types and their computed stats:
+
+    - ``elevation``: min/max from DEM rasters (for min-max norm).
+    - ``fire_burn_probability``: min/max from BP rasters (for min-max norm).
+    - ``fire_intensity``, ``fire_ros``: log1p mean/std (for log-standard norm).
+    - ``fuel_curve_iROS``, ``fuel_curve_HFI``: log1p mean/std of fuel curve vectors.
+      Requires ``root_dir`` (prepared patch dataset with fuel curve CSV and ignition tables).
+
+    All stats are derived solely from ``allowed_hex_ids`` (the training split) so held-out
+    hexes never leak into the normalization constants used by training, evaluation, and
+    inference.
+
+    Output JSON structure::
+
+        {
+          "elevation":             {"min": ..., "max": ...},
+          "fire_burn_probability": {"min": ..., "max": ...},
+          "fire_intensity":        {"log_mean": ..., "log_std": ...},
+          "fire_ros":              {"log_mean": ..., "log_std": ...},
+          "fuel_curve_iROS":       {"log_mean": ..., "log_std": ...},
+          "fuel_curve_HFI":        {"log_mean": ..., "log_std": ...}
+        }
     """
     import json as _json
 
+    _LOG_STAT_TYPES = {"fire_intensity", "fire_ros"}
+    _MIN_MAX_OUTPUT_TYPES = {"fire_burn_probability"}
+    _FUEL_CURVE_PREFIX = "fuel_curve_"
+
     stats: dict[str, dict[str, float]] = {}
-    for output_type in output_types:
-        mean, std = get_output_log_stats(str(raw_data_dir), output_type, allowed_hex_ids)
-        stats[output_type] = {"log_mean": mean, "log_std": std}
+
+    for type_name in types:
+        entry: dict[str, float] = {}
+        try:
+            if type_name == "elevation":
+                max_val, min_val = get_range_elevation(str(raw_data_dir), allowed_hex_ids)
+                entry = {"min": min_val, "max": max_val}
+
+            elif type_name in _MIN_MAX_OUTPUT_TYPES:
+                max_val, min_val = get_range_output(str(raw_data_dir), type_name, allowed_hex_ids)
+                entry = {"min": min_val, "max": max_val}
+
+            elif type_name in _LOG_STAT_TYPES:
+                mean, std = get_output_log_stats(str(raw_data_dir), type_name, allowed_hex_ids)
+                entry = {"log_mean": mean, "log_std": std}
+
+            elif type_name.startswith(_FUEL_CURVE_PREFIX):
+                feature_name = type_name[len(_FUEL_CURVE_PREFIX) :]
+                if root_dir is None:
+                    logger.warning("Skipping %r: --root_dir is required for fuel curve stats.", type_name)
+                    continue
+                from src.datasets.fuel_utils import compute_fuel_curve_norm_stats
+
+                mean, std = compute_fuel_curve_norm_stats(
+                    root_dir=root_dir,
+                    raw_data_dir=raw_data_dir,
+                    feature_name=feature_name,
+                    allowed_hex_ids=set(allowed_hex_ids) if allowed_hex_ids is not None else None,
+                )
+                entry = {"log_mean": mean, "log_std": std}
+
+            else:
+                logger.warning("Unknown type %r — skipping (not in elevation, min-max, log-stat, or fuel-curve sets).", type_name)
+                continue
+
+        except ValueError as exc:
+            logger.warning("Could not compute stats for %r: %s", type_name, exc)
+            continue
+
+        stats[type_name] = entry
+        logger.info("Stats for %r: %s", type_name, entry)
 
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)

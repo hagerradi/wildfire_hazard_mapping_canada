@@ -1,3 +1,5 @@
+import json
+import logging
 import os
 import time
 from typing import Any, cast
@@ -9,7 +11,7 @@ from torch.optim.lr_scheduler import LRScheduler, ReduceLROnPlateau
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from data_preparation.spatial.utils import get_output_log_stats_cached, get_range_output, read_split_hex_ids
+from data_preparation.spatial.utils import NORM_STATS_JSON, get_output_log_stats_cached, get_range_output_cached, read_split_hex_ids
 from src.config import Config, GridParams
 from src.datasets.fuel_utils import FUEL_CURVE_ENCODINGS
 from src.datasets.targets import get_target_specs
@@ -20,6 +22,8 @@ from src.models.factory import build_model, resolve_model_architecture
 from src.models.utils import get_nbr_model_parameters
 from src.schedulers import build_lr_scheduler
 from src.utils import AVAILABLE_METRICS, build_single_loss, set_device
+
+logger = logging.getLogger(__name__)
 
 
 class Trainer:
@@ -121,14 +125,44 @@ class Trainer:
         self._configure_metric_target_transform()
 
     def _get_fuel_curve_stats(self) -> dict[str, torch.Tensor | None]:
-        """Extract fuel curve normalization stats from the training dataset when fuel_feats_encoding is iROS."""
-        if self.train_dataset is None:
-            return {"fuel_curve_mean": None, "fuel_curve_std": None}
+        """Extract fuel curve normalization stats for model initialisation.
+
+        Priority:
+        1. GridSource on the training dataset (training mode).
+        2. ``dataset_norm_stats.json`` in ``root_dir`` (eval-only mode, no train dataset).
+        3. None → model falls back to zeros/ones (shape mismatch risk if checkpoint differs).
+        """
         grid_params = self._get_grid_params()
         if grid_params is None or grid_params.fuel_feats_encoding not in FUEL_CURVE_ENCODINGS:
             return {"fuel_curve_mean": None, "fuel_curve_std": None}
-        fuel_curve_mean, fuel_curve_std = get_fuel_curve_normalization_stats(self.train_dataset)
-        return {"fuel_curve_mean": fuel_curve_mean, "fuel_curve_std": fuel_curve_std}
+
+        # Training mode: read from GridSource which already computed/cached the stats.
+        if self.train_dataset is not None:
+            fuel_curve_mean, fuel_curve_std = get_fuel_curve_normalization_stats(self.train_dataset)
+            return {"fuel_curve_mean": fuel_curve_mean, "fuel_curve_std": fuel_curve_std}
+
+        # Eval-only mode: try dataset_norm_stats.json.
+        cache_path = os.path.join(self.config.data.root_dir, NORM_STATS_JSON)
+        cache_key = f"fuel_curve_{grid_params.fuel_feats_encoding}"
+        if os.path.isfile(cache_path):
+            with open(cache_path) as f:
+                cached = json.load(f)
+            entry = cached.get(cache_key, {})
+            mean = entry.get("log_mean")
+            std = entry.get("log_std")
+            if mean is not None and std is not None:
+                logger.info("Fuel curve stats for model init loaded from %s: mean=%.4f, std=%.4f", cache_path, mean, std)
+                return {
+                    "fuel_curve_mean": torch.tensor([float(mean)], dtype=torch.float32),
+                    "fuel_curve_std": torch.tensor([float(std)], dtype=torch.float32),
+                }
+        logger.warning(
+            "Fuel curve stats not available (no train dataset and %r not found or missing key %r). "
+            "Model will use default zeros/ones — shape may mismatch checkpoint.",
+            cache_path,
+            cache_key,
+        )
+        return {"fuel_curve_mean": None, "fuel_curve_std": None}
 
     def _build_loss(self) -> torch.nn.Module:
         loss_config = self.config.optimizer.loss
@@ -178,7 +212,14 @@ class Trainer:
         # held-out hexes never leak into target normalization constants.
         train_hex_ids: set[int] | None = None
         if self.config.data.root_dir and self.config.data.train_split:
-            train_hex_ids = read_split_hex_ids(os.path.join(self.config.data.root_dir, self.config.data.train_split))
+            split_path = os.path.join(self.config.data.root_dir, self.config.data.train_split)
+            if os.path.isfile(split_path):
+                train_hex_ids = read_split_hex_ids(split_path)
+            else:
+                logger.warning(
+                    "Train split file %r not found — normalization stats will use all hexels.",
+                    split_path,
+                )
 
         for target in self._target_specs:
             out_norm = self._target_out_norm(target.name)
@@ -187,11 +228,13 @@ class Trainer:
             target_log_mean, target_log_std = self._target_log_stats(target.name)
 
             if out_norm == "min_max":
-                if self.config.data.raw_data_dir:
-                    target_max, target_min = get_range_output(
-                        root_dir=self.config.data.raw_data_dir,
+                root_dir = self.config.data.root_dir or self.config.data.raw_data_dir
+                if root_dir:
+                    target_max, target_min = get_range_output_cached(
+                        root_dir=root_dir,
                         output_type=target.output_type,
                         allowed_hex_ids=train_hex_ids,
+                        raw_data_dir=self.config.data.raw_data_dir,
                     )
                     target_max, target_min = apply_bp_nodata_zero_range(
                         target_name=target.name,
