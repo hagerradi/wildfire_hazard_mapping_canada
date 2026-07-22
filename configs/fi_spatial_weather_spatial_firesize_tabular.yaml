@@ -76,6 +76,7 @@ data:
         fire_weather_zone_id_col: "WeatherZone"
         fire_weather_zone_selection_approach: "mode"
         aggregation: "mean"
+        hex_id_col: "hex_id"
         zone_channel_key: "firezones_grid"
         missing_value_strategy: "global_mean"
         include_missing_firezone_mask: false
@@ -131,6 +132,7 @@ metrics:
   - "mae_top10"
   - "spearman"
   - "bias"
+  - "normalized_bias"
   - "ccc"
   - "iou_top005"
   - "iou_top01"

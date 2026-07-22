@@ -81,6 +81,7 @@ data:
         fire_weather_zone_id_col: "WeatherZone"
         fire_weather_zone_selection_approach: "mode" # "mode" or "weighted"
         num_samples_per_patch: 256
+        hex_id_col: "hex_id"
         sampling_bias: null # null, "high_values"
         feature_to_bias: null
         transforms_list: []
@@ -122,6 +123,7 @@ metrics:
   - "mae_top10"
   - "spearman"
   - "bias"
+  - "normalized_bias"
   - "ccc"
   - "kl_div"
   - "iou_top005"

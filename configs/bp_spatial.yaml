@@ -109,6 +109,7 @@ metrics:
   - "mae_top10"
   - "spearman"
   - "bias"
+  - "normalized_bias"
   - "ccc"
   - "kl_div"
   - "iou_top005"
