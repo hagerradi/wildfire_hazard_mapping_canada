@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import random
 import time
 from typing import Any, cast
 
@@ -50,12 +51,16 @@ class Trainer:
         self.logger = None
         # Only initialize logger if not in test-only mode
         if self.config.logger.enabled:
+            previous_experiment_key = self._load_previous_experiment_key()
             self.logger = CometLogger(
                 project_name=self.config.logger.project_name,
                 workspace=self.config.logger.workspace,
                 experiment_name=self.config.logger.experiment_name,
                 experiment_tags=self.config.logger.tags,
+                previous_experiment_key=previous_experiment_key,
             )
+            if previous_experiment_key:
+                print(f"[Comet] Resuming experiment {previous_experiment_key} instead of creating a new one.")
             self.log_every_n_step = self.config.logger.log_every_n_step
             # log all the params.
             self.logger.log_params(self.config.model_dump())
@@ -68,6 +73,22 @@ class Trainer:
         if len(self.best_ckpt_metrics) != len(self.best_ckpt_modes):
             raise ValueError("Number of best_ckpt_metric and best_ckpt_metric_mode must match!")
         self._best_metric_list: list[float] = []
+
+    def _load_previous_experiment_key(self) -> str | None:
+        """
+        If a checkpoint from a previous (e.g. preempted/requeued) run of this same
+        save_dir exists, return its stored Comet experiment key so the logger can
+        continue logging into that same experiment instead of starting a new one.
+        """
+        last_path = os.path.join(self.save_dir, "last.pth")
+        if not os.path.exists(last_path):
+            return None
+        try:
+            checkpoint = torch.load(last_path, map_location="cpu", weights_only=False)
+        except Exception as exc:  # noqa: BLE001 - best-effort lookup, never block startup
+            print(f"[Comet] Could not read previous checkpoint at {last_path} to resume experiment: {exc}")
+            return None
+        return checkpoint.get("comet_experiment_key")
 
     def setup(self):
         """
@@ -501,7 +522,10 @@ class Trainer:
         if not os.path.exists(last_path):
             return 1
 
-        checkpoint = torch.load(last_path, map_location=self.device)
+        # weights_only=False: these checkpoints are produced by this same Trainer and
+        # include optimizer/scheduler/RNG state (numpy arrays, etc.) that torch's
+        # default `weights_only=True` restricted unpickler will not load.
+        checkpoint = torch.load(last_path, map_location=self.device, weights_only=False)
         saved_state = checkpoint.get("model_state", {})
         current_state = self.model.state_dict()
         compatible = saved_state.keys() == current_state.keys() and all(
@@ -518,6 +542,25 @@ class Trainer:
         if checkpoint.get("best_metric_list"):
             self._best_metric_list = list(checkpoint["best_metric_list"])
         self.global_step = int(checkpoint.get("global_step", self.global_step))
+
+        # Restore RNG states so a resumed run (e.g. after preemption) reproduces the
+        # same data order/augmentations as an uninterrupted one, per Mila's
+        # checkpointing guidelines.
+        rng_state = checkpoint.get("rng_state")
+        if rng_state is not None:
+            random.setstate(rng_state["python_random_state"])
+            np.random.set_state(rng_state["numpy_random_state"])
+            # The CPU RNG state tensor must stay on CPU even though `map_location`
+            # above may have moved other checkpoint tensors to an accelerator device.
+            torch.random.set_rng_state(rng_state["torch_random_state"].cpu())
+            if torch.cuda.is_available() and rng_state.get("torch_cuda_random_state") is not None:
+                # Like the CPU RNG state above, each per-device state tensor must stay on
+                # CPU (as a plain torch.ByteTensor) even though `map_location` may have
+                # moved it onto an accelerator device; `set_rng_state_all` rejects
+                # anything that isn't a CPU ByteTensor.
+                cuda_rng_states = [state.cpu() for state in rng_state["torch_cuda_random_state"]]
+                torch.cuda.set_rng_state_all(cuda_rng_states)
+
         last_epoch = int(checkpoint.get("epoch", 0))
         print(f"[Resume] Resuming from {last_path}: completed epoch {last_epoch}, continuing at epoch {last_epoch + 1}.")
         return last_epoch + 1
@@ -613,6 +656,17 @@ class Trainer:
             "global_step": self.global_step,
             "best_metric_list": self._best_metric_list,
             "scheduler_state": lr_scheduler.state_dict() if lr_scheduler is not None else None,
+            # RNG states so a resumed run (e.g. after SLURM preemption) can reproduce
+            # the same data order/augmentations as an uninterrupted one.
+            "rng_state": {
+                "python_random_state": random.getstate(),
+                "numpy_random_state": np.random.get_state(),
+                "torch_random_state": torch.random.get_rng_state(),
+                "torch_cuda_random_state": torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None,
+            },
+            # So a resumed run continues logging into the same Comet experiment
+            # instead of starting a new one on each SLURM requeue.
+            "comet_experiment_key": self.logger.experiment_key if self.logger else None,
         }
         # Write atomically so a preemption mid-save cannot leave a corrupt checkpoint.
         tmp_path = f"{path}.tmp"
@@ -625,7 +679,9 @@ class Trainer:
             path = os.path.join(self.save_dir, filename)
 
         map_location = map_location or self.device
-        checkpoint = torch.load(path, map_location=map_location)
+        # weights_only=False: trusted, self-produced checkpoints that also carry
+        # optimizer/scheduler/RNG state beyond plain tensors.
+        checkpoint = torch.load(path, map_location=map_location, weights_only=False)
 
         self.model.load_state_dict(checkpoint["model_state"])
         self.optimizer.load_state_dict(checkpoint["optimizer_state"])

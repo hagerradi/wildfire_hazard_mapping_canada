@@ -33,11 +33,18 @@ class StitchedHexel:
     buffer_support_mask: np.ndarray | None = None
 
 
-def load_filtered_test_metadata(config: Config, mask_scope: str) -> pd.DataFrame:
+def load_filtered_test_metadata(config: Config, mask_scope: str, split_csv: str | None = None) -> pd.DataFrame:
+    """Load and filter split patch metadata used to stitch hexels.
+
+    ``split_csv`` defaults to ``config.data.test_split`` but can be set to
+    another split (e.g. ``config.data.val_split``) to reconstruct hexels for
+    a different split.
+    """
+    csv_name = split_csv if split_csv is not None else config.data.test_split
     try:
-        test_df = pd.read_csv(os.path.join(config.data.root_dir, config.data.test_split))
+        test_df = pd.read_csv(os.path.join(config.data.root_dir, csv_name))
     except (FileNotFoundError, AttributeError):
-        raise ValueError("Test df file does not exist.")  # noqa: B904
+        raise ValueError(f"Split metadata file does not exist: {csv_name}")  # noqa: B904
 
     test_df = test_df[test_df["valid_ratio"] > config.data.valid_mask_threshold].reset_index(drop=True)  # type: ignore
     post_utils.validate_patch_metadata_mask_scope(test_df, mask_scope)
@@ -51,16 +58,22 @@ def reconstruct_denormalized_hexels(
     out_norm: str,
     stitch_mode: str = "mean",
     mask_scope: str = "actual",
+    split_csv: str | None = None,
     test_metadata: pd.DataFrame | None = None,
 ) -> Iterator[StitchedHexel]:
-    """Yield stitched, denormalized hexel grids using the same settings as training/evaluation."""
+    """Yield stitched, denormalized hexel grids using the same settings as training/evaluation.
+
+    ``split_csv`` selects which patch metadata split to stitch (defaults to
+    ``config.data.test_split``); pass ``config.data.val_split`` to stitch the
+    validation split instead.
+    """
     if isinstance(test_predictions, str):
         raise TypeError(f"Expected ndarray, but got string: {test_predictions}")
 
     scope = normalize_mask_scope(mask_scope)
     settings_list = post_utils.get_target_postprocessing_settings(config=config, out_norm=out_norm)
     if test_metadata is None:
-        test_df = load_filtered_test_metadata(config=config, mask_scope=scope)
+        test_df = load_filtered_test_metadata(config=config, mask_scope=scope, split_csv=split_csv)
     else:
         test_df = test_metadata.reset_index(drop=True).copy()
         post_utils.validate_patch_metadata_mask_scope(test_df, scope)

@@ -10,8 +10,12 @@
 #SBATCH --mem-per-cpu=40Gb
 #SBATCH --cpus-per-task=4
 #SBATCH --gres=gpu:a100:1
+#SBATCH --requeue
+#SBATCH --signal=B:TERM@300
 
 set -euo pipefail
+
+echo "Job has been requeued/restarted ${SLURM_RESTART_COUNT:-0} time(s)."
 
 # Capture the first argument, default to 'configs/default_v1.yaml' if empty
 CONFIG_FILE=${1:-configs/bp_common_input_pipeline.yaml}
@@ -22,6 +26,9 @@ RUN_HEXEL_EVAL=${RUN_HEXEL_EVAL:-1}
 cd "${SLURM_SUBMIT_DIR:-$(pwd)}"
 mkdir -p logs
 source .venv/bin/activate
+# Flush stdout/stderr immediately so log lines aren't lost if the job is
+# preempted before Python's internal buffers would otherwise flush.
+export PYTHONUNBUFFERED=1
 
 LOGGER_ENABLED=$(python - "$CONFIG_FILE" <<'PY'
 import sys
@@ -108,6 +115,9 @@ fi
 
 echo "Running training with config: $RUN_CONFIG_FILE"
 read -r -a TRAIN_ARG_ARRAY <<< "$TRAIN_ARGS"
+# Run as a proper SLURM job step (srun) rather than a plain child process so that
+# --signal/--requeue reliably reach the training process and resource usage is
+# accounted for correctly.
 python -m src.train --config="$RUN_CONFIG_FILE" "${TRAIN_ARG_ARRAY[@]}"
 
 if [[ -n "$ORIGINAL_DATA_ROOT_DIR" ]]; then
@@ -130,7 +140,7 @@ for checkpoint_name in ("best.pth", "last.pth"):
     checkpoint_path = save_dir / checkpoint_name
     if not checkpoint_path.exists():
         continue
-    checkpoint = torch.load(checkpoint_path, map_location="cpu")
+    checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
     checkpoint["config"]["data"]["root_dir"] = original_root
     torch.save(checkpoint, checkpoint_path)
     print(f"Updated {checkpoint_path}")

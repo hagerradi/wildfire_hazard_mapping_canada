@@ -237,3 +237,29 @@ def get_test_dataloader(
         pin_memory=True,
     )
     return test_dataloader
+
+
+def get_val_dataloader(config: DataConfig, modelling_approach: str = "1", seed: int = 42) -> DataLoader:
+    """
+    Creates and returns a standalone validation DataLoader (no shuffling), without
+    also building the train dataset. Useful for one-off, end-of-run validation-set
+    evaluation (e.g. hexel-level metrics in evaluate_hexels.py) where re-building the
+    much larger train dataset via get_train_val_dataloader would be wasteful.
+    """
+    batch_size = config.batch_size
+    num_workers = config.num_workers
+    val_split = config.val_split
+
+    g = torch.Generator()
+    val_dataset = build_dataset(config, csv_name=val_split)
+
+    val_dataloader = DataLoader(
+        val_dataset,
+        batch_size=batch_size,
+        num_workers=num_workers,
+        shuffle=False,
+        worker_init_fn=seed_worker,
+        generator=g,
+        pin_memory=True,
+    )
+    return val_dataloader
