@@ -123,13 +123,13 @@ def main(
     metadata_filter: Callable[[pd.DataFrame], pd.DataFrame] | None = None,
 ) -> dict[str, float]:
     args = args or parse_args()
-    if args.fast_eval:
+    if getattr(args, "fast_eval", False):
         args.metrics_only = True
         args.skip_hexel_plots = True
         args.no_save_predictions = True
     config = config or load_config(args.config)
 
-    if args.tif_only:
+    if getattr(args, "tif_only", False):
         args.metrics_only = False
         args.skip_hexel_plots = True
 
@@ -203,7 +203,7 @@ def main(
     trainer_init_start_time = time.time()
     trainer = Trainer(config, spatial_input_channels=spatial_channels, auxiliary_input_dims=auxiliary_input_dims)
     trainer_init_time = time.time() - trainer_init_start_time
-    if args.tif_only:
+    if getattr(args, "tif_only", False):
         trainer.metric_functions = {}
 
     # ---------- Load best checkpoint ----------
@@ -272,10 +272,10 @@ def main(
             out_norm=out_norm,
             device=trainer.device,
             experiment_logger=None,
-            metric_functions=None if args.tif_only else trainer.metric_functions,
+            metric_functions=None if getattr(args, "tif_only", False) else trainer.metric_functions,
             stitch_mode=args.stitch_mode,
-            save_artifacts=True if args.tif_only else not args.metrics_only,
-            save_plots=False if args.tif_only else not args.skip_hexel_plots,
+            save_artifacts=True if getattr(args, "tif_only", False) else not args.metrics_only,
+            save_plots=False if getattr(args, "tif_only", False) else not args.skip_hexel_plots,
             robust_plot_percentile=args.robust_plot_percentile
             if args.robust_plot_percentile is not None
             else config.evaluation.robust_plot_percentile,
