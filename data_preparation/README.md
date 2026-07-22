@@ -62,9 +62,9 @@ Or do it locally and copy to the cluster (easier R support and we don't need acc
 
 This saves csv file in the root_dir called `fbp_curves_national_fuel.csv`.
 
-Step 5 (optional): Precompute target log-stats for `log_standard` normalization (fire intensity / ROS)
+Step 5 (for training data only, to be used by eval-only data): Precompute input and target normalization stats
 
-The `log_standard` target normalization needs train-only log1p mean/std constants. The `min/max normalization` for burn probability and elevation needs train-only data. These are otherwise recomputed by scanning the raw rasters on every run; computing them once offline writes a `dataset_norm_stats.json` into the `save_dir` so training/eval/inference just read the cached values.
+The `log_standard` target normalization needs train-only log1p mean/std constants. The `min/max normalization` for burn probability and elevation needs train-only data, as well as fuel curves features. These are otherwise recomputed by scanning the raw rasters on every run; computing them once offline writes a `dataset_norm_stats.json` into the `save_dir` so training/eval/inference just read the cached values.
 
 ```bash
 python -m data_preparation.compute_dataset_normalization_stats \

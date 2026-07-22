@@ -48,7 +48,7 @@ evaluation:
   prediction_support_policy: "input"
 
 data:
-  root_dir: "/home/mila/h/hager.radi/scratch/full_data_bp3plus/canada_bp3+_2026_MILA/data_samples_v3"
+  root_dir: "/home/mila/h/hager.radi/scratch/full_data_bp3plus/canada_bp3+_2026_MILA/data_samples_v4"
   raw_data_dir: "/home/mila/h/hager.radi/scratch/full_data_bp3plus/canada_bp3+_2026_MILA"
 
   train_split: "train_indices.csv"
@@ -112,7 +112,7 @@ logger:
     - "modelling_approach=1"
     - "target=bp"
     - "coordconv=patch_local"
-    - "data_samples_v3"
+    - "data_samples_v4"
     - "ignition=aggregated_human_lightning"
     - "raw_fuel_iROS"
     - "best_ckpt=ccc"
