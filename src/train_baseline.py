@@ -456,6 +456,9 @@ def build_baseline_model(model_config):
     if architecture in {"linear_regression", "linear"}:
         from sklearn.linear_model import LinearRegression
         return LinearRegression(**params)
+    if architecture in {"mean_baseline", "mean"}:
+        from src.mean_baseline import MeanBaselineRegressor
+        return MeanBaselineRegressor()
     raise ValueError(f"Unknown baseline architecture '{model_config.architecture}'.")
 
 
