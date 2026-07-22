@@ -528,7 +528,6 @@ class Trainer:
 
         return results
 
-    @torch.no_grad()
     @overload
     def validate(self, loader: DataLoader, return_predictions: Literal[False] = False) -> dict[str, float]: ...
 
@@ -538,6 +537,7 @@ class Trainer:
     @overload
     def validate(self, loader: DataLoader, return_predictions: bool) -> dict[str, float] | tuple[dict[str, float], np.ndarray]: ...
 
+    @torch.no_grad()
     def validate(self, loader: DataLoader, return_predictions: bool = False) -> dict[str, float] | tuple[dict[str, float], np.ndarray]:
         self.model.eval()
         running_loss = 0.0
@@ -607,7 +607,6 @@ class Trainer:
 
         return results
 
-    @torch.no_grad()
     @overload
     def test(self, loader: DataLoader, return_predictions: Literal[False] = False) -> dict[str, float]: ...
 
@@ -617,6 +616,7 @@ class Trainer:
     @overload
     def test(self, loader: DataLoader, return_predictions: bool) -> dict[str, float] | tuple[dict[str, float], np.ndarray]: ...
 
+    @torch.no_grad()
     def test(self, loader: DataLoader, return_predictions: bool = False) -> dict[str, float] | tuple[dict[str, float], np.ndarray]:
         return self.validate(loader, return_predictions=return_predictions)
 
