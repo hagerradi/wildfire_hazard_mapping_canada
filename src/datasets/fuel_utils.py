@@ -539,6 +539,7 @@ def compute_fuel_curve_norm_stats(
     -------
     (mean, std) of log1p-transformed curve values.
     """
+    # Assumption: normalization stats use all curve values since all classes are present in training data for the national study.
     lookup = build_fuel_curve_lookup(
         root_dir=root_dir,
         raw_data_dir=raw_data_dir,
