@@ -5,7 +5,7 @@ CONFIG_FILE=${1:-configs/bp_common_input_pipeline.yaml}
 N_REPS=${N_REPS:-5}
 EVAL_ARGS=${EVAL_ARGS:-"--fast_eval"}
 
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 mkdir -p logs
 source .venv/bin/activate
 
