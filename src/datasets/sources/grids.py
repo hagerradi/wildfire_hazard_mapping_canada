@@ -70,9 +70,9 @@ class GridSource(DataSource):
         # hexes never leak into target/elevation normalization constants. None preserves the
         # legacy full-scan behaviour (e.g. single-hex inference where no split is provided).
         self._train_hex_ids: set[int] | None = None
-        if train_split_csv_name:  # empty string treated same as None
+        if train_split_csv_name is not None:
             split_path = os.path.join(self.root_dir, train_split_csv_name)
-            if os.path.isfile(split_path):  # isfile avoids matching directories
+            if os.path.exists(split_path):
                 self._train_hex_ids = read_split_hex_ids(split_path)
                 logger.debug("Loaded %d train hex IDs from %s.", len(self._train_hex_ids), split_path)
             else:
@@ -316,13 +316,11 @@ class GridSource(DataSource):
         The results are stored in ``self.fuel_curve_mean`` and ``self.fuel_curve_std`` as float32
         numpy arrays of shape ``(1,)``.
         """
-        import json as _json
-
         cache_path = os.path.join(self.root_dir, NORM_STATS_JSON)
         cache_key = f"fuel_curve_{self.fuel_feats_encoding}"
         if os.path.exists(cache_path):
             with open(cache_path) as f:
-                cached = _json.load(f)
+                cached = json.load(f)
             entry = cached.get(cache_key, {})
             mean = entry.get("log_mean")
             std = entry.get("log_std")

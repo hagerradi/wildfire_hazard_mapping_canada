@@ -11,6 +11,8 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 import rasterio
+
+logger = logging.getLogger(__name__)
 import torch
 from rasterio.features import geometry_mask
 from rasterio.profiles import Profile
@@ -308,6 +310,12 @@ def get_predicted_hexel(
     if out_norm in {"min_max", "log"}:
         predictions = np.clip(predictions, 0, 1)
 
+    requires_target_range = out_norm == "min_max" or modelling_approach != "1"
+    if requires_target_range and (min_target_val is None or max_target_val is None):
+        raise ValueError(
+            f"min_target_val and max_target_val are required when out_norm={out_norm!r} or modelling_approach={modelling_approach!r}."
+        )
+
     if modelling_approach == "1":
         reconstructed_hexel = get_stitched_windows(
             base_dir=base_dir,
@@ -321,8 +329,8 @@ def get_predicted_hexel(
         )
         reconstructed_hexel_denorm = denormalize_model_target(
             data=reconstructed_hexel,
-            min_val=min_target_val,
-            max_val=max_target_val,
+            min_val=0.0 if min_target_val is None else min_target_val,
+            max_val=0.0 if max_target_val is None else max_target_val,
             out_norm=out_norm,
             target_log_mean=target_log_mean,
             target_log_std=target_log_std,
@@ -346,7 +354,9 @@ def get_predicted_hexel(
                 prediction_mask_channel_indices=prediction_mask_channel_indices,
             )
             reconstructed_season_cause_hexel_denorm = denormalize_burn_count(
-                data=reconstructed_season_cause_hexel, min_val=min_target_val, max_val=max_target_val
+                data=reconstructed_season_cause_hexel,
+                min_val=0.0 if min_target_val is None else min_target_val,
+                max_val=0.0 if max_target_val is None else max_target_val,
             )
             season_cause_hexels.append(reconstructed_season_cause_hexel_denorm)
             start_idx += len(filtered_season_cause_df)
@@ -354,7 +364,11 @@ def get_predicted_hexel(
         reconstructed_hexel_denorm = np.sum(np.stack(season_cause_hexels), axis=0)
         reconstructed_hexel_denorm = np.rint(reconstructed_hexel_denorm).astype("int32")
         # clip values to the true range, in case of outliers
-        reconstructed_hexel_denorm = np.clip(reconstructed_hexel_denorm, min_target_val, max_target_val)
+        reconstructed_hexel_denorm = np.clip(
+            reconstructed_hexel_denorm,
+            0.0 if min_target_val is None else min_target_val,
+            0.0 if max_target_val is None else max_target_val,
+        )
         gt_elevation_grid_profile.update(dtype="int32", compress="lzw", nodata=-9999)  # type: ignore
 
     return reconstructed_hexel_denorm, gt_elevation_grid_profile
@@ -500,7 +514,6 @@ def get_target_postprocessing_settings(config: Config, out_norm: str) -> list[Ta
                 min_value=min_target_val,
                 bp_nodata_as_zero=config.evaluation.bp_nodata_as_zero,
             )
-
         target_log_mean, target_log_std = get_target_log_stats(grid_params=grid_params, target=target)
         if target_out_norm == "log_standard" and (target_log_mean is None or target_log_std is None):
             target_log_mean, target_log_std = get_output_log_stats_cached(

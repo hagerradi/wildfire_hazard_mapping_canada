@@ -58,6 +58,8 @@ def prepare_hexel_data(
     output_type: str = "prob",
     weather_sampling: str = "weather_zone_id",
     mask_scope: str = "actual",
+    weather_norm_params_path: Path | None = None,
+    fire_size_norm_params_path: Path | None = None,
 ) -> Path:
     """
     Prepare data patches for a single hexel.
@@ -73,6 +75,13 @@ def prepare_hexel_data(
         modelling_approach: 1 for joint season-cause, 2 for separate.
         output_type: "count" or "prob" for fire output type.
         weather_sampling: Weather sampling strategy.
+        weather_norm_params_path: Path to a JSON file with weather normalization parameters.
+            If the file exists, parameters are loaded and applied (inference mode) instead of
+            being refit, preventing leakage from the hexel(s) being predicted. Defaults to
+            ``weather_norm_params.json`` inside the processed data directory.
+        fire_size_norm_params_path: Path to a JSON file with fire size normalization parameters.
+            Same semantics as ``weather_norm_params_path``. Defaults to
+            ``fire_size_norm_params.json`` inside the processed data directory.
 
     Returns:
         Path to the output directory containing patches and metadata CSV.
@@ -83,15 +92,22 @@ def prepare_hexel_data(
     processed_data_dir.mkdir(parents=True, exist_ok=True)
     (processed_data_dir / "numpy_files").mkdir(parents=True, exist_ok=True)
 
+    if weather_norm_params_path is None:
+        weather_norm_params_path = processed_data_dir / "weather_norm_params.json"
+    if fire_size_norm_params_path is None:
+        fire_size_norm_params_path = processed_data_dir / "fire_size_norm_params.json"
+
     weather_table_path = processed_data_dir / "weather_table_processed.csv"
     logger.info("Building weather table...")
-    build_weather_table(root_dir=data_dir, save_path=weather_table_path)
+    build_weather_table(root_dir=data_dir, save_path=weather_table_path, norm_params_path=weather_norm_params_path)
 
     fire_size_input = data_dir / "df_fire_fru.csv"
     fire_size_output = processed_data_dir / "df_fire_fru_processed.csv"
     if fire_size_input.exists():
         logger.info("Processing fire size distribution table...")
-        process_fire_size_distribution_table(input_path=fire_size_input, output_path=fire_size_output)
+        process_fire_size_distribution_table(
+            input_path=fire_size_input, output_path=fire_size_output, norm_params_path=fire_size_norm_params_path
+        )
 
     # Load features for the hexel
     feature_channel_map_path = processed_data_dir / f"feature_channel_map_{modelling_approach}.json"
@@ -188,6 +204,8 @@ def run_single_hexel_pipeline(
     prepare_data: bool = False,
     save_dir: Path = Path("outputs"),
     mask_scope: str = "actual",
+    weather_norm_params_path: Path | None = None,
+    fire_size_norm_params_path: Path | None = None,
 ) -> tuple[np.ndarray, Any]:
     """
     Orchestrate the end-to-end (data preparation + inference + post-processing) for one specific hexel.
@@ -206,6 +224,10 @@ def run_single_hexel_pipeline(
         output_type: "count" or "prob" for fire output.
         weather_sampling: Weather sampling strategy.
         save_dir: Directory to save predictions and visualizations.
+        weather_norm_params_path: Path to a JSON file with weather normalization parameters,
+            forwarded to `prepare_hexel_data` when `prepare_data` is True.
+        fire_size_norm_params_path: Path to a JSON file with fire size normalization parameters,
+            forwarded to `prepare_hexel_data` when `prepare_data` is True.
 
     Returns:
         Reconstructed target hexel grid (denormalized), and the ground truth elevation grid profile.
@@ -232,6 +254,8 @@ def run_single_hexel_pipeline(
             output_type=data_prep_config["output_type"],
             weather_sampling=data_prep_config["weather_sampling"],
             mask_scope=data_scope,
+            weather_norm_params_path=weather_norm_params_path,
+            fire_size_norm_params_path=fire_size_norm_params_path,
         )
     else:
         suffix = "" if data_scope == "actual" else f"_{data_scope}"
@@ -358,6 +382,18 @@ def main():
     parser.add_argument("--post_process", type=str, default=None, help="Whether to post-process predictions (overrides config).")
     parser.add_argument("--save_dir", type=str, default=None, help="Directory to save predictions and visualizations (overrides config).")
     parser.add_argument("--mask_scope", choices=MASK_SCOPE_CHOICES, default=None, help="Evaluation/inference mask scope.")
+    parser.add_argument(
+        "--weather_norm_params_path",
+        type=str,
+        default=None,
+        help="Path to JSON file with weather normalization parameters to reuse at inference (overrides config).",
+    )
+    parser.add_argument(
+        "--fire_size_norm_params_path",
+        type=str,
+        default=None,
+        help="Path to JSON file with fire size normalization parameters to reuse at inference (overrides config).",
+    )
     args = parser.parse_args()
 
     with open(args.config) as f:
@@ -372,6 +408,14 @@ def main():
     batch_size = args.batch_size if args.batch_size is not None else config["batch_size"]
     num_workers = args.num_workers if args.num_workers is not None else config["num_workers"]
     mask_scope = args.mask_scope if args.mask_scope is not None else config.get("mask_scope", "actual")
+    weather_norm_params_path = (
+        args.weather_norm_params_path if args.weather_norm_params_path is not None else config.get("weather_norm_params_path")
+    )
+    fire_size_norm_params_path = (
+        args.fire_size_norm_params_path if args.fire_size_norm_params_path is not None else config.get("fire_size_norm_params_path")
+    )
+    weather_norm_params_path = Path(weather_norm_params_path) if weather_norm_params_path else None
+    fire_size_norm_params_path = Path(fire_size_norm_params_path) if fire_size_norm_params_path else None
 
     # Resolve "all" into the list of available hex IDs
     if hex_id == "all":
@@ -393,6 +437,8 @@ def main():
             prepare_data=prepare_data,
             save_dir=Path(save_dir),
             mask_scope=mask_scope,
+            weather_norm_params_path=weather_norm_params_path,
+            fire_size_norm_params_path=fire_size_norm_params_path,
         )
 
     elapsed_time = time.time() - start_time

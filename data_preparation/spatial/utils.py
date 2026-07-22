@@ -435,14 +435,14 @@ def get_output_log_stats_cached(
     Falls back to scanning raw rasters via get_output_log_stats.
 
     The cached JSON (``dataset_norm_stats.json``) is the canonical, train-only artifact
-    produced by ``compute_dataset_norm_stats``. The fallback scan honours allowed_hex_ids
+    produced by ``compute_dataset_normalization_stats`` / ``write_dataset_norm_stats``. The fallback scan honours allowed_hex_ids
     (and an explicit raw_data_dir holding the per-hex rasters) so it stays train-only too.
     ``scenario_name`` is forwarded to the fallback scan for datasets where output rasters
     live in a scenario subdirectory.
     """
     import json as _json
 
-    cache_path = os.path.join(root_dir, "dataset_norm_stats.json")
+    cache_path = os.path.join(root_dir, NORM_STATS_JSON)
     if os.path.exists(cache_path):
         with open(cache_path) as f:
             cached = _json.load(f)

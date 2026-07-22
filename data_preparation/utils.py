@@ -76,7 +76,9 @@ def process_fire_size_df(
     """
     # Apply column aliases before validation so alternate naming conventions are accepted.
     _FIRE_SIZE_COLUMN_ALIASES = {"FRU": "GRIDCODE", "Fsize": "SIZE_HA"}
-    cols_to_rename = {old: new for old, new in _FIRE_SIZE_COLUMN_ALIASES.items() if old in df_fire_size.columns}
+    cols_to_rename = {
+        old: new for old, new in _FIRE_SIZE_COLUMN_ALIASES.items() if old in df_fire_size.columns and new not in df_fire_size.columns
+    }
     if cols_to_rename:
         df_fire_size = df_fire_size.rename(columns=cols_to_rename)
 
