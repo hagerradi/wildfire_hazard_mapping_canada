@@ -8,6 +8,10 @@ import pandas as pd
 from src.config import TabularParams
 from src.datasets.sources.base import DataSource
 
+# Sentinel used as the hex-id component of the LUT key when hex_id_col is not configured, so the LUT
+# key type stays a uniform tuple[int, int] regardless of whether hex-scoping is enabled.
+_NO_HEX_ID = -1
+
 
 class TabularSource(DataSource):
     """
@@ -41,6 +45,7 @@ class TabularSource(DataSource):
         self.sampling_bias = params.sampling_bias
         self.feature_to_bias = params.feature_to_bias
         self.num_samples_per_patch = params.num_samples_per_patch
+        self.hex_id_col = params.hex_id_col
 
         # Pre-compute the column index for the bias feature
         self.bias_col_idx: int | None = None
@@ -53,15 +58,27 @@ class TabularSource(DataSource):
             self.bias_col_idx = self.feature_names_list.index(self.feature_to_bias)
 
         self.df = pd.read_csv(os.path.join(self.root_dir, self.csv_name))
+        if self.hex_id_col is not None and self.hex_id_col not in self.df.columns:
+            raise ValueError(f"Missing hex id column {self.hex_id_col!r} in {self.csv_name!r}.")
         # 1. Extract weather zone channel index
         with open(os.path.join(self.root_dir, f"feature_channel_map_{self.modelling_approach}.json")) as f:
             channel_feature_map = json.load(f)
             self.zone_channel = channel_feature_map["firezones_grid"][0]
         # 2. Create weather lookup table for faster sampling
-        self.lut = {}
-        for zone, group in self.df.groupby(self.fire_weather_zone_id_col):
-            feats = group[self.feature_names_list].values.astype(np.float32)
-            self.lut[int(zone)] = feats
+        # The LUT is always keyed by (hex_id, zone). When hex_id_col is not configured, hex_id is
+        # replaced by a shared sentinel so the LUT is effectively keyed by zone alone. When
+        # hex_id_col is set, a patch only ever samples from rows belonging to its own hexel — never
+        # pooled across hexels that share a fire-weather zone but live in different train/val/test
+        # splits (see get_sample).
+        self.lut: dict[tuple[int, int], np.ndarray] = {}
+        if self.hex_id_col is not None:
+            for (hex_id, zone), group in self.df.groupby([self.hex_id_col, self.fire_weather_zone_id_col]):
+                feats = group[self.feature_names_list].values.astype(np.float32)
+                self.lut[(int(hex_id), int(zone))] = feats
+        else:
+            for zone, group in self.df.groupby(self.fire_weather_zone_id_col):
+                feats = group[self.feature_names_list].values.astype(np.float32)
+                self.lut[(_NO_HEX_ID, int(zone))] = feats
 
         if not self.lut:
             raise ValueError(
@@ -77,6 +94,15 @@ class TabularSource(DataSource):
         mask = ~np.isnan(zone_arr) & (zone_arr > 0)
         zone_arr = zone_arr[mask]
 
+        hex_id = _NO_HEX_ID
+        if self.hex_id_col is not None:
+            if "hex_id" not in patch_info:
+                raise KeyError(
+                    f"Tabular source {self.csv_name!r} is configured with hex_id_col={self.hex_id_col!r} "
+                    "but patch_info does not contain 'hex_id'."
+                )
+            hex_id = int(patch_info["hex_id"])
+
         candidates = None
         weights = None
         values, counts = np.unique(zone_arr, return_counts=True)
@@ -89,7 +115,8 @@ class TabularSource(DataSource):
         elif self.fire_weather_zone_selection_approach == "mode":  # Selects the candidates from the most common zone in the patch
             # Try zones in descending frequency order until one is found in the LUT
             for zone_val in values[np.argsort(counts)[::-1]]:
-                zone_cands = self.lut.get(int(zone_val))
+                zone_key = (hex_id, int(zone_val))
+                zone_cands = self.lut.get(zone_key)
                 if zone_cands is not None:
                     candidates = zone_cands
                     break
@@ -104,7 +131,8 @@ class TabularSource(DataSource):
             all_candidates = []
             probs = []
             for val, count in zip(values, counts, strict=False):
-                zone_cands = self.lut.get(int(val))
+                zone_key = (hex_id, int(val))
+                zone_cands = self.lut.get(zone_key)
                 if zone_cands is not None:
                     all_candidates.append(zone_cands)
                     probs.append(np.full(len(zone_cands), count / len(zone_cands)))

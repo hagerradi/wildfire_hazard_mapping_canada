@@ -90,6 +90,7 @@ data:
           - "wind_y"
         fire_weather_zone_id_col: "WeatherZone"
         fire_weather_zone_selection_approach: "mode"
+        hex_id_col: "hex_id"
         aggregation: "mean"
         zone_channel_key: "firezones_grid"
         missing_value_strategy: "global_mean"

@@ -24,7 +24,7 @@ def _hex_id_from_weather_path(path: Path) -> str:
 
 def _load_raw_weather_with_hex_id(path: Path) -> pd.DataFrame:
     df = load_weather_list(str(path), normalize_weatherlist=False)
-    df.insert(0, "__hex_id", _hex_id_from_weather_path(path))
+    df.insert(0, "hex_id", int(_hex_id_from_weather_path(path)))
     return df
 
 
@@ -110,6 +110,11 @@ def build_weather_table(
     """
     Aggregates weather CSVs into a single table and applies global preprocessing.
 
+    The output table retains a ``hex_id`` column identifying which hexel each row came from. This lets
+    downstream consumers (e.g. ``SpatializedTabularSource`` with ``hex_id_col`` set) aggregate weather
+    features per ``(hex_id, WeatherZone)``, so a zone spanning
+    multiple hexels never mixes rows across hexels that live in different train/val/test splits.
+
     Parameters
     ----------
     norm_params_path:
@@ -120,9 +125,12 @@ def build_weather_table(
     """
     df_weather = aggregate_csv_by_pattern(root_dir=root_dir, pattern=pattern, load_function=_load_raw_weather_with_hex_id)
     train_hex_ids = _train_hex_ids(train_split_path)
-    fit_mask = df_weather["__hex_id"].isin(train_hex_ids) if train_hex_ids is not None else None
+    fit_mask = None
+    if train_hex_ids is not None:
+        hex_id_strs = df_weather["hex_id"].astype(int).astype(str).str.zfill(2)
+        fit_mask = hex_id_strs.isin(train_hex_ids)
     df_weather = preprocess_weather_list(
-        df_weather.drop(columns=["__hex_id"]),
+        df_weather,
         fit_mask=fit_mask,
         norm_params_path=norm_params_path,
     )
