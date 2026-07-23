@@ -98,7 +98,13 @@ class SpatializedTabularSource(DataSource):
             missing_fill_columns = [column for column in self.feature_names_list if column not in global_fill_df.columns]
             if missing_fill_columns:
                 raise ValueError(f"Missing columns in global-fill CSV {self.global_fill_csv_name!r}: {missing_fill_columns}")
-        self.global_fill = self._global_fill(global_fill_df)
+            if (
+                self.hex_id_col is not None
+                and self.missing_value_strategy == "global_mean"
+                and self.hex_id_col not in global_fill_df.columns
+            ):
+                raise ValueError(f"Missing hex id column {self.hex_id_col!r} in global-fill CSV {self.global_fill_csv_name!r}.")
+        self.global_fill, self.global_fill_by_hex = self._global_fill(global_fill_df)
         if self.shuffle_lut:
             self._shuffle_lut_values()
 
@@ -153,18 +159,36 @@ class SpatializedTabularSource(DataSource):
                 f"Unsupported missing_value_strategy={self.missing_value_strategy!r}. Supported values: ['global_mean', 'zero', 'raise']."
             )
 
-    def _global_fill(self, df: pd.DataFrame) -> np.ndarray:
-        """Per-feature fill vector for pixels whose firezone has no row in the tabular source.
+    def _global_fill(self, df: pd.DataFrame) -> tuple[np.ndarray, dict[int, np.ndarray]]:
+        """Per-feature fill vector(s) for pixels whose firezone has no row in the tabular source.
 
-        Returns zeros unless ``missing_value_strategy == "global_mean"``, in which case it is the mean
-        of each feature over all rows. Raises if the resulting means are non-finite.
+        Returns a ``(global_fill, fill_by_hex)`` pair. Both are all-zeros unless
+        ``missing_value_strategy == "global_mean"``, in which case they hold the mean of each feature
+        over rows. ``fill_by_hex`` is populated only when ``hex_id_col`` is configured, with the mean
+        computed separately per hex_id, so a patch's missing-zone fill is only ever derived from rows
+        belonging to its own hexel — never pooled across hexels, which would otherwise leak data
+        across train/val/test splits. ``global_fill`` (mean over all rows) is used when ``hex_id_col``
+        is not configured. Raises if any resulting mean is non-finite.
         """
         if self.missing_value_strategy != "global_mean":
-            return np.zeros(len(self.feature_names_list), dtype=np.float32)
+            zeros = np.zeros(len(self.feature_names_list), dtype=np.float32)
+            return zeros, {}
+
+        fill_by_hex: dict[int, np.ndarray] = {}
+        if self.hex_id_col is not None:
+            hex_ids = pd.to_numeric(df[self.hex_id_col], errors="coerce").astype("Int64")
+            grouped_means = df.groupby(hex_ids)[self.feature_names_list].mean()
+            for hex_id, row in grouped_means.iterrows():
+                values = row.to_numpy(dtype=np.float32)
+                if not np.isfinite(values).all():
+                    raise ValueError(f"Imputation fill for {self.csv_name!r} and hex_id={hex_id} contains non-finite values.")
+                fill_by_hex[int(hex_id)] = values
+            return np.zeros(len(self.feature_names_list), dtype=np.float32), fill_by_hex
+
         values = df[self.feature_names_list].mean(axis=0).to_numpy(dtype=np.float32)
         if not np.isfinite(values).all():
             raise ValueError(f"Imputation fill for {self.csv_name!r} contains non-finite values.")
-        return values
+        return values, fill_by_hex
 
     def _shuffle_lut_values(self) -> None:
         zones = sorted(self.lut)
@@ -173,9 +197,16 @@ class SpatializedTabularSource(DataSource):
         permutation = rng.permutation(len(values))
         self.lut = {zone: values[permutation[index]] for index, zone in enumerate(zones)}
 
-    def _initial_features(self, height: int, width: int) -> np.ndarray:
+    def _initial_features(self, height: int, width: int, hex_id: int) -> np.ndarray:
         if self.missing_value_strategy == "global_mean":
-            fill_value = self.global_fill
+            if self.hex_id_col is not None:
+                fill_value = self.global_fill_by_hex.get(hex_id)
+                if fill_value is None:
+                    raise ValueError(
+                        f"No global-mean fill found for hex_id={hex_id} in {self.csv_name!r} (or {self.global_fill_csv_name!r})."
+                    )
+            else:
+                fill_value = self.global_fill
         elif self.missing_value_strategy == "zero":
             fill_value = np.zeros(len(self.feature_names_list), dtype=np.float32)
         else:
@@ -200,7 +231,6 @@ class SpatializedTabularSource(DataSource):
         data = patch_info["data"] if "data" in patch_info else np.load(patch_info["file_path"], mmap_mode="r")
         zone_grid = np.asarray(data[:, :, self.zone_channel])
         height, width = zone_grid.shape
-        features = self._initial_features(height, width)
 
         hex_id = _NO_HEX_ID
         if self.hex_id_col is not None:
@@ -210,6 +240,8 @@ class SpatializedTabularSource(DataSource):
                     "but patch_info does not contain 'hex_id'."
                 )
             hex_id = int(patch_info["hex_id"])
+
+        features = self._initial_features(height, width, hex_id)
 
         finite_zone_mask = np.isfinite(zone_grid) & (zone_grid > 0)
         zone_int_grid = self._zone_ids(zone_grid=zone_grid, finite_zone_mask=finite_zone_mask)
