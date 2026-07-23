@@ -85,8 +85,28 @@ class TabularSource(DataSource):
                 f"Weather LUT is empty: no valid zones found in '{self.csv_name}'. "
                 f"Check that '{self.fire_weather_zone_id_col}' column contains valid zone IDs."
             )
-        # Pre-built global fallback: used when a patch's zone IDs are absent from the LUT
-        self._fallback_candidates = np.concatenate(list(self.lut.values()))
+        # Pre-built fallback candidates, used when a patch's zone IDs are absent from the LUT.
+        # When hex_id_col is configured, fallback is scoped per hex_id so a patch can only ever
+        # sample fallback values from rows belonging to its own hexel — never pooled across
+        # hexels, which would otherwise leak data across train/val/test splits.
+        self._fallback_by_hex: dict[int, np.ndarray] = {}
+        if self.hex_id_col is not None:
+            for hex_id, group in self.df.groupby(self.hex_id_col):
+                self._fallback_by_hex[int(hex_id)] = group[self.feature_names_list].values.astype(np.float32)
+        else:
+            self._fallback_candidates = np.concatenate(list(self.lut.values()))
+
+    def _get_fallback_candidates(self, hex_id: int) -> np.ndarray:
+        """Returns fallback candidates for a patch, scoped to its own hex_id when configured."""
+        if self.hex_id_col is None:
+            return self._fallback_candidates
+        candidates = self._fallback_by_hex.get(hex_id)
+        if candidates is None:
+            raise ValueError(
+                f"No fallback candidates found for hex_id={hex_id} in '{self.csv_name}'. "
+                f"Check that '{self.hex_id_col}' column contains this hex id."
+            )
+        return candidates
 
     def get_sample(self, patch_info: dict):
         data = patch_info["data"] if "data" in patch_info else np.load(patch_info["file_path"])
@@ -110,8 +130,8 @@ class TabularSource(DataSource):
         # 1. Select candidates depending on sampling approach
         if len(values) == 0:
             # Patch is fully masked — fall back to global candidates
-            print("[TabularSource] Warning: patch is fully masked (all NaN). Using global fallback.")
-            candidates = self._fallback_candidates
+            print("[TabularSource] Warning: patch is fully masked (all NaN). Using fallback.")
+            candidates = self._get_fallback_candidates(hex_id)
         elif self.fire_weather_zone_selection_approach == "mode":  # Selects the candidates from the most common zone in the patch
             # Try zones in descending frequency order until one is found in the LUT
             for zone_val in values[np.argsort(counts)[::-1]]:
@@ -121,10 +141,8 @@ class TabularSource(DataSource):
                     candidates = zone_cands
                     break
             if candidates is None:
-                print(
-                    f"[TabularSource] Warning: no LUT match for any zone in patch (zones={[int(v) for v in values]}). Using global fallback."
-                )
-                candidates = self._fallback_candidates
+                print(f"[TabularSource] Warning: no LUT match for any zone in patch (zones={[int(v) for v in values]}). Using fallback.")
+                candidates = self._get_fallback_candidates(hex_id)
         elif (
             self.fire_weather_zone_selection_approach == "weighted"
         ):  # Selects candidates from all zones in the patch, with probability proportional to their frequency
@@ -137,10 +155,8 @@ class TabularSource(DataSource):
                     all_candidates.append(zone_cands)
                     probs.append(np.full(len(zone_cands), count / len(zone_cands)))
             if not all_candidates:
-                print(
-                    f"[TabularSource] Warning: no LUT match for any zone in patch (zones={[int(v) for v in values]}). Using global fallback."
-                )
-                candidates = self._fallback_candidates
+                print(f"[TabularSource] Warning: no LUT match for any zone in patch (zones={[int(v) for v in values]}). Using fallback.")
+                candidates = self._get_fallback_candidates(hex_id)
             else:
                 candidates = np.concatenate(all_candidates)
                 weights = np.concatenate(probs)
