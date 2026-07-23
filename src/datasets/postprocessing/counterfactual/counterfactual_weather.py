@@ -57,7 +57,8 @@ def load_all_raw_weather_with_hex_ids(raw_data_dir: Path) -> pd.DataFrame:
     )
 
 
-def _normalized_processed_hex_ids(processed: pd.DataFrame) -> pd.Series:
+def _validated_processed_hex_ids(processed: pd.DataFrame) -> pd.Series:
+    """Validate processed hex IDs and return their normalized string representation."""
     if HEX_ID_COLUMN not in processed.columns:
         raise ValueError(f"Processed weather table is missing column {HEX_ID_COLUMN!r}.")
 
@@ -75,10 +76,12 @@ def _normalized_processed_hex_ids(processed: pd.DataFrame) -> pd.Series:
         bad_value = float(values[np.argmax(np.abs(values - rounded))])
         raise ValueError(f"Processed weather table contains non-integer hex_id {bad_value}.")
 
-    return pd.Series(rounded.astype(np.int64), index=processed.index).astype(str).str.zfill(2)
+    integer_hex_ids = pd.Series(rounded.astype(np.int64), index=processed.index)
+    return integer_hex_ids.map(normalize_hex_id)
 
 
 def _validate_raw_processed_alignment(raw_features: pd.DataFrame, processed: pd.DataFrame) -> pd.Series:
+    """Verify that raw and processed rows refer to the same hex-zone observations."""
     if RAW_HEX_ID_COLUMN not in raw_features.columns:
         raise ValueError(f"raw_features is missing the {RAW_HEX_ID_COLUMN!r} tag column.")
     if len(raw_features) != len(processed):
@@ -86,7 +89,7 @@ def _validate_raw_processed_alignment(raw_features: pd.DataFrame, processed: pd.
     if WEATHER_ZONE_COLUMN not in raw_features.columns or WEATHER_ZONE_COLUMN not in processed.columns:
         raise ValueError(f"Raw and processed weather tables must include {WEATHER_ZONE_COLUMN!r}.")
 
-    processed_hex_ids = _normalized_processed_hex_ids(processed)
+    processed_hex_ids = _validated_processed_hex_ids(processed)
     raw_hex_ids = raw_features[RAW_HEX_ID_COLUMN].map(normalize_hex_id)
     hex_mismatch = raw_hex_ids.to_numpy() != processed_hex_ids.to_numpy()
     if hex_mismatch.any():
@@ -150,7 +153,7 @@ def apply_external_mean_zone_transplant(
         raise ValueError("Donor mean weather vector contains non-finite values.")
 
     edited = processed.groupby([HEX_ID_COLUMN, WEATHER_ZONE_COLUMN], as_index=False)[mean_columns].mean()
-    edited_hex_ids = _normalized_processed_hex_ids(edited)
+    edited_hex_ids = _validated_processed_hex_ids(edited)
     edited_recipient_mask = edited_hex_ids.isin(normalized_recipient_ids)
     for column in mean_columns:
         edited.loc[edited_recipient_mask, column] = float(donor_mean[column])
