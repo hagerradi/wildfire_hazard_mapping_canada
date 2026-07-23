@@ -38,7 +38,8 @@ def materialize_weather_scenario(
 
     Loads `processed_weather_csv` (the endpoint's shared, unedited
     `weather_table_processed.csv`) and the raw per-hexel weather tables it was built
-    from, applies the scenario's edit, and writes the edited table to
+    from, applies the scenario's edit while preserving one lookup row per
+    `(hex_id, WeatherZone)`, and writes the edited table to
     `weather_intervention_csv_path(prediction_dir)` - ready to be pointed at by
     overriding the endpoint's `spatialized_weather` source `csv_name` with an
     absolute path.

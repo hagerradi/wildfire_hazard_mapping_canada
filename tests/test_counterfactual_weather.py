@@ -16,7 +16,7 @@ def _weather_frames() -> tuple[pd.DataFrame, pd.DataFrame]:
     raw = pd.DataFrame(
         {
             "__hex_id": ["16", "16", "17", "17", "01", "01"],
-            "WeatherZone": [4, 9, 30, 31, 1, 1],
+            "WeatherZone": [4, 9, 30, 31, 4, 4],
             "FireWeatherIndex": [10.0, 20.0, 30.0, 50.0, 5.0, 7.0],
         }
     )
@@ -24,6 +24,7 @@ def _weather_frames() -> tuple[pd.DataFrame, pd.DataFrame]:
         {
             "Order": [1, 2, 3, 4, 5, 6],
             "Season": [1, 2, 1, 2, 1, 2],
+            "hex_id": [16, 16, 17, 17, 1, 1],
             "WeatherZone": raw["WeatherZone"],
             "Temperature": [-1.0, 0.0, 1.0, 3.0, -2.0, -4.0],
             "WindDirection": [180.0, 200.0, 220.0, 240.0, 90.0, 270.0],
@@ -35,7 +36,7 @@ def _weather_frames() -> tuple[pd.DataFrame, pd.DataFrame]:
     return raw, processed
 
 
-def test_apply_external_mean_zone_transplant_builds_exact_recipient_zone_lut() -> None:
+def test_apply_external_mean_zone_transplant_builds_exact_recipient_hex_zone_lut() -> None:
     raw, processed = _weather_frames()
 
     edited, reports = cw.apply_external_mean_zone_transplant(
@@ -46,15 +47,16 @@ def test_apply_external_mean_zone_transplant_builds_exact_recipient_zone_lut() -
         scenario_name="bc_mean_weather_transplant",
     )
 
-    assert len(edited) == processed["WeatherZone"].nunique()
+    assert len(edited) == processed[["hex_id", "WeatherZone"]].drop_duplicates().shape[0]
     donor_mean = processed.loc[[2, 3], ["Temperature", "FireWeatherIndex", "wind_x", "wind_y"]].mean()
     for zone in (4, 9):
-        row = edited.loc[edited["WeatherZone"] == zone].iloc[0]
+        row = edited.loc[(edited["hex_id"] == 16) & (edited["WeatherZone"] == zone)].iloc[0]
         assert row[donor_mean.index].to_numpy(dtype=np.float64) == pytest.approx(donor_mean.to_numpy(dtype=np.float64))
 
-    untouched = edited.loc[edited["WeatherZone"] == 1].iloc[0]
+    untouched = edited.loc[(edited["hex_id"] == 1) & (edited["WeatherZone"] == 4)].iloc[0]
     assert untouched["FireWeatherIndex"] == pytest.approx(processed.loc[[4, 5], "FireWeatherIndex"].mean())
-    assert not (set(cw.NON_AVERAGE_COLUMNS) - {"WeatherZone"}).intersection(edited.columns)
+    assert {"hex_id", "WeatherZone"} <= set(edited.columns)
+    assert not (set(cw.NON_AVERAGE_COLUMNS) - {"hex_id", "WeatherZone"}).intersection(edited.columns)
 
     assert len(reports) == 1
     report = reports[0]
@@ -107,6 +109,44 @@ def test_apply_external_mean_zone_transplant_rejects_row_count_mismatch() -> Non
         )
 
 
+@pytest.mark.parametrize(
+    ("column", "values", "message"),
+    [
+        ("hex_id", [16, 16, 17, 17, 2, 2], "hex_id mismatch"),
+        ("WeatherZone", [4, 9, 30, 31, 5, 5], "WeatherZone mismatch"),
+    ],
+)
+def test_apply_external_mean_zone_transplant_rejects_row_misalignment(
+    column: str,
+    values: list[int],
+    message: str,
+) -> None:
+    raw, processed = _weather_frames()
+    processed[column] = values
+
+    with pytest.raises(ValueError, match=message):
+        cw.apply_external_mean_zone_transplant(
+            raw,
+            processed,
+            recipient_hex_ids=["16"],
+            donor_hex_ids=["17"],
+            scenario_name="scenario",
+        )
+
+
+def test_apply_external_mean_zone_transplant_requires_processed_hex_id() -> None:
+    raw, processed = _weather_frames()
+
+    with pytest.raises(ValueError, match="missing column 'hex_id'"):
+        cw.apply_external_mean_zone_transplant(
+            raw,
+            processed.drop(columns="hex_id"),
+            recipient_hex_ids=["16"],
+            donor_hex_ids=["17"],
+            scenario_name="scenario",
+        )
+
+
 def test_apply_weather_edit_dispatches_mean_mode_and_rejects_invalid_configuration() -> None:
     raw, processed = _weather_frames()
     edited, _ = cw.apply_weather_edit(
@@ -117,7 +157,9 @@ def test_apply_weather_edit_dispatches_mean_mode_and_rejects_invalid_configurati
         recipient_hex_ids=["16"],
         params={"donor_hex_ids": ["17"]},
     )
-    assert set(edited["WeatherZone"]) == set(processed["WeatherZone"])
+    assert set(map(tuple, edited[["hex_id", "WeatherZone"]].to_numpy())) == set(
+        map(tuple, processed[["hex_id", "WeatherZone"]].drop_duplicates().to_numpy())
+    )
 
     with pytest.raises(ValueError, match="Unknown weather edit mode"):
         cw.apply_weather_edit(
@@ -153,7 +195,7 @@ def test_weather_scenario_kind_and_weather_edit_accessor() -> None:
     assert baseline.weather_edit() is None
 
 
-def test_materialize_mean_weather_scenario_writes_compact_zone_lut(
+def test_materialize_mean_weather_scenario_writes_compact_hex_zone_lut(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -182,8 +224,11 @@ def test_materialize_mean_weather_scenario_writes_compact_zone_lut(
 
     assert result.edited_csv_path == weather_intervention_csv_path(prediction_dir)
     edited = pd.read_csv(result.edited_csv_path)
-    assert len(edited) == processed["WeatherZone"].nunique()
-    assert edited.loc[edited["WeatherZone"].isin([4, 9]), "FireWeatherIndex"].to_numpy() == pytest.approx([3.0, 3.0])
+    assert len(edited) == processed[["hex_id", "WeatherZone"]].drop_duplicates().shape[0]
+    assert edited.loc[(edited["hex_id"] == 16) & edited["WeatherZone"].isin([4, 9]), "FireWeatherIndex"].to_numpy() == pytest.approx(
+        [3.0, 3.0]
+    )
+    assert edited.loc[(edited["hex_id"] == 1) & (edited["WeatherZone"] == 4), "FireWeatherIndex"].item() == pytest.approx(-3.0)
     assert result.summary[["scenario_name", "donor_hex_ids"]].to_dict("records") == [
         {"scenario_name": "bc_mean_weather_transplant", "donor_hex_ids": "17"}
     ]
@@ -191,7 +236,7 @@ def test_materialize_mean_weather_scenario_writes_compact_zone_lut(
 
 def test_materialize_weather_scenario_requires_explicit_mode(tmp_path: Path) -> None:
     processed_csv = tmp_path / "weather_table_processed.csv"
-    pd.DataFrame({"WeatherZone": [1], "FireWeatherIndex": [0.0]}).to_csv(processed_csv, index=False)
+    pd.DataFrame({"hex_id": [1], "WeatherZone": [1], "FireWeatherIndex": [0.0]}).to_csv(processed_csv, index=False)
     scenario = ScenarioConfig(
         name="missing_mode",
         kind="weather",
