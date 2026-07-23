@@ -10,12 +10,13 @@ The configured `external_mean_zone_transplant` mode:
 
 1. Reconstructs the raw weather-table row order with a hex ID attached to each row.
 2. Computes the mean of every processed weather feature across all hex17 rows.
-3. Builds the baseline `WeatherZone -> feature vector` lookup table.
-4. Replaces the five zones used by hex16 with the exact hex17 mean vector.
+3. Builds the baseline `(hex_id, WeatherZone) -> feature vector` lookup table.
+4. Replaces the five `(hex16, WeatherZone)` entries with the exact hex17 mean vector.
 
-The materialized CSV contains one row per WeatherZone. This avoids dilution from
-other hexels sharing hex16's zones. Missing or unmatched zone pixels retain the
-baseline global-mean fallback vector from the original weather table.
+The materialized CSV contains one row per `(hex_id, WeatherZone)`. Entries for
+non-recipient hexels retain their own baseline means, including when they share a
+weather zone with hex16. Missing or unmatched zone pixels retain the baseline
+per-hex mean fallback vector from the original weather table.
 
 The configured donor has 136,692 weather rows. Its raw mean FWI is approximately
 29.08, compared with approximately 19.27 across hex16's rows.
@@ -48,7 +49,8 @@ experiments/counterfactual_mean_weather_hex16/
 ```
 
 Each scenario prediction directory also contains the compact
-`weather_intervention/weather_table_processed.csv` used for inference.
+`weather_intervention/weather_table_processed.csv` used for inference. It includes
+both `hex_id` and `WeatherZone` lookup columns.
 
 ## Configuration
 
@@ -81,6 +83,10 @@ scenarios:
 
 `mode` is required explicitly. The current workflow supports only
 `external_mean_zone_transplant`.
+
+Each endpoint's `spatialized_weather` input source must set
+`hex_id_col: "hex_id"` so inference resolves the materialized table by
+`(hex_id, WeatherZone)` rather than pooling rows from hexels that share a zone.
 
 ## Running
 

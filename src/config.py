@@ -107,6 +107,11 @@ class TabularParams(BaseModel):
         None  # Whether to bias sampling towards high or low values of the feature of interest, or no bias (None, "high_values")
     )
     feature_to_bias: str | None = None  # The feature to bias sampling towards if sampling_bias is not None
+    # Column name identifying the hexel each row belongs to (e.g. "hex_id"). When set, the LUT is
+    # keyed by (hex_id, zone) instead of zone alone, so a patch's features are only ever drawn from
+    # rows belonging to its own hexel — never pooled across hexels that share a fire-weather zone but
+    # live in different train/val/test splits. Requires ``patch_info["hex_id"]`` to be present.
+    hex_id_col: str | None = None
 
 
 class SpatializedTabularParams(TabularParams):

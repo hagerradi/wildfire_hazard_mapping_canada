@@ -10,7 +10,7 @@
 # Unlike the previous BP best model (non-spatialized tabular fed through an auxiliary MLP
 # branch), BP now consumes the spatialized tabular channels on the spatial branch, matching
 # FI/ROS. Spatialized input is heavier, so batch_size is 32 (was 64 for the auxiliary variant).
-save_dir: "experiments/bp_common_input_pipeline_fuel_iROS"
+save_dir: "experiments/bp_spatial_weather_firesize"
 
 modelling_approach: "1"
 
@@ -48,7 +48,7 @@ evaluation:
   prediction_support_policy: "input"
 
 data:
-  root_dir: "/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA/data_samples_v3"
+  root_dir: "/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA/data_samples_v4"
   raw_data_dir: "/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA"
 
   train_split: "train_indices.csv"
@@ -90,6 +90,7 @@ data:
           - "wind_y"
         fire_weather_zone_id_col: "WeatherZone"
         fire_weather_zone_selection_approach: "mode"
+        hex_id_col: "hex_id"
         aggregation: "mean"
         zone_channel_key: "firezones_grid"
         missing_value_strategy: "global_mean"
@@ -118,13 +119,13 @@ logger:
   enabled: true
   project_name: "nrcan05-wildfireriskmapping"
   workspace: "mila-amlrt"
-  experiment_name: "bp_common_input_pipeline_fuel_iROS"
+  experiment_name: "bp_spatial_weather_firesize"
   tags:
     - "full_data"
     - "modelling_approach=1"
     - "target=bp"
     - "coordconv=patch_local"
-    - "data_samples_v3"
+    - "data_samples_v4"
     - "ignition=aggregated_human_lightning"
     - "raw_fuel_iROS"
     - "best_ckpt=ccc"

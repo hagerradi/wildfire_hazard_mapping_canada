@@ -20,6 +20,8 @@ from src.config import (
 )
 from src.datasets.dataset import MultiSourceDataset, build_dataset, get_test_dataloader, get_train_val_dataloader
 from src.datasets.sources import GridSource, SpatializedTabularSource, TabularSource
+from src.datasets.sources.spatialized_tabular import _NO_HEX_ID
+from src.datasets.sources.tabular import _NO_HEX_ID as _TABULAR_NO_HEX_ID
 from src.datasets.transforms import get_transforms, setup_augmentations
 from src.datasets.utils import get_dataset_dimensions
 
@@ -171,6 +173,61 @@ def test_multi_source_integration(temp_data_dir):
     assert fire_size.shape == (2, len(fire_size_feats))
 
 
+def test_tabular_source_hex_id_col_isolates_hexels(temp_data_dir):
+    """When hex_id_col is set, a shared zone must not pool sample rows across hexels."""
+    tmpdir, _, _, _, _, _, _, _ = temp_data_dir
+
+    weather_csv = "weather_hex_zone.csv"
+    pd.DataFrame(
+        {
+            "hex_id": [1, 1, 2, 2],
+            "WeatherZone": [100, 100, 100, 100],  # zone 100 spans hex 1 and hex 2
+            "Temperature": [1.0, 3.0, 1000.0, 3000.0],
+        }
+    ).to_csv(os.path.join(tmpdir, weather_csv), index=False)
+
+    params = TabularParams(
+        csv_name=weather_csv,
+        feature_names_list=["Temperature"],
+        fire_weather_zone_id_col="WeatherZone",
+        hex_id_col="hex_id",
+        fire_weather_zone_selection_approach="mode",
+        num_samples_per_patch=4,
+    )
+    source = TabularSource(root_dir=tmpdir, params=params, modelling_approach="1")
+
+    assert set(source.lut) == {(1, 100), (2, 100)}
+    np.testing.assert_allclose(sorted(source.lut[(1, 100)].flatten()), [1.0, 3.0])
+    np.testing.assert_allclose(sorted(source.lut[(2, 100)].flatten()), [1000.0, 3000.0])
+
+    # A patch belonging to hex 1 must only ever draw samples from hex 1's rows for zone 100, never
+    # rows from hex 2 (which could belong to a different train/val/test split).
+    sample_hex1 = source.get_sample({"file_path": os.path.join(tmpdir, "sample_0.npy"), "hex_id": 1})
+    assert set(np.unique(sample_hex1)) <= {1.0, 3.0}
+
+    sample_hex2 = source.get_sample({"file_path": os.path.join(tmpdir, "sample_0.npy"), "hex_id": 2})
+    assert set(np.unique(sample_hex2)) <= {1000.0, 3000.0}
+
+
+def test_tabular_source_hex_id_col_requires_hex_id_in_patch_info(temp_data_dir):
+    tmpdir, _, _, _, _, _, _, _ = temp_data_dir
+
+    weather_csv = "weather_hex_zone_missing.csv"
+    pd.DataFrame({"hex_id": [1], "WeatherZone": [100], "Temperature": [1.0]}).to_csv(os.path.join(tmpdir, weather_csv), index=False)
+
+    params = TabularParams(
+        csv_name=weather_csv,
+        feature_names_list=["Temperature"],
+        fire_weather_zone_id_col="WeatherZone",
+        hex_id_col="hex_id",
+        num_samples_per_patch=1,
+    )
+    source = TabularSource(root_dir=tmpdir, params=params, modelling_approach="1")
+
+    with pytest.raises(KeyError):
+        source.get_sample({"file_path": os.path.join(tmpdir, "sample_0.npy")})
+
+
 def test_grid_source_bp_nodata_as_zero_extends_bp_mask(temp_data_dir, monkeypatch):
     tmpdir, *_ = temp_data_dir
     monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation_cached", lambda *_args, **_kwargs: (1.0, 0.0))
@@ -311,7 +368,61 @@ def test_spatialized_tabular_lut_includes_all_zones(temp_data_dir):
     source = SpatializedTabularSource(root_dir=tmpdir, params=params, modelling_approach="1")
 
     # Every zone with weather rows enters the LUT, including zones absent from the training patches.
-    assert set(source.lut) == {100, 200}
+    # hex_id_col is not set here, so keys are (sentinel, zone) tuples.
+    assert set(source.lut) == {(_NO_HEX_ID, 100), (_NO_HEX_ID, 200)}
+
+
+def test_spatialized_tabular_hex_id_col_isolates_hexels(temp_data_dir):
+    """When hex_id_col is set, a shared zone must not pool weather rows across hexels."""
+    tmpdir, _, _, _, _, _, _, _ = temp_data_dir
+
+    weather_csv = "weather_hex_zone.csv"
+    pd.DataFrame(
+        {
+            "hex_id": [1, 1, 2, 2],
+            "WeatherZone": [100, 100, 100, 100],  # zone 100 spans hex 1 and hex 2
+            "Temperature": [1.0, 3.0, 1000.0, 3000.0],
+        }
+    ).to_csv(os.path.join(tmpdir, weather_csv), index=False)
+
+    params = SpatializedTabularParams(
+        csv_name=weather_csv,
+        feature_names_list=["Temperature"],
+        fire_weather_zone_id_col="WeatherZone",
+        hex_id_col="hex_id",
+        missing_value_strategy="zero",
+    )
+    source = SpatializedTabularSource(root_dir=tmpdir, params=params, modelling_approach="1")
+
+    assert set(source.lut) == {(1, 100), (2, 100)}
+    assert source.lut[(1, 100)] == pytest.approx(np.float32(2.0))
+    assert source.lut[(2, 100)] == pytest.approx(np.float32(2000.0))
+
+    # A patch belonging to hex 1 must only ever see hex 1's aggregated value for zone 100, never a
+    # value polluted by hex 2's rows (which could belong to a different train/val/test split).
+    sample_hex1 = source.get_sample({"file_path": os.path.join(tmpdir, "sample_0.npy"), "hex_id": 1})
+    assert sample_hex1[0, 0, 0].item() == pytest.approx(2.0)
+
+    sample_hex2 = source.get_sample({"file_path": os.path.join(tmpdir, "sample_0.npy"), "hex_id": 2})
+    assert sample_hex2[0, 0, 0].item() == pytest.approx(2000.0)
+
+
+def test_spatialized_tabular_hex_id_col_requires_hex_id_in_patch_info(temp_data_dir):
+    tmpdir, _, _, _, _, _, _, _ = temp_data_dir
+
+    weather_csv = "weather_hex_zone_missing.csv"
+    pd.DataFrame({"hex_id": [1], "WeatherZone": [100], "Temperature": [1.0]}).to_csv(os.path.join(tmpdir, weather_csv), index=False)
+
+    params = SpatializedTabularParams(
+        csv_name=weather_csv,
+        feature_names_list=["Temperature"],
+        fire_weather_zone_id_col="WeatherZone",
+        hex_id_col="hex_id",
+    )
+    source = SpatializedTabularSource(root_dir=tmpdir, params=params, modelling_approach="1")
+
+    with pytest.raises(KeyError):
+        source.get_sample({"file_path": os.path.join(tmpdir, "sample_0.npy")})
 
 
 def test_weather_preprocessing_scalers_fit_train_rows_only():
@@ -811,8 +922,9 @@ def test_tabular_weighted_sampling(temp_data_dir):
         assert sample.shape == (2, len(fire_size_feats))
 
         # Compute expected raw weights: for each zone, weight per candidate = count_in_patch / len(zone_cands)
-        lut100_len = len(fire_size_source.lut[100])
-        lut200_len = len(fire_size_source.lut[200])
+        # hex_id_col is not set here, so keys are (sentinel, zone) tuples.
+        lut100_len = len(fire_size_source.lut[(_TABULAR_NO_HEX_ID, 100)])
+        lut200_len = len(fire_size_source.lut[(_TABULAR_NO_HEX_ID, 200)])
         raw_weights = np.concatenate([np.full(lut100_len, 4 / lut100_len), np.full(lut200_len, 1 / lut200_len)])
         expected_p = raw_weights / raw_weights.sum()
 
