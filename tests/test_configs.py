@@ -49,6 +49,9 @@ def test_common_input_pipeline_configs_share_unified_input_pipeline():
         # Spatial-only model
         assert config.model.input_branches == ["spatial"]
 
+        # Dataset is the leakage-fixed, aggregated-ignition data_samples_v4.
+        assert config.data.root_dir.endswith("data_samples_v4")
+
         # Grid: aggregated 2-channel ignition + terrain derivatives.
         assert isinstance(sources["grid"], GridParams)
         assert sources["grid"].feature_names_list[:2] == ["ignition_grid_human", "ignition_grid_lightning"]
