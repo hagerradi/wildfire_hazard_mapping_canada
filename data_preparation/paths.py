@@ -83,25 +83,19 @@ class Paths:
         return self.tabular_dir / f"hex{hex_id}_FireZones.csv"
 
     def output_burn_prob(self, scenario_name: str | None = None) -> Path:
-        output_dir = self.base_dir / "results" / "burnP3Plus_OutputBurnProbability"
-
         if scenario_name is not None:
-            output_dir /= scenario_name
-
-        return output_dir / "burnProbability-sn2.tif"
+            return self.base_dir / "results" / scenario_name / f"burnP3Plus_OutputBurnProbability_{scenario_name}_All.tif"
+        # national study data
+        return self.base_dir / "results" / "burnP3Plus_OutputBurnProbability" / "burnProbability-sn2.tif"
 
     def output_fire_intensity(self, scenario_name: str | None = None) -> Path:
-        output_dir = self.base_dir / "results" / "burnP3Plus_OutputFireIntensitySummaryMap"
-
         if scenario_name is not None:
-            output_dir /= scenario_name
-
-        return output_dir / "fbpSummary-FireIntensity-Average.tif"
+            return self.base_dir / "results" / scenario_name / f"burnP3Plus_OutputFireIntensitySummaryMap_{scenario_name}_Average.tif"
+        # national study data
+        return self.base_dir / "results" / "burnP3Plus_OutputFireIntensitySummaryMap" / "fbpSummary-FireIntensity-Average.tif"
 
     def output_ros(self, scenario_name: str | None = None) -> Path:
-        output_dir = self.base_dir / "results" / "burnP3Plus_OutputRateOfSpreadSummaryMap"
-
         if scenario_name is not None:
-            output_dir /= scenario_name
-
-        return output_dir / "fbpSummary-RateOfSpread-Average.tif"
+            return self.base_dir / "results" / scenario_name / f"burnP3Plus_OutputRateOfSpreadSummaryMap_{scenario_name}_Average.tif"
+        # national study data
+        return self.base_dir / "results" / "burnP3Plus_OutputRateOfSpreadSummaryMap" / "fbpSummary-RateOfSpread-Average.tif"

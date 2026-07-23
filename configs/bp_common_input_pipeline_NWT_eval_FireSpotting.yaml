@@ -71,7 +71,7 @@ data:
         transforms_list: []
         augmentation_prob: 0.0
         terrain_derivatives: ["slope", "aspect_sin", "aspect_cos"]
-        bp_nodata_as_zero: true
+        bp_nodata_as_zero: false
 
     - name: "spatialized_weather"
       params:
@@ -91,21 +91,7 @@ data:
         fire_weather_zone_id_col: "WeatherZone"
         fire_weather_zone_selection_approach: "mode"
         aggregation: "mean"
-        zone_channel_key: "firezones_grid"
-        missing_value_strategy: "global_mean"
-        include_missing_firezone_mask: false
-        shuffle_lut: false
-        shuffle_seed: 42
-        transforms_list: []
-        augmentation_prob: 0.0
-
-    - name: "spatialized_fire_size"
-      params:
-        csv_name: "ObservedFiresizedistribution_FortSimpson_processed.csv"
-        feature_names_list: ["NORM_LOG_SIZE_HA"]
-        fire_weather_zone_id_col: "GRIDCODE"
-        fire_weather_zone_selection_approach: "mode"
-        aggregation: "mean"
+        hex_id_col: "hex_id"
         zone_channel_key: "firezones_grid"
         missing_value_strategy: "global_mean"
         include_missing_firezone_mask: false
@@ -116,7 +102,7 @@ data:
 
 logger:
   enabled: true
-  project_name: "nrcan05-wildfireriskmapping"
+  project_name: "nrcan-05-wildfires-nwt-data"
   workspace: "mila-amlrt"
   experiment_name: "bp_NWT_data_scenario_baseline_FireSpotting"
   tags:
