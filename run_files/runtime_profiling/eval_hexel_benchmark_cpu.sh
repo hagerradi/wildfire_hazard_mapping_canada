@@ -25,7 +25,7 @@ set -euo pipefail
 # already implies --metrics_only --skip_hexel_plots --no_save_predictions.
 CONFIG_FILE=${1:-configs/bp_common_input_pipeline.yaml}
 N_REPS=${N_REPS:-5}
-EVAL_ARGS=${EVAL_ARGS:-"--fast_eval"}
+EVAL_ARGS=${EVAL_ARGS:-"--tif_only"}
 
 # NOTE: hardcoded rather than "cd ${SLURM_SUBMIT_DIR:-$(pwd)}" -- jobs are
 # submitted from run_files/, and SLURM_SUBMIT_DIR resolves to wherever

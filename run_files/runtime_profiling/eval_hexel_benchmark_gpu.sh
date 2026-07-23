@@ -22,7 +22,7 @@ set -euo pipefail
 # so EVAL_ARGS defaults to just that single flag now.
 CONFIG_FILE=${1:-configs/bp_common_input_pipeline.yaml}
 N_REPS=${N_REPS:-5}
-EVAL_ARGS=${EVAL_ARGS:-"--fast_eval"}
+EVAL_ARGS=${EVAL_ARGS:-"--tif_only"}
 
 # NOTE: hardcoded rather than "cd ${SLURM_SUBMIT_DIR:-$(pwd)}" -- jobs are
 # submitted from run_files/, and SLURM_SUBMIT_DIR resolves to wherever
