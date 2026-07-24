@@ -530,3 +530,77 @@ class WeightedLoss(nn.Module):
             total_loss = total_loss + (w[i].to(dtype=loss_val.dtype) * loss_val)
 
         return total_loss, loss_parts
+
+
+class MultiTaskLoss(nn.Module):
+    """Route ordered output channels through target-specific loss modules."""
+
+    _task_weights: torch.Tensor
+
+    def __init__(
+        self,
+        target_names: list[str],
+        losses: dict[str, nn.Module],
+        task_weights: dict[str, float],
+        eps: float = 1e-8,
+    ):
+        super().__init__()
+        if not target_names or len(target_names) != len(set(target_names)):
+            raise ValueError(f"target_names must be non-empty and unique, got {target_names}.")
+        if set(losses) != set(target_names):
+            raise ValueError(f"loss keys must match target_names, got losses={sorted(losses)} and targets={sorted(target_names)}.")
+        if set(task_weights) != set(target_names):
+            raise ValueError(
+                f"task_weights keys must match target_names, got weights={sorted(task_weights)} and targets={sorted(target_names)}."
+            )
+
+        weights = torch.tensor([task_weights[name] for name in target_names], dtype=torch.float32)
+        if not torch.isfinite(weights).all() or (weights <= 0).any():
+            raise ValueError(f"task_weights must be positive and finite, got {task_weights}.")
+
+        self.target_names = tuple(target_names)
+        self.losses = nn.ModuleDict({name: losses[name] for name in target_names})
+        self.register_buffer("_task_weights", weights / weights.sum().clamp_min(eps))
+        self.requires_patch_metadata = any(getattr(loss, "requires_patch_metadata", False) for loss in self.losses.values())
+
+    def forward(
+        self,
+        logits: torch.Tensor,
+        targets: torch.Tensor,
+        mask: torch.Tensor | None = None,
+        patch_metadata: dict[str, torch.Tensor] | None = None,
+    ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+        expected_channels = len(self.target_names)
+        if logits.shape != targets.shape or logits.ndim < 2 or logits.shape[1] != expected_channels:
+            raise ValueError(
+                f"Expected logits and targets with matching shape and {expected_channels} channels, "
+                f"got logits={tuple(logits.shape)}, targets={tuple(targets.shape)}."
+            )
+        if mask is not None and mask.shape != targets.shape:
+            raise ValueError(f"Expected mask shape {tuple(targets.shape)}, got {tuple(mask.shape)}.")
+
+        total_loss = logits.new_tensor(0.0)
+        loss_parts: dict[str, torch.Tensor] = {}
+        for channel_idx, target_name in enumerate(self.target_names):
+            target_loss = cast(nn.Module, self.losses[target_name])
+            channel = slice(channel_idx, channel_idx + 1)
+            channel_mask = None if mask is None else mask[:, channel]
+            if getattr(target_loss, "requires_patch_metadata", False):
+                loss_out = target_loss(
+                    logits[:, channel],
+                    targets[:, channel],
+                    channel_mask,
+                    patch_metadata=patch_metadata,
+                )
+            else:
+                loss_out = target_loss(logits[:, channel], targets[:, channel], channel_mask)
+
+            if isinstance(loss_out, tuple):
+                task_loss, task_parts = loss_out
+                loss_parts.update({f"{target_name}/{name}": value for name, value in task_parts.items()})
+            else:
+                task_loss = cast(torch.Tensor, loss_out)
+            loss_parts[f"{target_name}/total"] = task_loss
+            total_loss = total_loss + self._task_weights[channel_idx].to(dtype=task_loss.dtype) * task_loss
+
+        return total_loss, loss_parts

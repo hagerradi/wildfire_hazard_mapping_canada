@@ -77,7 +77,7 @@ def reconstruct_denormalized_hexels(
         hexel_indices = test_df[test_df["hex_id"] == raw_hex_id].index.tolist()
         hex_test_predictions = test_predictions[hexel_indices]
 
-        for settings in settings_list:
+        for target_index, settings in enumerate(settings_list):
             print(
                 f"[Postprocess] Reconstructing {settings.target.name.upper()} hex {hex_id} from {len(one_hexel_df)} {scope} patches...",
                 flush=True,
@@ -85,6 +85,7 @@ def reconstruct_denormalized_hexels(
             target_predictions = post_utils.select_prediction_target_channel(
                 predictions=hex_test_predictions,
                 target_name=settings.target.name,
+                target_index=target_index,
             )
             pred_grid, profile = post_utils.get_predicted_hexel(
                 base_dir=config.data.root_dir,

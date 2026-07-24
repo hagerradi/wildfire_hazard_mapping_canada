@@ -362,7 +362,7 @@ def get_predicted_hexel(
 def get_config_target_specs(config: Config) -> list[TargetSpec]:
     for source in config.data.input_sources:
         if source.name == "grid" and isinstance(source.params, GridParams):
-            return get_target_specs(source.params.target_name)
+            return get_target_specs([target.name for target in source.params.resolved_targets()])
     return get_target_specs("bp")
 
 
@@ -447,13 +447,14 @@ def get_prediction_mask_channel_indices(
 def get_target_out_norm(grid_params: GridParams | None, target: TargetSpec, fallback_out_norm: str) -> str:
     if grid_params is None:
         return fallback_out_norm
-    return grid_params.out_norm
+    return grid_params.target_config(target.name).out_norm
 
 
 def get_target_log_stats(grid_params: GridParams | None, target: TargetSpec) -> tuple[float | None, float | None]:
     if grid_params is None:
         return None, None
-    return grid_params.target_log_mean, grid_params.target_log_std
+    target_config = grid_params.target_config(target.name)
+    return target_config.log_mean, target_config.log_std
 
 
 def get_target_postprocessing_settings(config: Config, out_norm: str) -> list[TargetPostprocessingSettings]:
@@ -507,15 +508,15 @@ def get_target_postprocessing_settings(config: Config, out_norm: str) -> list[Ta
 def select_prediction_target_channel(
     predictions: np.ndarray,
     target_name: str,
+    target_index: int = 0,
 ) -> np.ndarray:
     if predictions.ndim == 3:
+        if target_index != 0:
+            raise ValueError(f"Cannot select target index {target_index} from channel-free predictions with shape {predictions.shape}.")
         return predictions
-    if predictions.ndim == 4 and predictions.shape[1] == 1:
-        return predictions[:, 0]
-    raise ValueError(
-        f"Expected single-target predictions with shape (N,H,W) or (N,1,H,W), got {predictions.shape} "
-        f"while selecting target={target_name!r}."
-    )
+    if predictions.ndim == 4 and 0 <= target_index < predictions.shape[1]:
+        return predictions[:, target_index]
+    raise ValueError(f"Cannot select target={target_name!r} at index {target_index} from predictions with shape {predictions.shape}.")
 
 
 def calculate_hexel_metrics_pytorch(
@@ -611,6 +612,7 @@ def evaluate_and_visualize_hexels(
 
     all_hexel_metrics: list[tuple[str, str | None, str | None, dict[str, float]]] = []
     current_hex_id: str | None = None
+    multi_target = len(get_config_target_specs(config)) > 1
 
     for stitched_hexel in reconstruct_denormalized_hexels(
         test_predictions=test_predictions,
@@ -628,7 +630,7 @@ def evaluate_and_visualize_hexels(
             print(f"======Working with hex{current_hex_id}========")
 
         target = stitched_hexel.target
-        target_name_for_artifacts = None
+        target_name_for_artifacts = target.name if multi_target else None
         grid_gt = stitched_hexel.gt_grid
         reconstructed_hexel_denorm = stitched_hexel.pred_grid
         actual_support_mask = stitched_hexel.actual_support_mask
@@ -704,7 +706,8 @@ def evaluate_and_visualize_hexels(
                 gt_grid=grid_gt, pred_grid=reconstructed_hexel_denorm, device=device, metric_functions=metric_functions
             )
             metric_scope: str | None = None if scope == "actual" else scope
-            all_hexel_metrics.append((stitched_hexel.hex_id, None, metric_scope, hex_metrics))
+            metric_target_name = target.name if multi_target else None
+            all_hexel_metrics.append((stitched_hexel.hex_id, metric_target_name, metric_scope, hex_metrics))
 
             if scope == "buffer" and actual_support_mask is not None:
                 actual_gt, actual_pred = mask_grids_by_support(
@@ -729,8 +732,8 @@ def evaluate_and_visualize_hexels(
                     device=device,
                     metric_functions=metric_functions,
                 )
-                all_hexel_metrics.append((stitched_hexel.hex_id, None, "actual", actual_metrics))
-                all_hexel_metrics.append((stitched_hexel.hex_id, None, "buffer_only", buffer_only_metrics))
+                all_hexel_metrics.append((stitched_hexel.hex_id, metric_target_name, "actual", actual_metrics))
+                all_hexel_metrics.append((stitched_hexel.hex_id, metric_target_name, "buffer_only", buffer_only_metrics))
 
             percentiles_to_plot = [
                 fn.keywords["percentile"]

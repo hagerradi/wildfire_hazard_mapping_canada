@@ -14,10 +14,10 @@ from tqdm import tqdm
 from data_preparation.spatial.utils import NORM_STATS_JSON, get_output_log_stats_cached, get_range_output_cached, read_split_hex_ids
 from src.config import Config, GridParams
 from src.datasets.fuel_utils import FUEL_CURVE_ENCODINGS
-from src.datasets.targets import get_target_specs
+from src.datasets.targets import activate_target_predictions, get_target_specs
 from src.datasets.utils import apply_bp_nodata_zero_range, get_fuel_curve_normalization_stats
 from src.logger import CometLogger
-from src.losses import WeightedLoss
+from src.losses import MultiTaskLoss, WeightedLoss
 from src.models.factory import build_model, resolve_model_architecture
 from src.models.utils import get_nbr_model_parameters
 from src.schedulers import build_lr_scheduler
@@ -75,7 +75,8 @@ class Trainer:
         """
 
         self._grid_params = self._get_grid_params()
-        self._target_specs = get_target_specs(self._grid_params.target_name) if self._grid_params is not None else get_target_specs("bp")
+        target_names = [target.name for target in self._grid_params.resolved_targets()] if self._grid_params is not None else ["bp"]
+        self._target_specs = get_target_specs(target_names)
         self._target_names = [target.name for target in self._target_specs]
         if self.config.model.num_classes != len(self._target_specs):
             raise ValueError(
@@ -95,6 +96,7 @@ class Trainer:
             spatial_input_channels=self.spatial_input_channels,
             auxiliary_input_dims=self.auxiliary_input_dims,
             **self._get_fuel_curve_stats(),
+            target_names=self._target_names,
         )
 
         self.model.to(self.device)
@@ -165,15 +167,44 @@ class Trainer:
         return {"fuel_curve_mean": None, "fuel_curve_std": None}
 
     def _build_loss(self) -> torch.nn.Module:
-        loss_config = self.config.optimizer.loss
-        huber_beta = self.config.optimizer.huber_beta
+        if self.config.optimizer.target_losses:
+            configured_targets = set(self.config.optimizer.target_losses)
+            expected_targets = set(self._target_names)
+            if configured_targets != expected_targets:
+                raise ValueError(
+                    f"optimizer.target_losses must match configured targets, got {sorted(configured_targets)} "
+                    f"and expected {sorted(expected_targets)}."
+                )
+            task_losses = {}
+            task_weights = {}
+            for target_name in self._target_names:
+                target_config = self.config.optimizer.target_losses[target_name]
+                task_losses[target_name] = self._build_loss_group(
+                    target_config.loss,
+                    target_config.loss_weights,
+                    target_config.huber_beta,
+                )
+                task_weights[target_name] = target_config.task_weight
+            return MultiTaskLoss(target_names=self._target_names, losses=task_losses, task_weights=task_weights)
+
+        if self.config.optimizer.loss is None:
+            raise RuntimeError("Legacy loss configuration is missing.")
+        return self._build_loss_group(
+            self.config.optimizer.loss,
+            self.config.optimizer.loss_weights,
+            self.config.optimizer.huber_beta,
+        )
+
+    @staticmethod
+    def _build_loss_group(
+        loss_config: str | list[str],
+        weights: dict[str, float],
+        huber_beta: float,
+    ) -> torch.nn.Module:
         loss_kwargs = {"huber_beta": huber_beta}
-
-        if isinstance(loss_config, str):  # loss is a string
+        if isinstance(loss_config, str):
             return build_single_loss(loss_config, **loss_kwargs)
-
         loss_names = loss_config
-        weights = self.config.optimizer.loss_weights
         losses = {n: build_single_loss(n, **loss_kwargs) for n in loss_names}
         return WeightedLoss(losses=losses, weights=weights, normalize_weights=True)
 
@@ -186,12 +217,13 @@ class Trainer:
     def _target_out_norm(self, target_name: str) -> str:
         if self._grid_params is None:
             return "none"
-        return self._grid_params.out_norm
+        return self._grid_params.target_config(target_name).out_norm
 
     def _target_log_stats(self, target_name: str) -> tuple[float | None, float | None]:
         if self._grid_params is None:
             return None, None
-        return self._grid_params.target_log_mean, self._grid_params.target_log_std
+        target_config = self._grid_params.target_config(target_name)
+        return target_config.log_mean, target_config.log_std
 
     def _configure_metric_target_transform(self) -> None:
         self._metric_out_norms: list[str] = []
@@ -288,17 +320,53 @@ class Trainer:
         return self._inverse_model_target_for_metrics(predictions), self._inverse_model_target_for_metrics(targets)
 
     def _activate_predictions(self, predictions: torch.Tensor) -> torch.Tensor:
-        activated_channels = []
-        for idx, target in enumerate(self._target_specs):
-            channel = predictions[:, idx : idx + 1]
-            activated_channels.append(torch.sigmoid(channel) if target.probability_scale else channel)
-        return torch.cat(activated_channels, dim=1)
+        return activate_target_predictions(predictions, self._target_specs)
 
     def _metric_result_keys(self) -> list[str]:
-        return list(self.metric_functions)
+        if len(self._target_specs) == 1:
+            return list(self.metric_functions)
+        keys = [f"{target.name}/{metric_name}" for target in self._target_specs for metric_name in self.metric_functions]
+        if {"bp", "fi"} <= set(self._target_names):
+            keys.append("hazard/ccc")
+        return keys
 
     def _compute_metric_values(self, predictions: torch.Tensor, targets: torch.Tensor, masks: torch.Tensor) -> dict[str, torch.Tensor]:
-        return {name: metric_fn(predictions, targets, masks) for name, metric_fn in self.metric_functions.items()}
+        if len(self._target_specs) == 1:
+            return {name: metric_fn(predictions, targets, masks) for name, metric_fn in self.metric_functions.items()}
+
+        metric_values = {}
+        for channel_idx, target in enumerate(self._target_specs):
+            channel = slice(channel_idx, channel_idx + 1)
+            for metric_name, metric_fn in self.metric_functions.items():
+                metric_values[f"{target.name}/{metric_name}"] = metric_fn(
+                    predictions[:, channel],
+                    targets[:, channel],
+                    masks[:, channel],
+                )
+
+        if {"bp", "fi"} <= set(self._target_names):
+            bp_idx = self._target_names.index("bp")
+            fi_idx = self._target_names.index("fi")
+            bp_predictions = predictions[:, bp_idx : bp_idx + 1]
+            bp_targets = targets[:, bp_idx : bp_idx + 1]
+            fi_predictions = predictions[:, fi_idx : fi_idx + 1]
+            fi_targets = targets[:, fi_idx : fi_idx + 1]
+            bp_mask = masks[:, bp_idx : bp_idx + 1].bool()
+            fi_mask = masks[:, fi_idx : fi_idx + 1].bool()
+            if self.config.evaluation.hazard_fi_cap is not None:
+                fi_cap = self.config.evaluation.hazard_fi_cap
+                fi_predictions = fi_predictions.clamp_max(fi_cap)
+                fi_targets = fi_targets.clamp_max(fi_cap)
+            no_burn = bp_targets <= 0.0
+            hazard_mask = bp_mask & (fi_mask | no_burn)
+            hazard_targets = bp_targets * torch.where(fi_mask, fi_targets, torch.zeros_like(fi_targets))
+            metric_values["hazard/ccc"] = AVAILABLE_METRICS["ccc"](
+                bp_predictions * fi_predictions,
+                hazard_targets,
+                hazard_mask,
+            )
+
+        return metric_values
 
     def _validate_and_load_metrics(self) -> None:
         """Helper to validate and load metrics to be computed."""
@@ -374,9 +442,7 @@ class Trainer:
         running_loss = 0.0
         running_batch_count = 0
         running_metrics = {name: 0.0 for name in self._metric_result_keys()}
-        running_loss_parts = None
-        if isinstance(self.loss_fn, WeightedLoss):
-            running_loss_parts = {name: 0.0 for name in self.loss_fn.losses}
+        running_loss_parts: dict[str, float] = {}
 
         training_loop = tqdm(loader, desc="Training", leave=True)
 
@@ -419,15 +485,14 @@ class Trainer:
                             step=self.global_step,
                         )
                     # accumulate epoch averages
-                    if running_loss_parts is not None:
-                        for k, v in loss_parts.items():
-                            running_loss_parts[k] += v.item() * batch_size
+                    for k, v in loss_parts.items():
+                        running_loss_parts[k] = running_loss_parts.get(k, 0.0) + v.item() * batch_size
 
             self.global_step += 1
 
         avg_loss = running_loss / max(1, running_batch_count)
         results = {"loss": avg_loss}
-        if running_loss_parts is not None:
+        if running_loss_parts:
             for k, total_v in running_loss_parts.items():
                 results[f"loss_{k}"] = total_v / max(1, running_batch_count)
 
@@ -443,9 +508,7 @@ class Trainer:
         running_loss = 0.0
         running_batch_count = 0
         running_metrics = {name: 0.0 for name in self._metric_result_keys()}
-        running_loss_parts = None
-        if isinstance(self.loss_fn, WeightedLoss):
-            running_loss_parts = {name: 0.0 for name in self.loss_fn.losses}
+        running_loss_parts: dict[str, float] = {}
 
         preds_list = []
         validation_loop = tqdm(loader, desc="Evaluating", leave=True)
@@ -466,13 +529,13 @@ class Trainer:
                 for name, value in self._compute_metric_values(metric_predictions, metric_targets, masks).items():
                     running_metrics[name] += value.item() * batch_size
 
-                if loss_parts is not None and running_loss_parts is not None:
+                if loss_parts is not None:
                     for k, v in loss_parts.items():
-                        running_loss_parts[k] += v.item() * batch_size
+                        running_loss_parts[k] = running_loss_parts.get(k, 0.0) + v.item() * batch_size
 
         avg_loss = running_loss / max(1, running_batch_count)
         results = {"loss": avg_loss}
-        if running_loss_parts is not None:
+        if running_loss_parts:
             for k, total_v in running_loss_parts.items():
                 results[f"loss_{k}"] = total_v / max(1, running_batch_count)
 
