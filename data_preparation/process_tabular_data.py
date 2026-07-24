@@ -18,33 +18,12 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 
-_WEATHER_COLUMN_ALIASES: dict[str, str] = {
-    "FRU": "WeatherZone",
-    "temp": "Temperature",
-    "rh": "RelativeHumidity",
-    "ws": "WindSpeed",
-    "wd": "WindDirection",
-    "prec": "Precipitation",
-    "ffmc": "FineFuelMoistureCode",
-    "dmc": "DuffMoistureCode",
-    "dc": "DroughtCode",
-    "isi": "InitialSpreadIndex",
-    "bui": "BuildupIndex",
-    "fwi": "FireWeatherIndex",
-}
-
-
 def _hex_id_from_weather_path(path: Path) -> str:
     return path.parent.parent.name.removeprefix("hex").zfill(2)
 
 
 def _load_raw_weather_with_hex_id(path: Path) -> pd.DataFrame:
     df = load_weather_list(str(path), normalize_weatherlist=False)
-    # Rename old-style column names to expected names where the expected name is absent.
-    rename_map = {src: dst for src, dst in _WEATHER_COLUMN_ALIASES.items() if src in df.columns and dst not in df.columns}
-    if rename_map:
-        logger.info("Renaming weather columns in %s: %s", path.name, rename_map)
-        df = df.rename(columns=rename_map)
     df.insert(0, "hex_id", int(_hex_id_from_weather_path(path)))
     return df
 

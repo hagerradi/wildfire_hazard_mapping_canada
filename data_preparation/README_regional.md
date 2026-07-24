@@ -56,6 +56,6 @@ Or do it locally and copy to the cluster (easier R support and we don't need acc
 
 This saves csv file in the root_dir called `fbp_curves_national_fuel.csv`. You can also copy it directly from the national data.
 
-Step 5 (optional): Precompute target log-stats for `log_standard` normalization (fire intensity / ROS)
+Step 5:
 
 Copy `dataset_norm_stats.json` into the `save_dir` based on national data.
