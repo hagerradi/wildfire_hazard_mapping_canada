@@ -237,7 +237,7 @@ def run_single_hexel_pipeline(
     scope = normalize_mask_scope(mask_scope)
     data_scope = prepared_mask_scope(scope)
     artifact_save_dir = Path(get_mask_scope_save_dir(str(save_dir), scope))
-    checkpoint = torch.load(checkpoint_path, map_location="cpu")
+    checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
     data_config = checkpoint["config"]["data"]  # We use this to build dataset class
     data_prep_config = checkpoint["config"]["data_prep"]  # We use this to prepare data
 
@@ -350,6 +350,7 @@ def run_single_hexel_pipeline(
         profile=gt_elevation_grid_profile,
         mask_scope=scope,
         hex_id=hex_id,
+        scenario_name=data_config.get("scenario_name"),
     )
     save_predicted_hexels(
         predicted_hexel=reconstructed_hexel_denorm,

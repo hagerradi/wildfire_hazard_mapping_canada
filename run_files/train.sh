@@ -130,7 +130,7 @@ for checkpoint_name in ("best.pth", "last.pth"):
     checkpoint_path = save_dir / checkpoint_name
     if not checkpoint_path.exists():
         continue
-    checkpoint = torch.load(checkpoint_path, map_location="cpu")
+    checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
     checkpoint["config"]["data"]["root_dir"] = original_root
     torch.save(checkpoint, checkpoint_path)
     print(f"Updated {checkpoint_path}")

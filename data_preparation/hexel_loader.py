@@ -39,9 +39,10 @@ def load_spatial_features_per_hexel(
     hex_id: str,
     feature_channel_map_path: str,
     modelling_approach: int = 1,
-    mask_scope: str = "actual",
+    mask_scope: str | None = None,
     ignition_weighting: str = "distribution",
     fuel_representation: str = "raw",
+    scenario_name: str | None = None,
 ) -> tuple[np.ndarray | None, np.ndarray | None, dict[int, tuple[int, int]] | None]:
     """
     Load all data (features and output) per hexel
@@ -106,20 +107,44 @@ def load_spatial_features_per_hexel(
         ignition_mask = np.any(raw_ign_mask, axis=-1) if raw_ign_mask.ndim == 3 else raw_ign_mask
         input_mask = fuel_mask | elevation_mask | ignition_mask | firezones_mask
 
+        # Check 4: all input grids must have the same spatial shape after reprojection.
+        grids_by_name = {"fuel": fuel_grid, "elevation": elevation_grid, "firezones": firezones_grid}
+        shapes = {name: g.shape[:2] for name, g in grids_by_name.items()}
+        if len(set(shapes.values())) > 1:
+            raise ValueError(f"Grid shape mismatch after reprojection for hex {hex_id}: {shapes}")
+
         stacked_ma = np.ma.concatenate(features_list, axis=-1)
         stacked = stacked_ma.filled(NODATA).astype(np.float32)
         stacked[input_mask, :] = NODATA
+
+        # Check 5: warn if the vast majority of pixels are masked (misaligned or empty data).
+        masked_frac = input_mask.mean()
+        if masked_frac > 0.9:
+            import warnings
+
+            warnings.warn(
+                f"Over 90% of pixels are masked for hex {hex_id} (masked_frac={masked_frac:.2f}) "
+                "— check grid alignment or nodata coverage.",
+                UserWarning,
+                stacklevel=2,
+            )
+
         return stacked, input_mask
 
     # identify all seasons and causes first
-    scope = normalize_mask_scope(mask_scope)
+    scope = normalize_mask_scope(mask_scope) if mask_scope is not None else None
     all_paths = Paths(hex_id=hex_id, root_dir=root_dir)
-    scope_mask_path = all_paths.mask_grid(hex_id=hex_id, mask_scope=scope)
+    scope_mask_path = all_paths.mask_grid(hex_id=hex_id, mask_scope=scope) if scope is not None else None
 
     elevation_grid, reference_profile = load_spatial_raster(path=all_paths.elevation_grid(hex_id=hex_id), mask_path=scope_mask_path)
     # load all common grids on the elevation reference grid
     fuel_grid = load_fuel_grid(
-        root_dir=root_dir, hex_id=hex_id, reference_profile=reference_profile, fuel_representation=fuel_representation, mask_scope=scope
+        root_dir=root_dir,
+        hex_id=hex_id,
+        reference_profile=reference_profile,
+        fuel_representation=fuel_representation,
+        mask_scope=scope,
+        scenario_name=scenario_name,
     )
 
     firezones_grid, _ = load_spatial_raster(
@@ -142,17 +167,17 @@ def load_spatial_features_per_hexel(
             ignition_grid = load_ignition_grid(root_dir=root_dir, hex_id=hex_id, reference_profile=reference_profile, mask_scope=scope)
 
         bp_out_grid, _ = load_spatial_raster(
-            all_paths.output_burn_prob(),
+            all_paths.output_burn_prob(scenario_name=scenario_name),
             mask_path=scope_mask_path,
             reference_profile=reference_profile,
         )
         fi_out_grid, _ = load_spatial_raster(
-            all_paths.output_fire_intensity(),
+            all_paths.output_fire_intensity(scenario_name=scenario_name),
             mask_path=scope_mask_path,
             reference_profile=reference_profile,
         )
         ros_out_grid, _ = load_spatial_raster(
-            all_paths.output_ros(),
+            all_paths.output_ros(scenario_name=scenario_name),
             mask_path=scope_mask_path,
             reference_profile=reference_profile,
         )
@@ -164,3 +189,21 @@ def load_spatial_features_per_hexel(
 
     # modelling approach 2
     raise ValueError("Data Season mapping not supported yet!")
+
+
+# if __name__ == "__main__":
+#     root_dir = "../NWT_data/fortsimpson_data_Jun2026"
+#     hex_id="100"
+#     scenario_name="FireSpotting"
+#     arr, mask, _ = load_spatial_features_per_hexel(root_dir=root_dir, hex_id=hex_id, scenario_name=scenario_name,
+#                                      feature_channel_map_path="../burnp3plus/data_samples_v3/feature_channel_map_1.json")
+#     print(arr.shape)
+#     print(mask.shape)
+#     visualize_elevation_grid(mask[0])
+#     # visualize_elevation_grid(arr[0, :, :, 1])
+#     # visualize_elevation_grid(arr[0, :, :, 2])
+#     # visualize_elevation_grid(arr[0, :, :, 3])
+#     # visualize_elevation_grid(arr[0, :, :, 4])
+#     # visualize_elevation_grid(arr[0, :, :, 5])
+#     # visualize_elevation_grid(arr[0, :, :, 6])
+#     # visualize_elevation_grid(arr[0, :, :, 7])

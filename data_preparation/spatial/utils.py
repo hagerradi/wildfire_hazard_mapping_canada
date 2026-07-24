@@ -13,6 +13,8 @@ from rasterio.io import MemoryFile
 from rasterio.mask import mask
 from rasterio.transform import Affine
 from rasterio.warp import calculate_default_transform, reproject
+from rasterio.windows import get_data_window
+from rasterio.windows import transform as window_transform
 
 from data_preparation.paths import Paths
 from data_preparation.utils import find_hex_ids
@@ -85,11 +87,15 @@ def load_raster(path: str) -> np.ma.MaskedArray:
 
 def load_spatial_raster(
     path: Path,
-    reproject_flag: bool = True,
+    reproject_flag: bool = False,
     mask_path: Path | None = None,
     reference_profile: dict[str, Any] | None = None,
+    crop_nodata_border: bool = False,
 ) -> tuple[np.ma.MaskedArray, dict[str, Any]]:
-    """Load one raster band, optionally reproject/clip/crop it, and return updated profile."""
+    """
+    Load one raster band, optionally reproject, clip, and crop its outer
+    NoData border, and return the raster and updated profile.
+    """
     if not os.path.exists(path):
         raise FileNotFoundError(f"File not found: {path}")
 
@@ -113,8 +119,9 @@ def load_spatial_raster(
             dst_height=reference_profile["height"] if reference_profile is not None else None,
         )
         crs = profile["crs"]
+        nodata = profile.get("nodata", nodata)
 
-    if mask_path:
+    if mask_path is not None:
         raster, transform, profile = clip_array_to_mask(
             raster=raster,
             transform=transform,
@@ -122,6 +129,38 @@ def load_spatial_raster(
             mask_path=mask_path,
             crs=crs,
             nodata=nodata,
+        )
+
+        nodata = profile.get("nodata", nodata)
+
+    if crop_nodata_border:
+        raster = np.ma.array(raster, copy=False)
+
+        if np.ma.getmaskarray(raster).all():
+            raise ValueError(f"Cannot crop raster because it contains no valid pixels: {path}")
+
+        # Find the smallest rectangular window containing valid pixels.
+        crop_window = get_data_window(raster)
+
+        if crop_window.width <= 0 or crop_window.height <= 0:
+            raise ValueError(f"Could not determine a valid crop window for raster: {path}")
+
+        row_start = int(crop_window.row_off)
+        row_end = row_start + int(crop_window.height)
+        col_start = int(crop_window.col_off)
+        col_end = col_start + int(crop_window.width)
+
+        raster = raster[row_start:row_end, col_start:col_end]
+
+        transform = window_transform(
+            crop_window,
+            transform,
+        )
+
+        profile.update(
+            height=raster.shape[0],
+            width=raster.shape[1],
+            transform=transform,
         )
 
     return raster, profile
@@ -268,7 +307,7 @@ def reproject_raster(
     if src_nodata is not None:
         dst = np.full((dst_height, dst_width), src_nodata, dtype=src_filled.dtype)
     else:
-        dst = np.empty((dst_height, dst_width), dtype=src_filled.dtype)
+        dst = np.full((dst_height, dst_width), np.nan, dtype=np.float32)
 
     reproject(
         source=src_filled,
@@ -282,7 +321,7 @@ def reproject_raster(
         resampling=resampling,
     )
 
-    dst_masked = np.ma.masked_equal(dst, src_nodata) if src_nodata is not None else np.ma.masked_array(dst)
+    dst_masked = np.ma.masked_equal(dst, src_nodata) if src_nodata is not None and not np.isnan(src_nodata) else np.ma.masked_invalid(dst)
 
     out_profile = profile.copy()
     out_profile.update(
@@ -375,7 +414,12 @@ def get_range_elevation_cached(
     return get_range_elevation(raw_data_dir if raw_data_dir is not None else root_dir, allowed_hex_ids)
 
 
-def get_range_output(root_dir: str, output_type: str, allowed_hex_ids: Collection[int] | None = None) -> tuple[float, float]:
+def get_range_output(
+    root_dir: str,
+    output_type: str,
+    allowed_hex_ids: Collection[int] | None = None,
+    scenario_name: str | None = None,
+) -> tuple[float, float]:
     """
     Get global max and min for one output type across all valid hexels.
     Usage:
@@ -400,7 +444,7 @@ def get_range_output(root_dir: str, output_type: str, allowed_hex_ids: Collectio
 
     for hex_id in all_hex_ids:
         paths = Paths(hex_id=hex_id, root_dir=root_dir)
-        output_path = getattr(paths, path_methods[output_type])()
+        output_path = getattr(paths, path_methods[output_type])(scenario_name=scenario_name)
         output_grid = load_raster(str(output_path))
         output_values = np.ma.masked_invalid(output_grid).compressed()
         if output_values.size == 0:
@@ -423,6 +467,7 @@ def get_output_log_stats_cached(
     output_type: str,
     allowed_hex_ids: Collection[int] | None = None,
     raw_data_dir: str | None = None,
+    scenario_name: str | None = None,
 ) -> tuple[float, float]:
     """
     Return log1p mean/std for a target, reading from a cached JSON file if available.
@@ -431,6 +476,8 @@ def get_output_log_stats_cached(
     The cached JSON (``dataset_norm_stats.json``) is the canonical, train-only artifact
     produced by ``compute_dataset_normalization_stats`` / ``write_dataset_norm_stats``. The fallback scan honours allowed_hex_ids
     (and an explicit raw_data_dir holding the per-hex rasters) so it stays train-only too.
+    ``scenario_name`` is forwarded to the fallback scan for datasets where output rasters
+    live in a scenario subdirectory.
     """
     import json as _json
 
@@ -445,7 +492,7 @@ def get_output_log_stats_cached(
             logger.debug("Log stats for %r loaded from %s: mean=%.4f, std=%.4f", output_type, cache_path, mean, std)
             return float(mean), float(std)
     logger.warning("Log stats for %r not found in cache — scanning raw rasters (allowed_hex_ids=%s).", output_type, allowed_hex_ids)
-    return get_output_log_stats(raw_data_dir or root_dir, output_type, allowed_hex_ids)
+    return get_output_log_stats(raw_data_dir or root_dir, output_type, allowed_hex_ids, scenario_name=scenario_name)
 
 
 def get_range_output_cached(
@@ -453,13 +500,15 @@ def get_range_output_cached(
     output_type: str,
     allowed_hex_ids: Collection[int] | None = None,
     raw_data_dir: str | None = None,
+    scenario_name: str | None = None,
 ) -> tuple[float, float]:
     """Return (max, min) for a target, reading from ``dataset_norm_stats.json`` if available.
 
     Falls back to scanning raw rasters via ``get_range_output``.  ``raw_data_dir`` is the
     raster tree location used for the fallback scan; defaults to ``root_dir`` if not provided.
     The cached JSON is produced by ``compute_dataset_norm_stats`` and stores ``min``/``max``
-    for ``fire_burn_probability``.
+    for ``fire_burn_probability``.  ``scenario_name`` is forwarded to the fallback scan for
+    datasets where output rasters live in a scenario subdirectory.
     """
     import json as _json
 
@@ -474,13 +523,16 @@ def get_range_output_cached(
             logger.debug("Range for %r loaded from %s: min=%.4f, max=%.4f", output_type, cache_path, min_val, max_val)
             return float(max_val), float(min_val)
     logger.warning("Range for %r not found in cache — scanning raw rasters (allowed_hex_ids=%s).", output_type, allowed_hex_ids)
-    return get_range_output(raw_data_dir if raw_data_dir is not None else root_dir, output_type, allowed_hex_ids)
+    return get_range_output(
+        raw_data_dir if raw_data_dir is not None else root_dir, output_type, allowed_hex_ids, scenario_name=scenario_name
+    )
 
 
 def get_output_log_stats(
     root_dir: str,
     output_type: str,
     allowed_hex_ids: Collection[int] | None = None,
+    scenario_name: str | None = None,
 ) -> tuple[float, float]:
     """
     Get global mean/std of log1p target values for one output type across all valid hexels.
@@ -503,7 +555,7 @@ def get_output_log_stats(
 
     for hex_id in _restrict_hex_ids(find_hex_ids(root_dir), allowed_hex_ids):
         paths = Paths(hex_id=hex_id, root_dir=root_dir)
-        output_path = getattr(paths, path_methods[output_type])()
+        output_path = getattr(paths, path_methods[output_type])(scenario_name=scenario_name)
         output_grid = load_raster(str(output_path))
         output_values = np.ma.masked_invalid(output_grid).compressed().astype(np.float64, copy=False)
         if output_values.size == 0:

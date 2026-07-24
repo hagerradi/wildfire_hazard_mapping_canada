@@ -22,17 +22,18 @@ def load_ignition_grid(
     cause: int = None,
     season: int = None,
     reference_profile: dict[str, Any] | None = None,
-    mask_scope: str = "actual",
+    mask_scope: str | None = None,
 ) -> np.ma.MaskedArray:
     """Load ignition grids for a specific season/cause or all seasons/causes"""
     all_paths = Paths(hex_id=hex_id, root_dir=root_dir)
     ignition_grids_folder_path = all_paths.ignition_prob_dir()
+    mask_path = all_paths.mask_grid(hex_id=hex_id, mask_scope=mask_scope) if mask_scope is not None else None
 
     if season and cause and hex_id:
         file_name = f"hex{hex_id}_ignGrid_{fire_cause_mapping[cause]}_s{season}.tif"
         ignition_raster, _ = load_spatial_raster(
             path=ignition_grids_folder_path / file_name,
-            mask_path=all_paths.mask_grid(hex_id=hex_id, mask_scope=mask_scope),
+            mask_path=mask_path,
             reference_profile=reference_profile,
         )
 
@@ -44,7 +45,7 @@ def load_ignition_grid(
     for file_name in ignition_raster_files:
         ignition_raster, _ = load_spatial_raster(
             path=ignition_grids_folder_path / file_name,
-            mask_path=all_paths.mask_grid(hex_id=hex_id, mask_scope=mask_scope),
+            mask_path=mask_path,
             reference_profile=reference_profile,
         )
         out_ignition_grids.append(ignition_raster)
@@ -67,7 +68,7 @@ def load_ignition_grid_weighted(
     hex_id: str,
     firezones_grid: np.ma.MaskedArray,
     reference_profile: dict[str, Any] | None = None,
-    mask_scope: str = "actual",
+    mask_scope: str | None = None,
 ) -> np.ma.MaskedArray:
     """Load ignition grids as zone-area-weighted Human and Lightning channels.
 
@@ -88,7 +89,7 @@ def load_ignition_grid_weighted(
     """
     all_paths = Paths(hex_id=hex_id, root_dir=root_dir)
     ign_dir = all_paths.ignition_prob_dir()
-    mask_path = all_paths.mask_grid(hex_id=hex_id, mask_scope=mask_scope)
+    mask_path = all_paths.mask_grid(hex_id=hex_id, mask_scope=mask_scope) if mask_scope is not None else None
 
     # ── 1. Discover the (cause, season) ignition grids present for this hex ───
     # Season count varies per hex, and some hexels lack a whole cause (e.g.

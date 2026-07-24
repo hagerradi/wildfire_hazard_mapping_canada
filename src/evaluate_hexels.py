@@ -76,8 +76,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--mask_scope",
         choices=MASK_SCOPE_CHOICES,
-        default="actual",
-        help="Mask scope for stitched evaluation/inference artifacts. Non-actual scopes require matching patch metadata.",
+        default=None,
+        help="Mask scope for stitched evaluation/inference artifacts. Defaults to config.data_prep.mask_scope. Non-actual scopes require matching patch metadata.",
     )
     return parser.parse_args()
 
@@ -110,7 +110,7 @@ def main(
     deterministic = getattr(config, "deterministic", True)
     seed_everything(seed=seed, deterministic=deterministic)
 
-    config.logger.enabled = False
+    config.logger.enabled = True
 
     print("\n[Evaluation] Loading test set...")
     # NOTE: If we need the stats on a particular hexel then modify the test_indices.csv in the config file with
@@ -192,7 +192,7 @@ def main(
             config=config,
             out_norm=out_norm,
             device=trainer.device,
-            experiment_logger=None,
+            experiment_logger=trainer.logger,
             metric_functions=trainer.metric_functions,
             stitch_mode=args.stitch_mode,
             save_artifacts=not args.metrics_only,
@@ -200,7 +200,7 @@ def main(
             robust_plot_percentile=args.robust_plot_percentile
             if args.robust_plot_percentile is not None
             else config.evaluation.robust_plot_percentile,
-            mask_scope=args.mask_scope,
+            mask_scope=args.mask_scope or config.data_prep.mask_scope or None,
             test_metadata=test_loader.dataset.metadata,
         )
 
