@@ -63,7 +63,7 @@ data:
   val_split: "val_indices.csv"
   test_split: "test_indices.csv"
 
-  batch_size: 64
+  batch_size: 32
   num_workers: 2
   valid_mask_threshold: 0.01
   include_patch_metadata: true
