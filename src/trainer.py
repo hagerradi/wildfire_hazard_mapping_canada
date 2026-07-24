@@ -503,7 +503,7 @@ class Trainer:
         if not os.path.exists(last_path):
             return 1
 
-        checkpoint = torch.load(last_path, map_location=self.device)
+        checkpoint = torch.load(last_path, map_location=self.device, weights_only=False)
         saved_state = checkpoint.get("model_state", {})
         current_state = self.model.state_dict()
         compatible = saved_state.keys() == current_state.keys() and all(
@@ -627,7 +627,10 @@ class Trainer:
             path = os.path.join(self.save_dir, filename)
 
         map_location = map_location or self.device
-        checkpoint = torch.load(path, map_location=map_location)
+        # weights_only defaults to True since PyTorch 2.6, which rejects the numpy scalars
+        # that can appear in metric_value/best_metric_list. Checkpoints are only ever produced
+        # by this trainer's own save_model, so it is safe to opt out of that restriction.
+        checkpoint = torch.load(path, map_location=map_location, weights_only=False)
 
         self.model.load_state_dict(checkpoint["model_state"])
         self.optimizer.load_state_dict(checkpoint["optimizer_state"])

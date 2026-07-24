@@ -70,7 +70,7 @@ class GridSource(DataSource):
         # hexes never leak into target/elevation normalization constants. None preserves the
         # legacy full-scan behaviour (e.g. single-hex inference where no split is provided).
         self._train_hex_ids: set[int] | None = None
-        if train_split_csv_name is not None:
+        if train_split_csv_name:
             split_path = os.path.join(self.root_dir, train_split_csv_name)
             if os.path.exists(split_path):
                 self._train_hex_ids = read_split_hex_ids(split_path)

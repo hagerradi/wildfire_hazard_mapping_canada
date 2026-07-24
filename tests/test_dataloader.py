@@ -621,6 +621,32 @@ def test_get_test_dataloader_forwards_modelling_approach(temp_data_dir, monkeypa
     assert val_loader.dataset.sources["grid"].channel_feature_map == channel_map_2
 
 
+def test_grid_source_empty_train_split_csv_name_treated_as_none(temp_data_dir, monkeypatch):
+    """An empty ``train_split_csv_name`` (eval-only configs use ``train_split: ""``) must be
+    treated like ``None`` and skip the split lookup entirely. Previously
+    ``os.path.join(root_dir, "")`` returned ``root_dir`` itself, which exists as a directory,
+    causing ``pd.read_csv`` to raise ``IsADirectoryError`` instead of falling back gracefully."""
+    tmpdir, _, _, _, _, _, _, _ = temp_data_dir
+
+    monkeypatch.setattr("src.datasets.sources.grids.get_range_output_cached", lambda *_args, **_kwargs: (1.0, 0.0))
+    monkeypatch.setattr("src.datasets.sources.grids.get_range_elevation_cached", lambda *_args, **_kwargs: (1.0, 0.0))
+
+    grid_params = GridParams(
+        feature_names_list=["ignition_grid", "fuel_grid", "elevation_grid"],
+        out_norm="min_max",
+        fuel_feats_encoding="ordinal",
+    )
+
+    grid_source = GridSource(
+        root_dir=tmpdir,
+        params=grid_params,
+        modelling_approach="1",
+        train_split_csv_name="",
+    )
+
+    assert grid_source._train_hex_ids is None
+
+
 def test_grid_source_rejects_invalid_explicit_raw_data_dir(temp_data_dir, monkeypatch):
     tmpdir, _, _, _, _, _, _, _ = temp_data_dir
 
