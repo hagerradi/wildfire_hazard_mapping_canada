@@ -1,7 +1,7 @@
 # Joint BP/FI/ROS emulator on the shared spatial input pipeline.
 # The UNet backbone and decoder are shared. A BP head predicts probability
 # logits, while one two-channel behavior head predicts conditional FI and ROS.
-save_dir: "experiments/multi_output_spatial_weather_firesize_v1"
+save_dir: "experiments/multi_output_spatial_weather_firesize_v2"
 
 modelling_approach: "1"
 
@@ -48,8 +48,8 @@ training:
   log_every_n_epoch: 1
 
 evaluation:
-  best_ckpt_metrics: ["hazard/ccc"]
-  best_ckpt_metrics_mode: ["max"]
+  best_ckpt_metrics: ["bp/ccc", "fi/ccc", "ros/ccc"]
+  best_ckpt_metrics_mode: ["max", "max", "max"]
   checkpoint_filename: "best.pth"
   bp_nodata_as_zero: true
   prediction_support_policy: "input"
@@ -132,7 +132,7 @@ logger:
   enabled: true
   project_name: "nrcan05-wildfireriskmapping"
   workspace: "mila-amlrt"
-  experiment_name: "multi_output_spatial_weather_firesize_v1"
+  experiment_name: "multi_output_spatial_weather_firesize_v2"
   tags:
     - "full_data"
     - "modelling_approach=1"
@@ -141,7 +141,7 @@ logger:
     - "data_samples_v4"
     - "ignition=aggregated_human_lightning"
     - "raw_fuel_iROS"
-    - "best_ckpt=hazard_ccc"
+    - "best_ckpt=bp_ccc_fi_ccc_ros_ccc"
     - "task_weights=0.50_0.25_0.25"
     - "bp_nodata_as_zero=true"
     - "prediction_support_policy=input"
