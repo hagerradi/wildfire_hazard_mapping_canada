@@ -433,6 +433,45 @@ def test_maybe_resume_ignores_incompatible_checkpoint(tmp_path, dummy_data):
     assert other._maybe_resume() == 1
 
 
+def test_load_previous_experiment_key_returns_none_without_checkpoint(dummy_config):
+    trainer = Trainer(dummy_config, spatial_input_channels=SPATIAL_CHANNELS)
+    assert trainer._load_previous_experiment_key() is None
+
+
+def test_checkpoint_persists_comet_experiment_key(tmp_path, dummy_data, mock_comet_logger):
+    mock_comet_logger.experiment_key = "abc123"
+    config = _make_config(tmp_path, logger_enabled=True)
+    config.training.max_epochs = 1
+    trainer = Trainer(config, spatial_input_channels=SPATIAL_CHANNELS)
+    patch_trainer(trainer)
+    trainer.run_training(dummy_data, dummy_data)
+
+    checkpoint = torch.load(tmp_path / "last.pth", map_location="cpu", weights_only=False)
+    assert checkpoint["comet_experiment_key"] == "abc123"
+
+
+def test_trainer_resumes_comet_experiment_from_checkpoint(tmp_path, dummy_data, mock_comet_logger):
+    mock_comet_logger.experiment_key = "abc123"
+    config = _make_config(tmp_path, logger_enabled=True)
+    config.training.max_epochs = 1
+    first_run = Trainer(config, spatial_input_channels=SPATIAL_CHANNELS)
+    patch_trainer(first_run)
+    first_run.run_training(dummy_data, dummy_data)
+
+    # A fresh Trainer over the same save_dir should read back the stored Comet
+    # experiment key and pass it through so CometLogger resumes into it.
+    import src.trainer as trainer_module
+
+    mock_logger_cls = trainer_module.CometLogger
+    mock_logger_cls.reset_mock()
+    mock_logger_cls.return_value = mock_comet_logger
+
+    Trainer(config, spatial_input_channels=SPATIAL_CHANNELS)
+
+    _, kwargs = mock_logger_cls.call_args
+    assert kwargs["previous_experiment_key"] == "abc123"
+
+
 def test_test_method(dummy_config, dummy_data):
     trainer = Trainer(dummy_config, spatial_input_channels=SPATIAL_CHANNELS)
     patch_trainer(trainer)

@@ -16,7 +16,7 @@ import yaml
 
 from data_preparation.paths import MASK_SCOPE_CHOICES
 from src.config import Config, GridParams, apply_run_id_overrides
-from src.datasets.dataset import MultiSourceDataset, get_test_dataloader, get_val_dataloader
+from src.datasets.dataset import MultiSourceDataset, get_test_dataloader
 from src.datasets.postprocessing.utils import evaluate_and_visualize_hexels, print_and_log_eval_metrics
 from src.datasets.utils import get_dataset_dimensions
 from src.trainer import Trainer
@@ -227,6 +227,9 @@ def main(
         }
         eval_metrics_row.update({f"patch/{k}": v for k, v in (test_metrics if isinstance(test_metrics, dict) else {}).items()})
         eval_metrics_row.update({f"test_hexel/{k}": v for k, v in hexel_metrics.items()})
+
+        os.makedirs(config.save_dir, exist_ok=True)
+        pd.DataFrame([eval_metrics_row]).to_csv(os.path.join(config.save_dir, "eval_metrics.csv"), index=False)
 
     print(f"=======Total Evaluation Time {round(time.time() - start_time, 3)}s========")
     print(f"=======Prediction Time {round(preds_time, 3)}s========")
