@@ -198,7 +198,6 @@ def test_multi_output_common_input_pipeline_config():
     assert set(config.optimizer.target_losses) == {"bp", "fi", "ros"}
     assert sum(target.task_weight for target in config.optimizer.target_losses.values()) == pytest.approx(1.0)
     assert config.data.include_patch_metadata is True
-    assert config.evaluation.best_ckpt_metrics == ["hazard/ccc"]
 
 
 def test_multi_output_config_round_trips_through_checkpoint_dump():

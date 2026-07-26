@@ -1,7 +1,7 @@
 # Joint BP/FI/ROS emulator on the shared spatial input pipeline.
 # The UNet backbone and decoder are shared. A BP head predicts probability
 # logits, while one two-channel behavior head predicts conditional FI and ROS.
-save_dir: "experiments/multi_output_spatial_weather_firesize"
+save_dir: "experiments/multi_output_spatial"
 
 modelling_approach: "1"
 
@@ -86,53 +86,11 @@ data:
         terrain_derivatives: ["slope", "aspect_sin", "aspect_cos"]
         bp_nodata_as_zero: true
 
-    - name: "spatialized_weather"
-      params:
-        csv_name: "weather_table_processed.csv"
-        feature_names_list:
-          - "Temperature"
-          - "RelativeHumidity"
-          - "Precipitation"
-          - "FineFuelMoistureCode"
-          - "DuffMoistureCode"
-          - "DroughtCode"
-          - "InitialSpreadIndex"
-          - "BuildupIndex"
-          - "FireWeatherIndex"
-          - "wind_x"
-          - "wind_y"
-        fire_weather_zone_id_col: "WeatherZone"
-        fire_weather_zone_selection_approach: "mode"
-        hex_id_col: "hex_id"
-        aggregation: "mean"
-        zone_channel_key: "firezones_grid"
-        missing_value_strategy: "global_mean"
-        include_missing_firezone_mask: false
-        shuffle_lut: false
-        shuffle_seed: 42
-        transforms_list: []
-        augmentation_prob: 0.0
-
-    - name: "spatialized_fire_size"
-      params:
-        csv_name: "df_fire_fru_processed.csv"
-        feature_names_list: ["NORM_LOG_SIZE_HA"]
-        fire_weather_zone_id_col: "GRIDCODE"
-        fire_weather_zone_selection_approach: "mode"
-        aggregation: "mean"
-        zone_channel_key: "firezones_grid"
-        missing_value_strategy: "global_mean"
-        include_missing_firezone_mask: false
-        shuffle_lut: false
-        shuffle_seed: 42
-        transforms_list: []
-        augmentation_prob: 0.0
-
 logger:
   enabled: true
   project_name: "nrcan05-wildfireriskmapping"
   workspace: "mila-amlrt"
-  experiment_name: "multi_output_spatial_weather_firesize"
+  experiment_name: "multi_output_spatial"
   tags:
     - "full_data"
     - "modelling_approach=1"
@@ -145,10 +103,7 @@ logger:
     - "task_weights=0.50_0.25_0.25"
     - "bp_nodata_as_zero=true"
     - "prediction_support_policy=input"
-    - "tabular_fusion=spatialized"
-    - "spatialized_sources=weather_fire_size"
-    - "terrain_derivatives=slope_aspect"
-    - "wind=vector_components"
+    - "input=spatial_only"
   log_every_n_step: 10
 
 metrics:

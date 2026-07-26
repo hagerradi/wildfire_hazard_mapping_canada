@@ -7,7 +7,7 @@
 #SBATCH --partition=long
 #SBATCH --ntasks=1
 #SBATCH --time=12:59:00
-#SBATCH --mem-per-cpu=40Gb
+#SBATCH --mem-per-cpu=55Gb
 #SBATCH --cpus-per-task=4
 #SBATCH --gres=gpu:1
 #SBATCH --requeue

@@ -1,7 +1,7 @@
 # Joint BP/FI/ROS emulator on the shared spatial input pipeline.
 # The UNet backbone and decoder are shared. A BP head predicts probability
 # logits, while one two-channel behavior head predicts conditional FI and ROS.
-save_dir: "experiments/multi_output_spatial_weather_firesize"
+save_dir: "experiments/multi_output_spatial_weather_spatial_firesize_tabular"
 
 modelling_approach: "1"
 
@@ -11,7 +11,7 @@ deterministic: true
 model:
   num_classes: 3
   output_head: "bp_behavior"
-  input_branches: ["spatial"]
+  input_branches: ["spatial", "auxiliary"]
   use_coordconv: false
 
 optimizer:
@@ -113,18 +113,15 @@ data:
         transforms_list: []
         augmentation_prob: 0.0
 
-    - name: "spatialized_fire_size"
+    - name: "tabular_fire_size"
       params:
         csv_name: "df_fire_fru_processed.csv"
         feature_names_list: ["NORM_LOG_SIZE_HA"]
         fire_weather_zone_id_col: "GRIDCODE"
-        fire_weather_zone_selection_approach: "mode"
-        aggregation: "mean"
-        zone_channel_key: "firezones_grid"
-        missing_value_strategy: "global_mean"
-        include_missing_firezone_mask: false
-        shuffle_lut: false
-        shuffle_seed: 42
+        fire_weather_zone_selection_approach: "mode" # "mode" or "weighted"
+        num_samples_per_patch: 128
+        sampling_bias: "high_values" # null, "high_values"
+        feature_to_bias: "NORM_LOG_SIZE_HA"
         transforms_list: []
         augmentation_prob: 0.0
 
@@ -132,7 +129,7 @@ logger:
   enabled: true
   project_name: "nrcan05-wildfireriskmapping"
   workspace: "mila-amlrt"
-  experiment_name: "multi_output_spatial_weather_firesize"
+  experiment_name: "multi_output_spatial_weather_spatial_firesize_tabular"
   tags:
     - "full_data"
     - "modelling_approach=1"
@@ -145,8 +142,9 @@ logger:
     - "task_weights=0.50_0.25_0.25"
     - "bp_nodata_as_zero=true"
     - "prediction_support_policy=input"
-    - "tabular_fusion=spatialized"
-    - "spatialized_sources=weather_fire_size"
+    - "tabular_fusion=spatialized&tabular"
+    - "spatialized_sources=weather"
+    - "tabular_sources=firesize"
     - "terrain_derivatives=slope_aspect"
     - "wind=vector_components"
   log_every_n_step: 10
