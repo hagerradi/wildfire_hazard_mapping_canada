@@ -50,8 +50,9 @@ fi
 
 RUN_CONFIG_FILE="$CONFIG_FILE"
 ORIGINAL_DATA_ROOT_DIR=""
+STAGE_DATA_TO_TMPDIR=${STAGE_DATA_TO_TMPDIR:-0}
 
-if [[ -n "${SLURM_TMPDIR:-}" ]]; then
+if [[ "$STAGE_DATA_TO_TMPDIR" == "1" && -n "${SLURM_TMPDIR:-}" ]]; then
     echo "Using SLURM_TMPDIR for staged dataset: ${SLURM_TMPDIR}"
 
     ORIGINAL_DATA_ROOT_DIR=$(python - "$CONFIG_FILE" <<'PY'
@@ -110,7 +111,7 @@ print(f"Wrote staged config: {run_config}")
 print(f"Using persistent raw_data_dir for normalization/evaluation: {config['data']['raw_data_dir']}")
 PY
 else
-    echo "SLURM_TMPDIR is not set; using config data.root_dir directly."
+    echo "Using config data.root_dir directly."
 fi
 
 echo "Running training with config: $RUN_CONFIG_FILE"

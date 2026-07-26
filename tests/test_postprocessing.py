@@ -823,6 +823,22 @@ def test_distribution_axis_limit_only_caps_probability_scale():
     assert get_distribution_axis_limit(gt_vals, pred_vals, probability_scale=False) > 3.0
 
 
+def test_select_prediction_target_channel_supports_multi_target_outputs():
+    predictions = np.stack(
+        [
+            np.full((2, 2), 1.0, dtype=np.float32),
+            np.full((2, 2), 2.0, dtype=np.float32),
+            np.full((2, 2), 3.0, dtype=np.float32),
+        ],
+        axis=0,
+    )[None]
+
+    selected = post_utils.select_prediction_target_channel(predictions, target_name="fi", target_index=1)
+
+    assert selected.shape == (1, 2, 2)
+    np.testing.assert_allclose(selected, 2.0)
+
+
 def test_distribution_plots_drop_masked_nodata_values(tmp_path):
     gt = np.ma.array(
         [[1.0, -9999.0], [3.0, 4.0]],

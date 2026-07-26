@@ -1,3 +1,4 @@
+from typing import Literal
 from unittest.mock import MagicMock
 
 import numpy as np
@@ -14,8 +15,11 @@ from src.config import (
     LoggerConfig,
     ModelConfig,
     OptimizerConfig,
+    TargetConfig,
+    TargetLossConfig,
     TrainingConfig,
 )
+from src.losses import MultiTaskLoss
 from src.trainer import Trainer
 
 SPATIAL_CHANNELS = 1
@@ -54,6 +58,16 @@ class GridDataset(torch.utils.data.Dataset):
         targets = inputs * 0.9
         masks = (torch.rand(1, self.height, self.width) > 0.5).float()
         return {"grid": (inputs, targets, masks)}
+
+
+class MultiTargetGridDataset(GridDataset):
+    def __getitem__(self, idx: int) -> dict:
+        item = super().__getitem__(idx)
+        inputs, _, _ = item["grid"]
+        targets = torch.cat([inputs * 0.5, inputs * 2.0, inputs * 3.0], dim=0)
+        masks = torch.ones_like(targets, dtype=torch.bool)
+        item["grid"] = (inputs, targets, masks)
+        return item
 
 
 class WeatherDataset(GridDataset):
@@ -119,15 +133,19 @@ def _make_config(
     auxiliary_hidden_dims: dict | None = None,
     auxiliary_embed_dims: dict | None = None,
     auxiliary_feature_encoder_poolings: dict | None = None,
+    output_head: Literal["shared", "bp_behavior"] = "shared",
 ) -> Config:
     """Config. factory"""
     if input_branches is None:
         input_branches = ["spatial"]
+    resolved_grid_params = grid_params or GridParams(feature_names_list=["dummy_feat"])
+    best_checkpoint_metric = "hazard/ccc" if len(resolved_grid_params.resolved_targets()) > 1 else "spearman"
 
     return Config(
         save_dir=str(tmp_path),
         model=ModelConfig(
             num_classes=num_classes,
+            output_head=output_head,
             hidden_features=[8, 16],
             input_branches=input_branches,
             auxiliary_hidden_dims=auxiliary_hidden_dims or {"tabular_weather": [16, 32]},
@@ -137,7 +155,7 @@ def _make_config(
         optimizer=optimizer_config or OptimizerConfig(loss="mse", name="Adam", lr=0.001),
         training=TrainingConfig(max_epochs=1, log_every_n_epoch=1),
         evaluation=EvaluationConfig(
-            best_ckpt_metrics=["spearman"],
+            best_ckpt_metrics=[best_checkpoint_metric],
             best_ckpt_metrics_mode=["max"],
             checkpoint_filename="best.pth",
         ),
@@ -150,7 +168,7 @@ def _make_config(
             input_sources=[
                 DataSourceConfig(
                     name="grid",
-                    params=grid_params or GridParams(feature_names_list=["dummy_feat"]),
+                    params=resolved_grid_params,
                 )
             ],
         ),
@@ -295,6 +313,162 @@ def test_trainer_step(dummy_config, dummy_data):
     preds, loss, loss_parts, targets, masks = trainer._step(batch)
     assert preds.shape == targets.shape
     assert isinstance(loss, torch.Tensor)
+
+
+def test_trainer_step_routes_multi_target_losses(tmp_path):
+    config = _make_config(
+        tmp_path,
+        grid_params=GridParams(
+            feature_names_list=["dummy_feat"],
+            targets=[
+                TargetConfig(name="bp", out_norm="none"),
+                TargetConfig(name="fi", out_norm="none"),
+                TargetConfig(name="ros", out_norm="none"),
+            ],
+        ),
+        num_classes=3,
+        output_head="bp_behavior",
+        optimizer_config=OptimizerConfig(
+            target_losses={
+                "bp": TargetLossConfig(loss="kl", task_weight=0.5),
+                "fi": TargetLossConfig(loss="huber", task_weight=0.25),
+                "ros": TargetLossConfig(loss="huber", task_weight=0.25),
+            }
+        ),
+    )
+    trainer = Trainer(config, spatial_input_channels=SPATIAL_CHANNELS)
+    batch = next(iter(DataLoader(MultiTargetGridDataset(size=2), batch_size=2)))
+
+    predictions, loss, loss_parts, targets, masks = trainer._step(batch)
+
+    assert isinstance(trainer.loss_fn, MultiTaskLoss)
+    assert predictions.shape == targets.shape == masks.shape
+    assert set(loss_parts or {}) == {"bp/total", "fi/total", "ros/total"}
+    loss.backward()
+    assert trainer.model.multi_output_head.bp_head.weight.grad is not None
+    assert trainer.model.multi_output_head.behavior_head.weight.grad is not None
+
+
+def test_trainer_namespaces_multi_target_metrics_and_adds_hazard(tmp_path):
+    config = _make_config(
+        tmp_path,
+        grid_params=GridParams(
+            feature_names_list=["dummy_feat"],
+            targets=[
+                TargetConfig(name="bp", out_norm="none"),
+                TargetConfig(name="fi", out_norm="none"),
+                TargetConfig(name="ros", out_norm="none"),
+            ],
+        ),
+        num_classes=3,
+        output_head="bp_behavior",
+        optimizer_config=OptimizerConfig(
+            target_losses={
+                "bp": TargetLossConfig(loss="kl", task_weight=0.5),
+                "fi": TargetLossConfig(loss="huber", task_weight=0.25),
+                "ros": TargetLossConfig(loss="huber", task_weight=0.25),
+            }
+        ),
+    )
+    trainer = Trainer(config, spatial_input_channels=SPATIAL_CHANNELS)
+    batch = next(iter(DataLoader(MultiTargetGridDataset(size=2), batch_size=2)))
+    predictions, _, _, targets, masks = trainer._step(batch)
+    metric_predictions, metric_targets = trainer._prepare_metric_tensors(predictions, targets)
+
+    values = trainer._compute_metric_values(metric_predictions, metric_targets, masks)
+
+    assert set(values) == {
+        "bp/mse",
+        "bp/spearman",
+        "fi/mse",
+        "fi/spearman",
+        "ros/mse",
+        "ros/spearman",
+        "hazard/ccc",
+    }
+    assert torch.isfinite(values["hazard/ccc"])
+
+
+def test_hazard_metric_penalizes_no_burn_false_positives(tmp_path):
+    config = _make_config(
+        tmp_path,
+        grid_params=GridParams(
+            feature_names_list=["dummy_feat"],
+            targets=[
+                TargetConfig(name="bp", out_norm="none"),
+                TargetConfig(name="fi", out_norm="none"),
+                TargetConfig(name="ros", out_norm="none"),
+            ],
+        ),
+        num_classes=3,
+        output_head="bp_behavior",
+        optimizer_config=OptimizerConfig(
+            target_losses={
+                "bp": TargetLossConfig(loss="kl", task_weight=0.5),
+                "fi": TargetLossConfig(loss="huber", task_weight=0.25),
+                "ros": TargetLossConfig(loss="huber", task_weight=0.25),
+            }
+        ),
+    )
+    trainer = Trainer(config, spatial_input_channels=SPATIAL_CHANNELS)
+    targets = torch.tensor([[[[0.0, 0.0], [1.0, 1.0]], [[0.0, 0.0], [2.0, 4.0]], [[0.0, 0.0], [1.0, 1.0]]]])
+    masks = torch.tensor([[[[True, True], [True, True]], [[False, False], [True, True]], [[False, False], [True, True]]]])
+    good_predictions = targets.clone()
+    bad_predictions = targets.clone()
+    bad_predictions[:, 0, 0] = 0.5
+    bad_predictions[:, 1, 0] = 10.0
+
+    good_ccc = trainer._compute_metric_values(good_predictions, targets, masks)["hazard/ccc"]
+    bad_ccc = trainer._compute_metric_values(bad_predictions, targets, masks)["hazard/ccc"]
+
+    assert good_ccc > bad_ccc
+
+
+def test_multi_target_model_overfits_one_tiny_batch(tmp_path):
+    torch.manual_seed(7)
+    config = _make_config(
+        tmp_path,
+        grid_params=GridParams(
+            feature_names_list=["dummy_feat"],
+            targets=[
+                TargetConfig(name="bp", out_norm="none"),
+                TargetConfig(name="fi", out_norm="none"),
+                TargetConfig(name="ros", out_norm="none"),
+            ],
+        ),
+        num_classes=3,
+        output_head="bp_behavior",
+        optimizer_config=OptimizerConfig(
+            name="Adam",
+            lr=1e-2,
+            target_losses={
+                "bp": TargetLossConfig(loss="kl", task_weight=0.5),
+                "fi": TargetLossConfig(loss="huber", task_weight=0.25),
+                "ros": TargetLossConfig(loss="huber", task_weight=0.25),
+            },
+        ),
+    )
+    trainer = Trainer(config, spatial_input_channels=SPATIAL_CHANNELS)
+    batch = next(iter(DataLoader(MultiTargetGridDataset(size=2, height=8, width=8), batch_size=2)))
+
+    initial_parts = None
+    final_parts = None
+    for step in range(41):
+        _, loss, loss_parts, _, _ = trainer._step(batch)
+        if step == 0:
+            initial_parts = {name: value.detach().clone() for name, value in (loss_parts or {}).items()}
+        if step == 40:
+            final_parts = loss_parts
+            break
+        trainer.optimizer.zero_grad()
+        loss.backward()
+        trainer.optimizer.step()
+
+    assert initial_parts is not None
+    assert final_parts is not None
+    for target_name in ("bp", "fi", "ros"):
+        key = f"{target_name}/total"
+        assert final_parts[key] < initial_parts[key]
 
 
 def test_metric_tensors_inverse_log_standard(tmp_path):

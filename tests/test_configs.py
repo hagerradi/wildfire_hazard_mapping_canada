@@ -4,13 +4,25 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from src.config import SEEDS, Config, GridParams, HazardEvalConfig, HazardModelEntry, SpatializedTabularParams, apply_run_id_overrides
+from src.config import (
+    SEEDS  
+    Config,
+    GridParams,
+    HazardEvalConfig,
+    HazardModelEntry,
+    OptimizerConfig,
+    SpatializedTabularParams,
+    TargetConfig,
+    TargetLossConfig,
+    apply_run_id_overrides
+)
 from src.datasets.postprocessing.hazard import DEFAULT_FI_CAP, DEFAULT_SCALE_TO
 from src.utils import AVAILABLE_METRICS, build_single_loss
 
 BP_CONFIG = Path("configs/bp_common_input_pipeline.yaml")
 FI_CONFIG = Path("configs/fi_common_input_pipeline.yaml")
 ROS_CONFIG = Path("configs/ros_common_input_pipeline.yaml")
+MULTI_OUTPUT_CONFIG = Path("configs/multi_output_common_input_pipeline.yaml")
 HAZARD_EVAL_CONFIG = Path("configs/hazard_eval_common_input_pipeline.yaml")
 HAZARD_BP_CONFIG = Path("configs/archived/bp_common_input_pipeline_checkpoint.yaml")
 HAZARD_FI_CONFIG = Path("configs/archived/fi_common_input_pipeline_checkpoint.yaml")
@@ -108,6 +120,136 @@ def test_fi_ros_common_input_pipeline_use_log_standard_regression_recipe():
         assert grid.out_norm == "log_standard"
         assert config.optimizer.loss == ["huber", "raw_pearson"]
         assert config.evaluation.robust_plot_percentile == 99.0
+
+
+def test_legacy_target_config_resolves_to_one_target():
+    grid = GridParams(
+        feature_names_list=["ignition_grid"],
+        target_name="fire_intensity",
+        out_norm="log_standard",
+        target_log_mean=2.0,
+        target_log_std=0.5,
+    )
+
+    assert grid.resolved_targets() == [
+        TargetConfig(name="fi", out_norm="log_standard", log_mean=2.0, log_std=0.5),
+    ]
+    assert grid.target_config("fi").name == "fi"
+
+
+def test_multi_target_config_keeps_order_and_per_target_normalization():
+    grid = GridParams(
+        feature_names_list=["ignition_grid"],
+        targets=[
+            TargetConfig(name="bp", out_norm="min_max"),
+            TargetConfig(name="fi", out_norm="log_standard"),
+            TargetConfig(name="ros", out_norm="log_standard"),
+        ],
+    )
+
+    assert [target.name for target in grid.resolved_targets()] == ["bp", "fi", "ros"]
+    assert grid.target_config("bp").out_norm == "min_max"
+    assert grid.target_config("fi").out_norm == "log_standard"
+
+
+def test_grid_params_rejects_mixed_or_duplicate_target_config():
+    with pytest.raises(ValidationError, match="non-default legacy target fields"):
+        GridParams(
+            feature_names_list=["ignition_grid"],
+            target_name="fi",
+            targets=[TargetConfig(name="bp", out_norm="min_max")],
+        )
+
+    with pytest.raises(ValidationError, match="duplicate"):
+        GridParams(
+            feature_names_list=["ignition_grid"],
+            targets=[
+                TargetConfig(name="bp", out_norm="min_max"),
+                TargetConfig(name="burn_probability", out_norm="min_max"),
+            ],
+        )
+
+
+def test_optimizer_supports_legacy_or_per_target_losses():
+    legacy = OptimizerConfig(loss="mse")
+    assert legacy.loss == "mse"
+    assert legacy.target_losses == {}
+
+    multi_target = OptimizerConfig(
+        target_losses={
+            "bp": TargetLossConfig(loss=["kl", "ccc"], loss_weights={"kl": 0.5, "ccc": 0.5}, task_weight=0.5),
+            "fi": TargetLossConfig(loss=["huber", "raw_pearson"], task_weight=0.25),
+            "ros": TargetLossConfig(loss=["huber", "raw_pearson"], task_weight=0.25),
+        }
+    )
+    assert multi_target.loss is None
+    assert multi_target.target_losses["bp"].task_weight == 0.5
+
+    with pytest.raises(ValidationError, match="either legacy loss"):
+        OptimizerConfig(loss="mse", target_losses={"bp": TargetLossConfig(loss="kl")})
+
+
+def test_multi_output_common_input_pipeline_config():
+    config = _load_config(MULTI_OUTPUT_CONFIG)
+    grid = {source.name: source.params for source in config.data.input_sources}["grid"]
+
+    assert config.model.num_classes == 3
+    assert config.model.output_head == "bp_behavior"
+    assert [target.name for target in grid.resolved_targets()] == ["bp", "fi", "ros"]
+    assert [target.out_norm for target in grid.resolved_targets()] == ["min_max", "log_standard", "log_standard"]
+    assert set(config.optimizer.target_losses) == {"bp", "fi", "ros"}
+    assert sum(target.task_weight for target in config.optimizer.target_losses.values()) == pytest.approx(1.0)
+    assert config.data.include_patch_metadata is True
+
+
+def test_multi_output_config_round_trips_through_checkpoint_dump():
+    config = _load_config(MULTI_OUTPUT_CONFIG)
+    dumped_config = config.model_dump()
+    dumped_grid_params = next(source["params"] for source in dumped_config["data"]["input_sources"] if source["name"] == "grid")
+
+    restored_grid = GridParams(**dumped_grid_params)
+
+    assert [target.name for target in restored_grid.resolved_targets()] == ["bp", "fi", "ros"]
+
+
+@pytest.mark.parametrize("config_path", [BP_CONFIG, FI_CONFIG, ROS_CONFIG])
+def test_legacy_config_round_trips_through_checkpoint_dump(config_path):
+    config = _load_config(config_path)
+
+    restored_config = Config(**config.model_dump())
+
+    assert restored_config == config
+
+
+def test_multi_output_config_requires_target_specific_losses():
+    with MULTI_OUTPUT_CONFIG.open() as f:
+        raw_config = yaml.safe_load(f)
+    raw_config["optimizer"] = {"name": "AdamW", "lr": 7.0e-4, "loss": "kl"}
+
+    with pytest.raises(ValidationError, match="target_losses is required"):
+        Config(**raw_config)
+
+
+def test_multi_output_config_rejects_unnamespaced_checkpoint_metric():
+    with MULTI_OUTPUT_CONFIG.open() as f:
+        raw_config = yaml.safe_load(f)
+    raw_config["evaluation"]["best_ckpt_metrics"] = ["spearman"]
+
+    with pytest.raises(ValidationError, match="namespaced metric keys"):
+        Config(**raw_config)
+
+
+def test_multi_output_config_rejects_scalar_loss_component_checkpoint_metric():
+    with MULTI_OUTPUT_CONFIG.open() as f:
+        raw_config = yaml.safe_load(f)
+    raw_config["optimizer"]["target_losses"]["bp"] = {
+        "loss": "kl",
+        "task_weight": 0.5,
+    }
+    raw_config["evaluation"]["best_ckpt_metrics"] = ["loss_bp/kl"]
+
+    with pytest.raises(ValidationError, match="namespaced metric keys"):
+        Config(**raw_config)
 
 
 def test_hazard_eval_config_parses_and_references_bp_fi_configs():

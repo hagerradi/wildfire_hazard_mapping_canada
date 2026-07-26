@@ -1,13 +1,13 @@
 #!/bin/bash
 ##SBATCH --mail-type=all
 ##SBATCH --mail-user=name@mila.quebec
-#SBATCH --job-name=unet_fi_ros
+#SBATCH --job-name=unet_multi_task
 #SBATCH --output=logs/job_%x_%j.out
 #SBATCH --error=logs/job_%x_%j.err
 #SBATCH --partition=long
 #SBATCH --ntasks=1
-#SBATCH --time=10:59:00
-#SBATCH --mem-per-cpu=40Gb
+#SBATCH --time=12:59:00
+#SBATCH --mem-per-cpu=55Gb
 #SBATCH --cpus-per-task=4
 #SBATCH --gres=gpu:1
 #SBATCH --requeue
