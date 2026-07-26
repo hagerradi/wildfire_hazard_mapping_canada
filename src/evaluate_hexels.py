@@ -15,7 +15,7 @@ import pandas as pd
 import yaml
 
 from data_preparation.paths import MASK_SCOPE_CHOICES
-from src.config import Config, GridParams
+from src.config import Config, GridParams, apply_run_id_overrides
 from src.datasets.dataset import MultiSourceDataset, get_test_dataloader
 from src.datasets.postprocessing.utils import evaluate_and_visualize_hexels, print_and_log_eval_metrics
 from src.datasets.utils import get_dataset_dimensions
@@ -79,6 +79,13 @@ def parse_args() -> argparse.Namespace:
         default="actual",
         help="Mask scope for stitched evaluation/inference artifacts. Non-actual scopes require matching patch metadata.",
     )
+    parser.add_argument(
+        "--run_id",
+        type=int,
+        default=None,
+        help="SLURM array task ID (or run index) used to derive the run-specific seed, save_dir, and "
+        "Comet experiment name matching the corresponding training run (see run_files/train_no_tmp_copy_array.sh).",
+    )
     return parser.parse_args()
 
 
@@ -104,6 +111,10 @@ def main(
 ) -> dict[str, float]:
     args = args or parse_args()
     config = config or load_config(args.config)
+
+    if args.run_id is not None:
+        run_seed = apply_run_id_overrides(config, args.run_id)
+        print(f"[run_id={args.run_id}] Overriding seed={run_seed}, save_dir={config.save_dir}")
 
     # ---------- Set Seed ----------
     seed = getattr(config, "seed", 42)
@@ -206,6 +217,19 @@ def main(
 
         # print metrics in terminal and log into comet
         print_and_log_eval_metrics(test_metrics=test_metrics, hexel_metrics=hexel_metrics, experiment_logger=trainer.logger)
+
+        # persist metrics to disk as a single-row CSV so multi-run results can be
+        # aggregated later (see src/aggregate_eval_results.py)
+        eval_metrics_row: dict[str, float | int | str] = {
+            "run_id": args.run_id if args.run_id is not None else "",
+            "seed": config.seed,
+            "save_dir": config.save_dir,
+        }
+        eval_metrics_row.update({f"patch/{k}": v for k, v in (test_metrics if isinstance(test_metrics, dict) else {}).items()})
+        eval_metrics_row.update({f"test_hexel/{k}": v for k, v in hexel_metrics.items()})
+
+        os.makedirs(config.save_dir, exist_ok=True)
+        pd.DataFrame([eval_metrics_row]).to_csv(os.path.join(config.save_dir, "eval_metrics.csv"), index=False)
 
     print(f"=======Total Evaluation Time {round(time.time() - start_time, 3)}s========")
     print(f"=======Prediction Time {round(preds_time, 3)}s========")

@@ -10,7 +10,7 @@
 # Unlike the previous BP best model (non-spatialized tabular fed through an auxiliary MLP
 # branch), BP now consumes the spatialized tabular channels on the spatial branch, matching
 # FI/ROS. Spatialized input is heavier, so batch_size is 32 (was 64 for the auxiliary variant).
-save_dir: "experiments/bp_spatial_weather_firesize"
+save_dir: "experiments/bp_spatial_weather_tabular_firesize_tabular"
 
 modelling_approach: "1"
 
@@ -19,7 +19,7 @@ deterministic: true
 
 model:
   num_classes: 1
-  input_branches: ["spatial"]
+  input_branches: ["spatial", "auxiliary"]
   use_coordconv: false
 
 optimizer:
@@ -73,45 +73,29 @@ data:
         terrain_derivatives: ["slope", "aspect_sin", "aspect_cos"]
         bp_nodata_as_zero: true
 
-    - name: "spatialized_weather"
+    - name: "tabular_weather"
       params:
         csv_name: "weather_table_processed.csv"
-        feature_names_list:
-          - "Temperature"
-          - "RelativeHumidity"
-          - "Precipitation"
-          - "FineFuelMoistureCode"
-          - "DuffMoistureCode"
-          - "DroughtCode"
-          - "InitialSpreadIndex"
-          - "BuildupIndex"
-          - "FireWeatherIndex"
-          - "wind_x"
-          - "wind_y"
+        feature_names_list: ["Temperature", "RelativeHumidity", "Precipitation", "FineFuelMoistureCode", "DuffMoistureCode", "DroughtCode",
+                              "InitialSpreadIndex", "BuildupIndex", "FireWeatherIndex", "wind_x", "wind_y"]
         fire_weather_zone_id_col: "WeatherZone"
-        fire_weather_zone_selection_approach: "mode"
+        fire_weather_zone_selection_approach: "mode" # "mode" or "weighted"
+        num_samples_per_patch: 256
         hex_id_col: "hex_id"
-        aggregation: "mean"
-        zone_channel_key: "firezones_grid"
-        missing_value_strategy: "global_mean"
-        include_missing_firezone_mask: false
-        shuffle_lut: false
-        shuffle_seed: 42
+        sampling_bias: null # null, "high_values"
+        feature_to_bias: null
         transforms_list: []
         augmentation_prob: 0.0
 
-    - name: "spatialized_fire_size"
+    - name: "tabular_fire_size"
       params:
         csv_name: "df_fire_fru_processed.csv"
         feature_names_list: ["NORM_LOG_SIZE_HA"]
         fire_weather_zone_id_col: "GRIDCODE"
-        fire_weather_zone_selection_approach: "mode"
-        aggregation: "mean"
-        zone_channel_key: "firezones_grid"
-        missing_value_strategy: "global_mean"
-        include_missing_firezone_mask: false
-        shuffle_lut: false
-        shuffle_seed: 42
+        fire_weather_zone_selection_approach: "mode" # "mode" or "weighted"
+        num_samples_per_patch: 128
+        sampling_bias: "high_values" # null, "high_values"
+        feature_to_bias: "NORM_LOG_SIZE_HA"
         transforms_list: []
         augmentation_prob: 0.0
 
@@ -119,7 +103,7 @@ logger:
   enabled: true
   project_name: "nrcan05-wildfireriskmapping"
   workspace: "mila-amlrt"
-  experiment_name: "bp_spatial_weather_firesize"
+  experiment_name: "bp_spatial_weather_tabular_firesize_tabular"
   tags:
     - "full_data"
     - "modelling_approach=1"

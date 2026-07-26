@@ -5,6 +5,7 @@ import yaml
 from pydantic import ValidationError
 
 from src.config import (
+    SEEDS,
     Config,
     GridParams,
     HazardEvalConfig,
@@ -13,6 +14,7 @@ from src.config import (
     SpatializedTabularParams,
     TargetConfig,
     TargetLossConfig,
+    apply_run_id_overrides,
 )
 from src.datasets.postprocessing.hazard import DEFAULT_FI_CAP, DEFAULT_SCALE_TO
 from src.utils import AVAILABLE_METRICS, build_single_loss
@@ -360,3 +362,33 @@ def test_hazard_eval_config_reference_file_with_path_parses():
 
     assert config.scale_denominator_source == "reference_file"
     assert config.reference_denominator_path == "denominator.tif"
+
+
+def test_apply_run_id_overrides_derives_seed_save_dir_and_experiment_name():
+    config = _load_config(BP_CONFIG)
+    config.save_dir = "experiments/my_run"
+    config.logger.experiment_name = "my_experiment"
+
+    run_seed = apply_run_id_overrides(config, run_id=2)
+
+    assert run_seed == SEEDS[2]
+    assert config.seed == SEEDS[2]
+    assert config.save_dir == f"experiments/my_run/seed_{SEEDS[2]}"
+    assert config.logger.experiment_name == f"my_experiment_seed{SEEDS[2]}"
+
+
+def test_apply_run_id_overrides_skips_empty_experiment_name():
+    config = _load_config(BP_CONFIG)
+    config.logger.experiment_name = ""
+
+    apply_run_id_overrides(config, run_id=0)
+
+    assert config.logger.experiment_name == ""
+
+
+@pytest.mark.parametrize("run_id", [-1, len(SEEDS)])
+def test_apply_run_id_overrides_rejects_out_of_range_run_id(run_id):
+    config = _load_config(BP_CONFIG)
+
+    with pytest.raises(ValueError, match="run_id must be between"):
+        apply_run_id_overrides(config, run_id=run_id)

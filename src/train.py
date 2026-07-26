@@ -4,11 +4,13 @@ End-to-end script for running training and evaluation
 
 import argparse
 import os
+import signal
+from types import FrameType
 
 import numpy as np
 import yaml
 
-from src.config import Config, GridParams
+from src.config import Config, GridParams, apply_run_id_overrides
 from src.datasets.dataset import get_test_dataloader, get_train_val_dataloader
 from src.datasets.postprocessing.utils import evaluate_and_visualize_hexels, print_and_log_eval_metrics
 from src.datasets.utils import get_dataset_dimensions
@@ -33,7 +35,32 @@ def parse_args() -> argparse.Namespace:
         default=True,
         help="Disable saving predicted hexels to comet (default: True)",
     )
+    # logging is enabled by default, unless you pass --no_log_val_predicted_hexels
+    parser.add_argument(
+        "--no_log_val_predicted_hexels",
+        dest="log_val_predicted_hexels",
+        action="store_false",
+        default=True,
+        help="Disable saving predicted hexels to comet (default: True)",
+    )
+    parser.add_argument(
+        "--run_id",
+        type=int,
+        default=None,
+        help="SLURM array task ID (or run index) used to derive a run-specific seed, save_dir, and "
+        "Comet experiment name for parallel multi-seed runs (see run_files/train_no_tmp_copy_array.sh).",
+    )
     return parser.parse_args()
+
+
+def _handle_sigterm(signum: int, _frame: FrameType | None) -> None:
+    """
+    Log receipt of SLURM's pre-timeout SIGTERM (see `--signal=B:TERM@300` in
+    run_files/train_no_tmp_copy.sh). The Trainer already checkpoints at each epoch
+    boundary and `--requeue` causes SLURM to resubmit the job, so no extra cleanup
+    is required here beyond a clear log message before the process is killed.
+    """
+    print(f"[Signal] Received {signal.Signals(signum).name}; job is being preempted/timed out and will be requeued.")
 
 
 def load_config(path: str) -> Config:
@@ -50,8 +77,14 @@ def load_config(path: str) -> Config:
 
 
 def main() -> None:
+    signal.signal(signal.SIGTERM, _handle_sigterm)
+
     args = parse_args()
     config = load_config(args.config)
+
+    if args.run_id is not None:
+        run_seed = apply_run_id_overrides(config, args.run_id)
+        print(f"[run_id={args.run_id}] Overriding seed={run_seed}, save_dir={config.save_dir}")
 
     # ---------- Set Seed ----------
     seed = getattr(config, "seed", 42)
@@ -123,6 +156,40 @@ def main() -> None:
 
     # print metrics in terminal and log into comet
     print_and_log_eval_metrics(test_metrics=test_metrics, hexel_metrics=hexel_metrics, experiment_logger=trainer.logger)
+
+    # ---------- Validation Evaluation (optional) ----------
+    if args.log_val_predicted_hexels:
+        print("\n[Evaluation] Running on validation set...")
+        val_metrics, val_predictions = trainer.test(val_loader, return_predictions=True)
+
+        val_hexel_metrics = {}
+
+        if args.log_test_predicted_hexels:
+            source_map = {s.name: s for s in config.data.input_sources}
+            grid_source = source_map.get("grid") if "grid" in source_map else None
+            out_norm = "min_max"  # default fallback, prevent mypy crash
+            if grid_source and isinstance(grid_source.params, GridParams):
+                out_norm = grid_source.params.out_norm
+
+            if isinstance(val_predictions, np.ndarray):  # for mypy
+                val_hexel_metrics = evaluate_and_visualize_hexels(
+                    test_predictions=val_predictions,
+                    config=config,
+                    out_norm=out_norm,
+                    device=trainer.device,
+                    experiment_logger=trainer.logger,
+                    metric_functions=trainer.metric_functions,
+                    split_csv=config.data.val_split,
+                    save_dir_suffix="val",
+                )
+
+        print_and_log_eval_metrics(
+            test_metrics=val_metrics,
+            hexel_metrics=val_hexel_metrics,
+            experiment_logger=trainer.logger,
+            split_label="Val",
+            metric_prefix="val_hexel",
+        )
 
 
 if __name__ == "__main__":
