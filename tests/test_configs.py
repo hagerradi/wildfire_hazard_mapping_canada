@@ -5,7 +5,7 @@ import yaml
 from pydantic import ValidationError
 
 from src.config import (
-    SEEDS  
+    SEEDS,
     Config,
     GridParams,
     HazardEvalConfig,
@@ -14,7 +14,7 @@ from src.config import (
     SpatializedTabularParams,
     TargetConfig,
     TargetLossConfig,
-    apply_run_id_overrides
+    apply_run_id_overrides,
 )
 from src.datasets.postprocessing.hazard import DEFAULT_FI_CAP, DEFAULT_SCALE_TO
 from src.utils import AVAILABLE_METRICS, build_single_loss
