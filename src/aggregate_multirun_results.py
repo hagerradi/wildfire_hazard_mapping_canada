@@ -2,9 +2,11 @@
 Aggregate multi-run (multi-seed) evaluation results into a single CSV.
 
 Calls `python -m src.evaluate_hexels --config <config> --run_id <run_id>` once per run_id
-(so evaluate_hexels.py itself stays a normal, standalone, run_id-driven CLI script), then
-reads back the `eval_metrics.csv` each run writes to its own derived `save_dir` and
-concatenates them into one aggregated CSV with trailing mean/std summary rows.
+whose `test_metrics.csv` doesn't already exist (e.g. written earlier by `src.train`'s
+test-set evaluation on the best checkpoint), so evaluate_hexels.py itself stays a normal,
+standalone, run_id-driven CLI script that is only re-run when needed. Then reads back the
+`test_metrics.csv` each run wrote to its own derived `save_dir` and concatenates them into
+one aggregated CSV with trailing mean/std summary rows.
 
 Usage:
     python -m src.aggregate_eval_results --config configs/bp_common_input_pipeline.yaml \
@@ -53,24 +55,31 @@ def parse_args() -> argparse.Namespace:
         "--metrics",
         type=str,
         nargs="+",
-        default=["test_hexel/all/", "patch/"],
-        help="Metric columns to keep and summarize with mean/std, e.g. 'patch/mse test_hexel/all/mse'. Matches exact "
+        default=["test_hexel/all/", "test_patch_"],
+        help="Metric columns to keep and summarize with mean/std, e.g. 'test_patch_mse test_hexel/all/mse'. Matches exact "
         "column names or prefixes (e.g. 'test_hexel/all/' keeps every column starting with it). Defaults to every "
-        "numeric column (all patch/*, test_hexel/*, and val_hexel/* metrics) when omitted.",
+        "numeric column (all test_patch_*, test_hexel/*, and val_hexel/* metrics) when omitted.",
     )
     return parser.parse_args()
 
 
 def run_evaluations(config_path: str, run_ids: list[int], eval_args: str) -> list[str]:
     """
-    Run `python -m src.evaluate_hexels --run_id=<id>` once per run_id, returning the list of
-    save_dirs each run wrote its `eval_metrics.csv` to.
+    Run `python -m src.evaluate_hexels --run_id=<id>` once per run_id whose `test_metrics.csv`
+    doesn't already exist in its derived `save_dir` (e.g. written earlier by `src.train`'s
+    test-set evaluation on the best checkpoint), returning the list of save_dirs each run's
+    `test_metrics.csv` lives in.
     """
     save_dirs = []
     for run_id in run_ids:
         config = load_config(config_path)
         apply_run_id_overrides(config, run_id)
         save_dirs.append(config.save_dir)
+
+        test_metrics_csv = os.path.join(config.save_dir, "test_metrics.csv")
+        if os.path.isfile(test_metrics_csv):
+            print(f"\n=== Skipping evaluation for run_id={run_id}: {test_metrics_csv} already exists ===")
+            continue
 
         print(f"\n=== Running evaluation for run_id={run_id} ===")
         cmd = [sys.executable, "-m", "src.evaluate_hexels", f"--config={config_path}", f"--run_id={run_id}", *eval_args.split()]
@@ -81,19 +90,20 @@ def run_evaluations(config_path: str, run_ids: list[int], eval_args: str) -> lis
 
 def aggregate_eval_results(save_dirs: list[str], metrics: list[str] | None = None) -> pd.DataFrame:
     """
-    Read each run's `eval_metrics.csv` (written by `src.evaluate_hexels`) from `save_dirs`,
-    concatenate them into a single DataFrame, and append trailing "mean"/"std" summary rows.
+    Read each run's `test_metrics.csv` (written by `src.train` or `src.evaluate_hexels`) from
+    `save_dirs`, concatenate them into a single DataFrame, and append trailing "mean"/"std"
+    summary rows.
 
     If `metrics` is given, only id columns (run_id, seed, save_dir) plus columns matching
     `metrics` (by exact name or prefix, e.g. "test_hexel/all/") are kept and summarized. Otherwise
     every numeric column is kept and summarized.
     """
-    eval_csvs = [os.path.join(save_dir, "eval_metrics.csv") for save_dir in save_dirs]
-    missing = [path for path in eval_csvs if not os.path.isfile(path)]
+    test_metrics_csvs = [os.path.join(save_dir, "test_metrics.csv") for save_dir in save_dirs]
+    missing = [path for path in test_metrics_csvs if not os.path.isfile(path)]
     if missing:
-        raise FileNotFoundError(f"Missing eval_metrics.csv for run(s): {missing}")
+        raise FileNotFoundError(f"Missing test_metrics.csv for run(s): {missing}")
 
-    df = pd.concat((pd.read_csv(path) for path in eval_csvs), ignore_index=True).sort_values("seed").reset_index(drop=True)
+    df = pd.concat((pd.read_csv(path) for path in test_metrics_csvs), ignore_index=True).sort_values("seed").reset_index(drop=True)
 
     id_cols = ["run_id", "seed", "save_dir"]
     if metrics:

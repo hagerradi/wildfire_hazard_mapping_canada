@@ -1,13 +1,13 @@
 #!/bin/bash
 ##SBATCH --mail-type=all
 ##SBATCH --mail-user=name@mila.quebec
-#SBATCH --job-name=unet_full_data
+#SBATCH --job-name=unet_multitask
 #SBATCH --output=logs/job_%x_%A_%a.out
 #SBATCH --error=logs/job_%x_%A_%a.err
 #SBATCH --partition=long
 #SBATCH --ntasks=1
-#SBATCH --time=15:59:00
-#SBATCH --mem-per-cpu=40Gb
+#SBATCH --time=09:59:00
+#SBATCH --mem-per-cpu=55Gb
 #SBATCH --cpus-per-task=4
 #SBATCH --gres=gpu:1
 #SBATCH --array=0-2                # Launches 3 parallel runs (0,1,2); override at submit time, e.g. `sbatch --array=0-4 ...` for 5 runs.
@@ -63,13 +63,13 @@ python -m src.train \
     --run_id="$RUN_ID" \
     "${TRAIN_ARG_ARRAY[@]}"
 
-if [[ "$RUN_HEXEL_EVAL" == "1" ]]; then
-    echo "Running evaluation with config: $CONFIG_FILE"
-    read -r -a EVAL_ARG_ARRAY <<< "$EVAL_ARGS"
-    python -m src.evaluate_hexels \
-        --config="$CONFIG_FILE" \
-        --run_id="$RUN_ID" \
-        "${EVAL_ARG_ARRAY[@]}"
-else
-    echo "Skipping hexel evaluation because RUN_HEXEL_EVAL=${RUN_HEXEL_EVAL}"
-fi
+# if [[ "$RUN_HEXEL_EVAL" == "1" ]]; then
+#     echo "Running evaluation with config: $CONFIG_FILE"
+#     read -r -a EVAL_ARG_ARRAY <<< "$EVAL_ARGS"
+#     python -m src.evaluate_hexels \
+#         --config="$CONFIG_FILE" \
+#         --run_id="$RUN_ID" \
+#         "${EVAL_ARG_ARRAY[@]}"
+# else
+#     echo "Skipping hexel evaluation because RUN_HEXEL_EVAL=${RUN_HEXEL_EVAL}"
+# fi

@@ -219,17 +219,17 @@ def main(
         print_and_log_eval_metrics(test_metrics=test_metrics, hexel_metrics=hexel_metrics, experiment_logger=trainer.logger)
 
         # persist metrics to disk as a single-row CSV so multi-run results can be
-        # aggregated later (see src/aggregate_eval_results.py)
-        eval_metrics_row: dict[str, float | int | str] = {
+        # aggregated later (see src/aggregate_multirun_results.py)
+        test_metrics_row: dict[str, float | int | str] = {
             "run_id": args.run_id if args.run_id is not None else "",
             "seed": config.seed,
             "save_dir": config.save_dir,
         }
-        eval_metrics_row.update({f"patch/{k}": v for k, v in (test_metrics if isinstance(test_metrics, dict) else {}).items()})
-        eval_metrics_row.update({f"test_hexel/{k}": v for k, v in hexel_metrics.items()})
+        test_metrics_row.update({f"test_patch_{k}": v for k, v in (test_metrics if isinstance(test_metrics, dict) else {}).items()})
+        test_metrics_row.update({f"test_hexel/{k}": v for k, v in hexel_metrics.items()})
 
         os.makedirs(config.save_dir, exist_ok=True)
-        pd.DataFrame([eval_metrics_row]).to_csv(os.path.join(config.save_dir, "eval_metrics.csv"), index=False)
+        pd.DataFrame([test_metrics_row]).to_csv(os.path.join(config.save_dir, "test_metrics.csv"), index=False)
 
     print(f"=======Total Evaluation Time {round(time.time() - start_time, 3)}s========")
     print(f"=======Prediction Time {round(preds_time, 3)}s========")

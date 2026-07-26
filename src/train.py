@@ -8,6 +8,7 @@ import signal
 from types import FrameType
 
 import numpy as np
+import pandas as pd
 import yaml
 
 from src.config import Config, GridParams, apply_run_id_overrides
@@ -157,6 +158,19 @@ def main() -> None:
     # print metrics in terminal and log into comet
     print_and_log_eval_metrics(test_metrics=test_metrics, hexel_metrics=hexel_metrics, experiment_logger=trainer.logger)
 
+    # persist test (best checkpoint) metrics to disk as a single-row CSV so multi-run
+    # results can be aggregated later (mirrors src/evaluate_hexels.py's test_metrics.csv)
+    test_metrics_row: dict[str, float | int | str] = {
+        "run_id": args.run_id if args.run_id is not None else "",
+        "seed": seed,
+        "save_dir": config.save_dir,
+    }
+    test_metrics_row.update({f"test_patch_{k}": v for k, v in (test_metrics if isinstance(test_metrics, dict) else {}).items()})
+    test_metrics_row.update({f"test_hexel/{k}": v for k, v in hexel_metrics.items()})
+
+    os.makedirs(config.save_dir, exist_ok=True)
+    pd.DataFrame([test_metrics_row]).to_csv(os.path.join(config.save_dir, "test_metrics.csv"), index=False)
+
     # ---------- Validation Evaluation (optional) ----------
     if args.log_val_predicted_hexels:
         print("\n[Evaluation] Running on validation set...")
@@ -190,6 +204,19 @@ def main() -> None:
             split_label="Val",
             metric_prefix="val_hexel",
         )
+
+        # persist validation (best checkpoint) metrics to disk as a single-row CSV,
+        # mirroring the test_metrics.csv logic above.
+        val_metrics_row: dict[str, float | int | str] = {
+            "run_id": args.run_id if args.run_id is not None else "",
+            "seed": seed,
+            "save_dir": config.save_dir,
+        }
+        val_metrics_row.update({f"val_patch_{k}": v for k, v in (val_metrics if isinstance(val_metrics, dict) else {}).items()})
+        val_metrics_row.update({f"val_hexel/{k}": v for k, v in val_hexel_metrics.items()})
+
+        os.makedirs(config.save_dir, exist_ok=True)
+        pd.DataFrame([val_metrics_row]).to_csv(os.path.join(config.save_dir, "val_results.csv"), index=False)
 
 
 if __name__ == "__main__":

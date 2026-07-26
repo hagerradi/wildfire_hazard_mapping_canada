@@ -61,7 +61,7 @@ def _make_args(**overrides) -> argparse.Namespace:
 def _mock_heavy_dependencies(monkeypatch, tmp_path):
     """
     Stub out everything in evaluate_hexels.main() except the code path we're
-    testing (building/writing eval_metrics_row to eval_metrics.csv), so this
+    testing (building/writing test_metrics_row to test_metrics.csv), so this
     test doesn't need a real dataset, checkpoint, or trained model.
     """
 
@@ -88,7 +88,7 @@ def _mock_heavy_dependencies(monkeypatch, tmp_path):
     return fake_trainer
 
 
-def test_main_writes_eval_metrics_csv(tmp_path):
+def test_main_writes_test_metrics_csv(tmp_path):
     config = _make_config(tmp_path)
     args = _make_args()
 
@@ -96,7 +96,7 @@ def test_main_writes_eval_metrics_csv(tmp_path):
 
     assert hexel_metrics == {"all/mae": 0.3}
 
-    csv_path = tmp_path / "out" / "eval_metrics.csv"
+    csv_path = tmp_path / "out" / "test_metrics.csv"
     assert csv_path.exists()
 
     df = pd.read_csv(csv_path)
@@ -104,11 +104,11 @@ def test_main_writes_eval_metrics_csv(tmp_path):
     assert df.loc[0, "seed"] == 42
     assert df.loc[0, "save_dir"] == str(tmp_path / "out")
     assert df.loc[0, "run_id"] == "" or pd.isna(df.loc[0, "run_id"])
-    assert df.loc[0, "patch/mae"] == pytest.approx(0.2)
+    assert df.loc[0, "test_patch_mae"] == pytest.approx(0.2)
     assert df.loc[0, "test_hexel/all/mae"] == pytest.approx(0.3)
 
 
-def test_main_writes_run_id_into_eval_metrics_csv(tmp_path):
+def test_main_writes_run_id_into_test_metrics_csv(tmp_path):
     config = _make_config(tmp_path)
     args = _make_args(run_id=1)
 
@@ -119,7 +119,7 @@ def test_main_writes_run_id_into_eval_metrics_csv(tmp_path):
     from src.config import SEEDS
 
     expected_save_dir = tmp_path / "out" / f"seed_{SEEDS[1]}"
-    df = pd.read_csv(expected_save_dir / "eval_metrics.csv")
+    df = pd.read_csv(expected_save_dir / "test_metrics.csv")
     assert df.loc[0, "run_id"] == 1
     assert df.loc[0, "seed"] == SEEDS[1]
     assert df.loc[0, "save_dir"] == str(expected_save_dir)
