@@ -24,8 +24,7 @@ FI_CONFIG = Path("configs/fi_common_input_pipeline.yaml")
 ROS_CONFIG = Path("configs/ros_common_input_pipeline.yaml")
 MULTI_OUTPUT_CONFIG = Path("configs/multi_output_common_input_pipeline.yaml")
 HAZARD_EVAL_CONFIG = Path("configs/hazard_eval_common_input_pipeline.yaml")
-HAZARD_BP_CONFIG = Path("configs/archived/bp_common_input_pipeline_checkpoint.yaml")
-HAZARD_FI_CONFIG = Path("configs/archived/fi_common_input_pipeline_checkpoint.yaml")
+HAZARD_MODEL_CONFIG = Path("configs/archived/multi_output_common_input_pipeline_checkpoint.yaml")
 COMMON_INPUT_PIPELINE_CONFIGS = [BP_CONFIG, FI_CONFIG, ROS_CONFIG]
 
 WEATHER_FEATURES = {
@@ -252,11 +251,10 @@ def test_multi_output_config_rejects_scalar_loss_component_checkpoint_metric():
         Config(**raw_config)
 
 
-def test_hazard_eval_config_parses_and_references_bp_fi_configs():
+def test_hazard_eval_config_parses_and_references_model_config():
     config = _load_hazard_eval_config(HAZARD_EVAL_CONFIG)
 
-    assert config.bp.config_path == str(HAZARD_BP_CONFIG)
-    assert config.fi.config_path == str(HAZARD_FI_CONFIG)
+    assert config.model.config_path == str(HAZARD_MODEL_CONFIG)
     assert config.root_dir.endswith("data_samples_v2")
     assert config.test_split == "test_indices.csv"
     assert config.mask_scope == "actual"
@@ -267,8 +265,7 @@ def test_hazard_eval_config_defaults():
     config = HazardEvalConfig(
         root_dir="root",
         raw_data_dir="raw",
-        bp=HazardModelEntry(config_path="bp.yaml"),
-        fi=HazardModelEntry(config_path="fi.yaml"),
+        model=HazardModelEntry(config_path="model.yaml"),
     )
 
     assert len(config.bin_thresholds) == 12
@@ -283,8 +280,7 @@ def test_hazard_eval_config_rejects_non_positive_fi_cap():
         HazardEvalConfig(
             root_dir="root",
             raw_data_dir="raw",
-            bp={"config_path": "bp.yaml"},
-            fi={"config_path": "fi.yaml"},
+            model={"config_path": "model.yaml"},
             fi_cap=0.0,
         )
 
@@ -294,8 +290,7 @@ def test_hazard_eval_config_rejects_non_positive_scale_denominator():
         HazardEvalConfig(
             root_dir="root",
             raw_data_dir="raw",
-            bp={"config_path": "bp.yaml"},
-            fi={"config_path": "fi.yaml"},
+            model={"config_path": "model.yaml"},
             scale_denominator=-1.0,
         )
 
@@ -305,8 +300,7 @@ def test_hazard_eval_config_rejects_non_increasing_bin_thresholds():
         HazardEvalConfig(
             root_dir="root",
             raw_data_dir="raw",
-            bp={"config_path": "bp.yaml"},
-            fi={"config_path": "fi.yaml"},
+            model={"config_path": "model.yaml"},
             bin_thresholds=[0.1, 0.1, 0.2],
         )
 
@@ -316,8 +310,7 @@ def test_hazard_eval_config_rejects_non_finite_bin_thresholds():
         HazardEvalConfig(
             root_dir="root",
             raw_data_dir="raw",
-            bp={"config_path": "bp.yaml"},
-            fi={"config_path": "fi.yaml"},
+            model={"config_path": "model.yaml"},
             bin_thresholds=[0.1, float("nan"), 0.2],
         )
 
@@ -326,8 +319,7 @@ def test_hazard_eval_config_reference_file_requires_denominator_or_path():
     kwargs = {
         "root_dir": "root",
         "raw_data_dir": "raw",
-        "bp": {"config_path": "bp.yaml"},
-        "fi": {"config_path": "fi.yaml"},
+        "model": {"config_path": "model.yaml"},
         "scale_denominator_source": "reference_file",
     }
 
@@ -342,8 +334,7 @@ def test_hazard_eval_config_parses_uncapped_fi_cap():
     config = HazardEvalConfig(
         root_dir="root",
         raw_data_dir="raw",
-        bp={"config_path": "bp.yaml"},
-        fi={"config_path": "fi.yaml"},
+        model={"config_path": "model.yaml"},
         fi_cap=None,
     )
 
@@ -354,8 +345,7 @@ def test_hazard_eval_config_reference_file_with_path_parses():
     config = HazardEvalConfig(
         root_dir="root",
         raw_data_dir="raw",
-        bp={"config_path": "bp.yaml"},
-        fi={"config_path": "fi.yaml"},
+        model={"config_path": "model.yaml"},
         scale_denominator_source="reference_file",
         reference_denominator_path="denominator.tif",
     )

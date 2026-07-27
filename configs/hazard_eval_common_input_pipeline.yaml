@@ -1,24 +1,20 @@
-# Hazard evaluation (BP x FI) over the common-input-pipeline checkpoints.
-# Loads the BP and FI models from their training configs + checkpoints, then combines
-# their predictions into a scaled hazard product. No hazard math is defined here; this
-# config only declares inputs, computation settings, and artifact toggles.
-save_dir: "experiments/hazard_eval_common_input_pipeline"
+# Hazard evaluation (BP x FI) from a single multi-output checkpoint over the
+# common-input-pipeline data. Loads one model (trained to jointly predict bp
+# and fi) from its training config + checkpoint, then combines its predictions
+# into a scaled hazard product. No hazard math is defined here; this config
+# only declares inputs, computation settings, and artifact toggles.
+save_dir: "experiments/hazard_eval_multi_output_spatial_weather"
 
-# Shared data root/raw/test split match the BP/FI common input pipeline configs.
-root_dir: "/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA/data_samples_v2"
-raw_data_dir: "/network/projects/amlrt/nrcan_wildfires/data/full_data_bp3plus/canada_bp3+_2026_MILA"
+# Shared data root/raw/test split match the multi-output common input pipeline config.
+root_dir: "/home/mila/h/hager.radi/scratch/full_data_bp3plus/canada_bp3+_2026_MILA/data_samples_v4"
+raw_data_dir: "/home/mila/h/hager.radi/scratch/full_data_bp3plus/canada_bp3+_2026_MILA"
 test_split: "test_indices.csv"
 valid_mask_threshold: 0.01
 mask_scope: "actual" # actual | buffer | buffer_only
 stitch_mode: "mean" # mean | max
 
-bp:
-  config_path: "configs/archived/bp_common_input_pipeline_checkpoint.yaml"
-  checkpoint_filename: "best.pth"
-  save_predictions: false
-
-fi:
-  config_path: "configs/archived/fi_common_input_pipeline_checkpoint.yaml"
+model:
+  config_path: "configs/hazard_eval_multi_output_spatial_weather_checkpoint.yaml"
   checkpoint_filename: "best.pth"
   save_predictions: false
 

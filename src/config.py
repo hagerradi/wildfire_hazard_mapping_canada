@@ -322,8 +322,7 @@ class Config(BaseModel):
             invalid_checkpoint_metrics = set(self.evaluation.best_ckpt_metrics) - valid_checkpoint_metrics
             if invalid_checkpoint_metrics:
                 raise ValueError(
-                    "Multi-target best_ckpt_metrics must use namespaced metric keys. "
-                    f"Invalid values: {sorted(invalid_checkpoint_metrics)}."
+                    f"Multi-target best_ckpt_metrics must use namespaced metric keys. Invalid values: {sorted(invalid_checkpoint_metrics)}."
                 )
         return self
 
@@ -360,7 +359,7 @@ DenominatorSource = Literal[
 
 
 class HazardModelEntry(BaseModel):
-    """A single trained model (BP or FI) contributing predictions to hazard evaluation."""
+    """A single trained multi-output model contributing BP/FI predictions to hazard evaluation."""
 
     config_path: str
     checkpoint_filename: str = "best.pth"
@@ -368,7 +367,7 @@ class HazardModelEntry(BaseModel):
 
 
 class HazardEvalConfig(BaseModel):
-    """Config for hazard evaluation combining BP and FI model checkpoints."""
+    """Config for hazard evaluation using a single multi-output BP/FI model checkpoint."""
 
     save_dir: str = "experiments/hazard_eval"
 
@@ -379,8 +378,7 @@ class HazardEvalConfig(BaseModel):
     mask_scope: Literal["actual", "buffer", "buffer_only"] = "actual"
     stitch_mode: Literal["mean", "max"] = "mean"
 
-    bp: HazardModelEntry
-    fi: HazardModelEntry
+    model: HazardModelEntry
 
     fi_cap: float | None = Field(default=DEFAULT_FI_CAP, gt=0.0)
     scale_to: float = Field(default=DEFAULT_SCALE_TO, gt=0.0)

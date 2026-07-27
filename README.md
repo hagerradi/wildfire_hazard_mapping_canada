@@ -58,18 +58,17 @@ To visualize predictions and/or save visualizations, add the optional flags `--v
 
 ### Hazard evaluation
 
-Hazard evaluation combines a trained burn probability (BP) checkpoint and a trained fire intensity (FI) checkpoint over the same test hexels, then computes:
+Hazard evaluation uses a single trained multi-output checkpoint that jointly predicts burn probability (BP) and fire intensity (FI) (optionally alongside other targets, e.g. ROS) over the same test hexels, then computes:
 
 - raw hazard: `BP * min(FI, fi_cap)`
 - scaled hazard: `raw_hazard * scale_to / denominator`
 - binned hazard classes from the scaled hazard thresholds
 
-To reproduce hazard results, provide a hazard config plus compatible BP/FI model configs and checkpoints. The default example is `configs/hazard_eval_common_input_pipeline.yaml`, which points to archived checkpoint-compatible BP/FI configs:
+To reproduce hazard results, provide a hazard config plus a compatible multi-output model config and checkpoint. The default example is `configs/hazard_eval_common_input_pipeline.yaml`, which points to an archived checkpoint-compatible multi-output config:
 
-- `configs/archived/bp_common_input_pipeline_checkpoint.yaml`
-- `configs/archived/fi_common_input_pipeline_checkpoint.yaml`
+- `configs/archived/multi_output_common_input_pipeline_checkpoint.yaml`
 
-Each model config's `save_dir` and the hazard config's `checkpoint_filename` determine where the checkpoint is loaded from, e.g. `experiments/bp_common_input_pipeline/best.pth` and `experiments/fi_common_input_pipeline/best.pth`. To evaluate newer checkpoints, update the hazard config's `bp.config_path`, `fi.config_path`, and checkpoint filenames as needed. The BP config must target `bp`, the FI config must target `fi`, and both are evaluated with the hazard config's shared `root_dir`, `raw_data_dir`, and `test_split`.
+The model config's `save_dir` and the hazard config's `checkpoint_filename` determine where the checkpoint is loaded from, e.g. `experiments/multi_output_common_input_pipeline/best.pth`. To evaluate a newer checkpoint, update the hazard config's `model.config_path` and `model.checkpoint_filename` as needed. The model's grid targets must include both `bp` and `fi`, and it is evaluated with the hazard config's shared `root_dir`, `raw_data_dir`, and `test_split`.
 
 Run locally with:
 
