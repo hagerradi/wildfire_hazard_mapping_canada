@@ -24,7 +24,7 @@ FI_CONFIG = Path("configs/fi_common_input_pipeline.yaml")
 ROS_CONFIG = Path("configs/ros_common_input_pipeline.yaml")
 MULTI_OUTPUT_CONFIG = Path("configs/multi_output_common_input_pipeline.yaml")
 HAZARD_EVAL_CONFIG = Path("configs/hazard_eval_common_input_pipeline.yaml")
-HAZARD_MODEL_CONFIG = Path("configs/archived/multi_output_common_input_pipeline_checkpoint.yaml")
+HAZARD_MODEL_CONFIG = Path("configs/hazard_eval_multi_output_spatial_weather_checkpoint.yaml")
 COMMON_INPUT_PIPELINE_CONFIGS = [BP_CONFIG, FI_CONFIG, ROS_CONFIG]
 
 WEATHER_FEATURES = {
@@ -255,7 +255,7 @@ def test_hazard_eval_config_parses_and_references_model_config():
     config = _load_hazard_eval_config(HAZARD_EVAL_CONFIG)
 
     assert config.model.config_path == str(HAZARD_MODEL_CONFIG)
-    assert config.root_dir.endswith("data_samples_v2")
+    assert config.root_dir.endswith("data_samples_v4")
     assert config.test_split == "test_indices.csv"
     assert config.mask_scope == "actual"
     assert config.stitch_mode == "mean"

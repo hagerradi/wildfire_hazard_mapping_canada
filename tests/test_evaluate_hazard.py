@@ -24,7 +24,7 @@ from src.evaluate_hazard import (
 
 BP_CONFIG = Path("configs/bp_common_input_pipeline.yaml")
 MULTI_OUTPUT_CONFIG = Path("configs/multi_output_common_input_pipeline.yaml")
-HAZARD_MODEL_CONFIG = Path("configs/archived/multi_output_common_input_pipeline_checkpoint.yaml")
+HAZARD_MODEL_CONFIG = Path("configs/hazard_eval_multi_output_spatial_weather_checkpoint.yaml")
 HAZARD_EVAL_CONFIG = Path("configs/hazard_eval_common_input_pipeline.yaml")
 
 
