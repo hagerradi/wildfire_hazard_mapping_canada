@@ -136,6 +136,7 @@ def _evaluation_args() -> argparse.Namespace:
         robust_plot_percentile=None,
         stitch_mode="mean",
         mask_scope="actual",
+        run_id=None,
     )
 
 
