@@ -14,7 +14,7 @@ mask_scope: "actual" # actual | buffer | buffer_only
 stitch_mode: "mean" # mean | max
 
 model:
-  config_path: "configs/eval_multi_output_spatial_weather_firesize_checkpoint.yaml"
+  config_path: "configs/hazard_eval_multi_output_spatial_weather_checkpoint.yaml"
   checkpoint_filename: "best.pth"
   save_predictions: false
 
