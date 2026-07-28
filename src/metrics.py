@@ -96,7 +96,12 @@ def _rank_data_average_ties(data: torch.Tensor) -> torch.Tensor:
     _, inverse, counts = torch.unique(flat, sorted=True, return_inverse=True, return_counts=True)
     rank_sums = torch.zeros(counts.numel(), dtype=torch.int64, device=flat.device)
     rank_sums.scatter_add_(0, inverse, ranks)
-    mean_ranks = rank_sums.to(dtype=torch.float32) / counts.to(dtype=torch.float32)
+    # NOTE: MPS lacks float64 support, so rank sums (which reach 1e10+ on
+    # full hexels, well past float32's 2**24 exact-integer limit) are cast
+    # to float32 there and float64 everywhere else. Keeps MPS runnable
+    # without perturbing spearman on CPU/CUDA.
+    acc_dtype = torch.float32 if flat.device.type == "mps" else torch.float64
+    mean_ranks = rank_sums.to(dtype=acc_dtype) / counts.to(dtype=acc_dtype)
     return mean_ranks[inverse]
 
 
