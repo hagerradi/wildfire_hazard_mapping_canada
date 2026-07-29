@@ -43,7 +43,7 @@ class ModelConfig(BaseModel):
     auxiliary_feature_encoder_poolings: dict[str, str] = {"tabular_weather": "max"}
 
     # Non-neural baseline hyperparameters (XGBoost/RandomForest/LinearRegression).
-    # Unused by src/models/factory.py; consumed only by src/train_baseline.py's
+    # Unused by src/models/factory.py; consumed only by src/train_tabular_baseline.py's
     # build_baseline_model dispatch.
     params: dict | None = None
 

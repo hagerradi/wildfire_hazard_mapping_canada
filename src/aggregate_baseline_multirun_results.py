@@ -17,7 +17,7 @@ import os
 import pandas as pd
 
 from src.config import SEEDS, apply_run_id_overrides
-from src.train_baseline import load_config
+from src.train_tabular_baseline import load_config
 
 
 def parse_args() -> argparse.Namespace:
@@ -45,7 +45,7 @@ def flatten_metrics(target: str, run_id: int, seed: int, save_dir: str, metrics:
 def collect_run_results(config_path: str, target: str, run_ids: list[int]) -> list[dict]:
     """Reads existing metrics_{target}.json for each run_id's derived save_dir.
     Does NOT re-run training -- assumes the seeded runs already completed via the
-    SLURM array job (run_files/train_baseline_multi_run.sh)."""
+    SLURM array job (run_files/baselines/train_baseline_multi_run.sh)."""
     rows = []
     for run_id in run_ids:
         config = load_config(config_path)
