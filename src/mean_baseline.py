@@ -1,6 +1,6 @@
 """
-Mean-training-value baseline: predicts the scalar mean of training-pixel BP
-values (normalized [0,1] space) everywhere, ignoring all spatial and fuel-curve
+Mean-training-value baseline: predicts the scalar mean of the training-pixel
+targets (in normalized space) everywhere, ignoring all spatial and fuel-curve
 inputs. Zero-spatial-skill floor for comparison against the XGBoost spatial-only
 baseline and the U-Net surrogate.
 """

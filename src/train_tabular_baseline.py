@@ -11,10 +11,10 @@ training convention), denormalizing only at evaluation time for metric
 computation.
 
 Usage:
-    python -m src.train_baseline --config=configs/bp_spatial_only_xgb.yaml --target=bp
-    python -m src.train_baseline --config=configs/fi_spatial_only_xgb.yaml --target=fi
-    python -m src.train_baseline --config=configs/ros_spatial_only_xgb.yaml --target=ros
-    python -m src.train_baseline --config=configs/bp_spatial_only_xgb.yaml --target=bp \
+    python -m src.train_tabular_baseline --config=configs/baselines/bp_spatial_only_xgb.yaml --target=bp
+    python -m src.train_tabular_baseline --config=configs/baselines/fi_spatial_only_xgb.yaml --target=fi
+    python -m src.train_tabular_baseline --config=configs/baselines/ros_spatial_only_xgb.yaml --target=ros
+    python -m src.train_tabular_baseline --config=configs/baselines/bp_spatial_only_xgb.yaml --target=bp \
         --pixels_per_patch=256 --max_train_batches=5 --max_eval_batches=5  # smoke test
 
 Note: tqdm progress bars are written to stderr; milestone prints go to stdout.
@@ -54,7 +54,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Train and evaluate a tabular baseline (XGBoost/RF/linear) on spatial + iROS fuel curve inputs."
     )
-    parser.add_argument("--config", type=str, default="configs/bp_spatial_only_xgb.yaml", help="Path to YAML config file.")
+    parser.add_argument("--config", type=str, default="configs/baselines/bp_spatial_only_xgb.yaml", help="Path to YAML config file.")
     parser.add_argument("--target", type=str, default="bp", choices=["bp", "fi", "ros"], help="Which target to train the baseline on.")
     parser.add_argument("--pixels_per_patch", type=int, default=4096, help="Training subsample size per patch (0 = use all valid pixels).")
     parser.add_argument(
@@ -456,6 +456,8 @@ def evaluate_region_level(
             gt_grid=gt_grid, pred_grid=pred_grid, device=device, metric_functions=metric_functions
         )
 
+    if not per_hexel_metrics:
+        raise RuntimeError("Region-level evaluation produced no per-hexel metrics. Check loader/max_batches and split contents.")
     all_metric_names = next(iter(per_hexel_metrics.values())).keys()
     aggregated = {name: float(np.mean([m[name] for m in per_hexel_metrics.values()])) for name in all_metric_names}
 

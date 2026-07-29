@@ -45,7 +45,7 @@ class ModelConfig(BaseModel):
     # Non-neural baseline hyperparameters (XGBoost/RandomForest/LinearRegression).
     # Unused by src/models/factory.py; consumed only by src/train_tabular_baseline.py's
     # build_baseline_model dispatch.
-    params: dict | None = None
+    params: dict[str, Any] | None = None
 
 
 class OptimizerConfig(BaseModel):

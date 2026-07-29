@@ -1,6 +1,6 @@
 #!/bin/bash
 ##SBATCH --mail-type=all
-##SBATCH --mail-user=francisco.lopez@mila.quebec
+ ##SBATCH --mail-user=name@mila.quebec
 #SBATCH --job-name=baseline_mean
 #SBATCH --output=logs/job_%x_%j.out
 #SBATCH --error=logs/job_%x_%j.err

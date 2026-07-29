@@ -6,7 +6,7 @@ save_dir (via apply_run_id_overrides), flattens the nested val/test/region-level
 dicts into columns, concatenates across seeds, and appends mean/std summary rows.
 
 Usage:
-    python -m src.aggregate_baseline_multirun_results --config configs/bp_spatial_only_xgb.yaml --target=bp \
+    python -m src.aggregate_baseline_multirun_results --config configs/baselines/bp_spatial_only_xgb.yaml --target=bp \
         --output_csv experiments/bp_spatial_only_xgb/multi_run_summary.csv
 """
 
@@ -23,7 +23,7 @@ from src.train_tabular_baseline import load_config
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Aggregate multi-run (multi-seed) baseline results into a CSV.")
     parser.add_argument(
-        "--config", type=str, default="configs/bp_spatial_only_xgb.yaml", help="Path to the base YAML config used for training."
+        "--config", type=str, default="configs/baselines/bp_spatial_only_xgb.yaml", help="Path to the base YAML config used for training."
     )
     parser.add_argument(
         "--target",
@@ -83,7 +83,7 @@ def build_summary_df(rows: list[dict]) -> pd.DataFrame:
     df = pd.DataFrame(rows).sort_values("seed").reset_index(drop=True)
 
     id_cols = ["run_id", "seed", "save_dir"]
-    numeric_cols = df.select_dtypes(include="number").columns.difference(["run_id", "seed"])
+    numeric_cols = df.select_dtypes(include="number").columns.difference(id_cols)
     summary = df[numeric_cols].agg(["mean", "std"])
     summary.insert(0, "save_dir", "")
     summary.insert(0, "seed", ["mean", "std"])
