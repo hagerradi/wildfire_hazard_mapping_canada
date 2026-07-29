@@ -203,6 +203,7 @@ class Config(BaseModel):
     metrics: list[str] = ["mse", "mae", "spearman", "ssim"]
     data_prep: DataPrepConfig = Field(default_factory=DataPrepConfig)
 
+
 #: Fixed pool of seeds used to derive a run-specific seed from `run_id`.
 #: NOTE: duplicated from multi_run (ea24b57). Remove when multi_run merges.
 SEEDS: list[int] = [42, 1337, 2024, 3407, 12345]

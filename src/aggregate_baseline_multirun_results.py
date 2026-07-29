@@ -22,10 +22,25 @@ from src.train_tabular_baseline import load_config
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Aggregate multi-run (multi-seed) baseline results into a CSV.")
-    parser.add_argument("--config", type=str, default="configs/bp_spatial_only_xgb.yaml", help="Path to the base YAML config used for training.")
-    parser.add_argument("--target", type=str, default="bp", choices=["bp", "fi", "ros"], help="Target the runs were trained on (must match the metrics_{target}.json filename).")
-    parser.add_argument("--run_ids", type=int, nargs="+", default=list(range(len(SEEDS))), help="run_ids to aggregate. Defaults to all seeds.")
-    parser.add_argument("--output_csv", type=str, default=None, help="Path to write the aggregated CSV. Defaults to '<base save_dir>/multi_run_summary_<target>.csv'.")
+    parser.add_argument(
+        "--config", type=str, default="configs/bp_spatial_only_xgb.yaml", help="Path to the base YAML config used for training."
+    )
+    parser.add_argument(
+        "--target",
+        type=str,
+        default="bp",
+        choices=["bp", "fi", "ros"],
+        help="Target the runs were trained on (must match the metrics_{target}.json filename).",
+    )
+    parser.add_argument(
+        "--run_ids", type=int, nargs="+", default=list(range(len(SEEDS))), help="run_ids to aggregate. Defaults to all seeds."
+    )
+    parser.add_argument(
+        "--output_csv",
+        type=str,
+        default=None,
+        help="Path to write the aggregated CSV. Defaults to '<base save_dir>/multi_run_summary_<target>.csv'.",
+    )
     return parser.parse_args()
 
 
@@ -54,8 +69,7 @@ def collect_run_results(config_path: str, target: str, run_ids: list[int]) -> li
         metrics_path = os.path.join(config.save_dir, f"metrics_{target}.json")
         if not os.path.isfile(metrics_path):
             raise FileNotFoundError(
-                f"Missing {metrics_path} for run_id={run_id} (seed={run_seed}). "
-                f"Has this seed's training run completed?"
+                f"Missing {metrics_path} for run_id={run_id} (seed={run_seed}). " f"Has this seed's training run completed?"
             )
         with open(metrics_path) as f:
             metrics = json.load(f)

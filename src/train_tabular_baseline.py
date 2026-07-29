@@ -27,24 +27,23 @@ import time
 from collections import defaultdict
 from contextlib import contextmanager
 
+import joblib
 import numpy as np
 import torch
 import yaml
-import joblib
 from scipy.stats import spearmanr
 from tqdm import tqdm
 from xgboost import XGBRegressor
 
-from src.config import Config, apply_run_id_overrides
-from src.datasets.dataset import get_train_val_dataloader, get_test_dataloader
-from src.datasets.utils import get_dataset_dimensions, apply_bp_nodata_zero_range
-from src.datasets.targets import get_target_specs
-from data_preparation.spatial.utils import get_range_output, read_split_hex_ids, get_output_log_stats_cached
-from src.utils import AVAILABLE_METRICS, seed_everything
-from src.datasets.postprocessing.stitch_hexel import stitch_windows
-from src.datasets.postprocessing.utils import calculate_hexel_metrics_pytorch, load_target_grid_for_mask_scope, load_spatial_raster
 from data_preparation.paths import Paths
-
+from data_preparation.spatial.utils import get_output_log_stats_cached, get_range_output, read_split_hex_ids
+from src.config import Config, apply_run_id_overrides
+from src.datasets.dataset import get_test_dataloader, get_train_val_dataloader
+from src.datasets.postprocessing.stitch_hexel import stitch_windows
+from src.datasets.postprocessing.utils import calculate_hexel_metrics_pytorch, load_spatial_raster, load_target_grid_for_mask_scope
+from src.datasets.targets import get_target_specs
+from src.datasets.utils import apply_bp_nodata_zero_range, get_dataset_dimensions
+from src.utils import AVAILABLE_METRICS, seed_everything
 
 # Subset of metrics shown in the terminal region-level table (full data always
 # in metrics.json). Keeps the printed table readable regardless of target.
@@ -58,13 +57,22 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--config", type=str, default="configs/bp_spatial_only_xgb.yaml", help="Path to YAML config file.")
     parser.add_argument("--target", type=str, default="bp", choices=["bp", "fi", "ros"], help="Which target to train the baseline on.")
     parser.add_argument("--pixels_per_patch", type=int, default=4096, help="Training subsample size per patch (0 = use all valid pixels).")
-    parser.add_argument("--max_train_batches", type=int, default=0, help="If >0, cap number of training batches read during tabularization (for smoke tests).")
-    parser.add_argument("--max_eval_batches", type=int, default=0, help="If >0, cap number of val/test batches evaluated (for smoke tests).")
     parser.add_argument(
-    "--run_id", type=int, default=None,
-    help="SLURM array task ID (or run index) used to derive a run-specific seed, save_dir, "
-    "and Comet experiment name for parallel multi-seed runs.",
-)
+        "--max_train_batches",
+        type=int,
+        default=0,
+        help="If >0, cap number of training batches read during tabularization (for smoke tests).",
+    )
+    parser.add_argument(
+        "--max_eval_batches", type=int, default=0, help="If >0, cap number of val/test batches evaluated (for smoke tests)."
+    )
+    parser.add_argument(
+        "--run_id",
+        type=int,
+        default=None,
+        help="SLURM array task ID (or run index) used to derive a run-specific seed, save_dir, "
+        "and Comet experiment name for parallel multi-seed runs.",
+    )
     return parser.parse_args()
 
 
@@ -78,6 +86,7 @@ def load_config(path: str) -> Config:
 
 # ---------- Timing ----------
 
+
 @contextmanager
 def timed(label: str, timings: dict):
     """Times a block, prints '======= <label> Time ========', stores seconds in timings[label]."""
@@ -90,6 +99,7 @@ def timed(label: str, timings: dict):
 
 # ---------- Target transform params (mirrors Trainer._configure_metric_target_transform,
 # generalized across min_max (BP) and log_standard (FI/ROS)) ----------
+
 
 def get_grid_source_params(config: Config):
     source_map = {s.name: s for s in config.data.input_sources}
@@ -114,17 +124,23 @@ def get_target_transform_params(config: Config, target_name: str):
 
     if out_norm == "min_max":
         target_max, target_min = get_range_output(
-            root_dir=config.data.raw_data_dir, output_type=target_spec.output_type, allowed_hex_ids=train_hex_ids,
+            root_dir=config.data.raw_data_dir,
+            output_type=target_spec.output_type,
+            allowed_hex_ids=train_hex_ids,
         )
         target_max, target_min = apply_bp_nodata_zero_range(
-            target_name=target_spec.name, max_value=target_max, min_value=target_min,
+            target_name=target_spec.name,
+            max_value=target_max,
+            min_value=target_min,
             bp_nodata_as_zero=grid_params.bp_nodata_as_zero,
         )
     elif out_norm == "log_standard":
         if target_log_mean is None or target_log_std is None:
             target_log_mean, target_log_std = get_output_log_stats_cached(
-                root_dir=config.data.root_dir, output_type=target_spec.output_type,
-                allowed_hex_ids=train_hex_ids, raw_data_dir=config.data.raw_data_dir,
+                root_dir=config.data.root_dir,
+                output_type=target_spec.output_type,
+                allowed_hex_ids=train_hex_ids,
+                raw_data_dir=config.data.raw_data_dir,
             )
         if target_log_mean is None or target_log_std is None:
             raise ValueError(f"target_log_mean/std unavailable for target={target_name!r} with out_norm='log_standard'.")
@@ -134,8 +150,9 @@ def get_target_transform_params(config: Config, target_name: str):
     return out_norm, target_min, target_max, target_log_mean, target_log_std
 
 
-def denormalize_target(y_norm: np.ndarray, out_norm: str, target_min: float, target_max: float,
-                        target_log_mean: float | None, target_log_std: float | None) -> np.ndarray:
+def denormalize_target(
+    y_norm: np.ndarray, out_norm: str, target_min: float, target_max: float, target_log_mean: float | None, target_log_std: float | None
+) -> np.ndarray:
     if out_norm == "min_max":
         return y_norm * (target_max - target_min) + target_min
     if out_norm == "log_standard":
@@ -151,14 +168,22 @@ def clip_normalized_prediction(preds_norm: np.ndarray, out_norm: str) -> np.ndar
     return preds_norm
 
 
-def predict_real_scale(model, x_flat: np.ndarray, out_norm: str, target_min: float, target_max: float,
-                        target_log_mean: float | None, target_log_std: float | None) -> np.ndarray:
+def predict_real_scale(
+    model,
+    x_flat: np.ndarray,
+    out_norm: str,
+    target_min: float,
+    target_max: float,
+    target_log_mean: float | None,
+    target_log_std: float | None,
+) -> np.ndarray:
     """Predict in normalized space, clip if applicable, then denormalize to real units."""
     preds_norm = clip_normalized_prediction(model.predict(x_flat), out_norm)
     return denormalize_target(preds_norm, out_norm, target_min, target_max, target_log_mean, target_log_std)
 
 
 # ---------- Mask handling ----------
+
 
 def resolve_mask(masks: np.ndarray, valid_mask_threshold: float) -> np.ndarray:
     if masks.dtype == bool:
@@ -167,6 +192,7 @@ def resolve_mask(masks: np.ndarray, valid_mask_threshold: float) -> np.ndarray:
 
 
 # ---------- Combine spatial grid + fuel curve channels ----------
+
 
 def combine_inputs(inputs_np: np.ndarray, fuel_curve_np: np.ndarray | None) -> np.ndarray:
     """
@@ -180,6 +206,7 @@ def combine_inputs(inputs_np: np.ndarray, fuel_curve_np: np.ndarray | None) -> n
 
 
 # ---------- Batch -> tabular rows ----------
+
 
 def tabularize_loader(loader, valid_mask_threshold, pixels_per_patch=None, rng=None, max_batches=0):
     """Trains directly on normalized target space, matching the U-Net's training convention."""
@@ -230,6 +257,7 @@ def tabularize_loader(loader, valid_mask_threshold, pixels_per_patch=None, rng=N
 
 # ---------- Per-patch summaries (real-scale units) ----------
 
+
 def patch_summary(values: np.ndarray, mask: np.ndarray, top_fraction: float | None = None) -> float:
     valid = values[mask]
     if valid.size == 0:
@@ -242,9 +270,19 @@ def patch_summary(values: np.ndarray, mask: np.ndarray, top_fraction: float | No
 
 # ---------- Patch-level metrics + scalar-summary hexel rank agreement ----------
 
+
 def evaluate_patchwise_and_hexel(
-    model, loader, out_norm, target_min, target_max, target_log_mean, target_log_std,
-    valid_mask_threshold, metric_names, top_fraction: float = 0.10, max_batches: int = 0
+    model,
+    loader,
+    out_norm,
+    target_min,
+    target_max,
+    target_log_mean,
+    target_log_std,
+    valid_mask_threshold,
+    metric_names,
+    top_fraction: float = 0.10,
+    max_batches: int = 0,
 ):
     metric_fns = {k: AVAILABLE_METRICS[k] for k in metric_names}
     running = {name: 0.0 for name in metric_fns}
@@ -266,9 +304,7 @@ def evaluate_patchwise_and_hexel(
         fuel_curve = batch.get("fuel_curve")
         patch_metadata = batch.get("patch_metadata")
         if patch_metadata is None or "hex_id" not in patch_metadata:
-            raise ValueError(
-                "Batch is missing patch_metadata['hex_id']; check config.data.include_patch_metadata=true."
-            )
+            raise ValueError("Batch is missing patch_metadata['hex_id']; check config.data.include_patch_metadata=true.")
         hex_ids = patch_metadata["hex_id"].numpy()
 
         inputs_np = inputs.numpy()
@@ -337,8 +373,22 @@ def evaluate_patchwise_and_hexel(
 
 # ---------- Region-level (stitched full-hexel raster) evaluation ----------
 
-def evaluate_region_level(model, loader, out_norm, target_min, target_max, target_log_mean, target_log_std,
-                           valid_mask_threshold, config, metric_functions, target_name: str, device="cpu", max_batches: int = 0):
+
+def evaluate_region_level(
+    model,
+    loader,
+    out_norm,
+    target_min,
+    target_max,
+    target_log_mean,
+    target_log_std,
+    valid_mask_threshold,
+    config,
+    metric_functions,
+    target_name: str,
+    device="cpu",
+    max_batches: int = 0,
+):
     """
     Stitches per-patch predictions (denormalized to real units) into full hexel
     rasters via stitch_windows, compares against the true raw raster (loaded via
@@ -357,8 +407,7 @@ def evaluate_region_level(model, loader, out_norm, target_min, target_max, targe
         patch_metadata = batch.get("patch_metadata")
         if patch_metadata is None or "row" not in patch_metadata or "col" not in patch_metadata:
             raise ValueError(
-                "Batch is missing patch_metadata['row']/['col']; requires the "
-                "dataset.py patch_metadata extension (see PR)."
+                "Batch is missing patch_metadata['row']/['col']; requires the " "dataset.py patch_metadata extension (see PR)."
             )
         hex_ids = patch_metadata["hex_id"].numpy()
         rows = patch_metadata["row"].numpy()
@@ -406,15 +455,13 @@ def evaluate_region_level(model, loader, out_norm, target_min, target_max, targe
         )
 
     all_metric_names = next(iter(per_hexel_metrics.values())).keys()
-    aggregated = {
-        name: float(np.mean([m[name] for m in per_hexel_metrics.values()]))
-        for name in all_metric_names
-    }
+    aggregated = {name: float(np.mean([m[name] for m in per_hexel_metrics.values()])) for name in all_metric_names}
 
     return aggregated, per_hexel_metrics
 
 
 # ---------- Pretty printing ----------
+
 
 def print_region_metrics_table(aggregated: dict, per_hexel: dict, split_name: str, display_metrics: list[str] | None = None) -> None:
     """Aligned table: hexels as rows, selected metrics as columns. Full metrics stay in metrics.json."""
@@ -445,6 +492,7 @@ def print_metrics(title: str, metrics: dict) -> None:
 
 # ---------- Model dispatch ----------
 
+
 def build_baseline_model(model_config):
     architecture = model_config.architecture.strip().lower().replace("-", "_")
     params = getattr(model_config, "params", None) or {}
@@ -452,34 +500,67 @@ def build_baseline_model(model_config):
         return XGBRegressor(**params)
     if architecture in {"random_forest", "rf"}:
         from sklearn.ensemble import RandomForestRegressor
+
         return RandomForestRegressor(**params)
     if architecture in {"linear_regression", "linear"}:
         from sklearn.linear_model import LinearRegression
+
         return LinearRegression(**params)
     if architecture in {"mean_baseline", "mean"}:
         from src.mean_baseline import MeanBaselineRegressor
+
         return MeanBaselineRegressor()
     raise ValueError(f"Unknown baseline architecture '{model_config.architecture}'.")
 
 
 # ---------- Per-split evaluation (patch + region), deduplicating val/test blocks ----------
 
+
 def run_split_evaluation(
-    model, loader, split_name: str, out_norm, target_min, target_max, target_log_mean, target_log_std,
-    valid_mask_threshold, config, region_metric_functions, target_name: str, max_eval_batches: int, timings: dict,
+    model,
+    loader,
+    split_name: str,
+    out_norm,
+    target_min,
+    target_max,
+    target_log_mean,
+    target_log_std,
+    valid_mask_threshold,
+    config,
+    region_metric_functions,
+    target_name: str,
+    max_eval_batches: int,
+    timings: dict,
 ):
     with timed(f"{split_name} Eval", timings):
         patch_metrics, hex_rank_metrics = evaluate_patchwise_and_hexel(
-            model, loader, out_norm, target_min, target_max, target_log_mean, target_log_std,
-            valid_mask_threshold, config.metrics, max_batches=max_eval_batches,
+            model,
+            loader,
+            out_norm,
+            target_min,
+            target_max,
+            target_log_mean,
+            target_log_std,
+            valid_mask_threshold,
+            config.metrics,
+            max_batches=max_eval_batches,
         )
     print_metrics(f"{split_name} metrics (patch)", patch_metrics)
     print_metrics(f"{split_name} metrics (hexel, scalar-summary rank agreement)", hex_rank_metrics)
 
     with timed(f"{split_name} Region Eval", timings):
         region_agg, region_per_hexel = evaluate_region_level(
-            model, loader, out_norm, target_min, target_max, target_log_mean, target_log_std,
-            valid_mask_threshold, config, region_metric_functions, target_name=target_name,
+            model,
+            loader,
+            out_norm,
+            target_min,
+            target_max,
+            target_log_mean,
+            target_log_std,
+            valid_mask_threshold,
+            config,
+            region_metric_functions,
+            target_name=target_name,
             max_batches=max_eval_batches,
         )
     print_region_metrics_table(region_agg, region_per_hexel, split_name, DISPLAY_METRICS)
@@ -502,17 +583,17 @@ def main() -> None:
     timings: dict[str, float] = {}
 
     # ---------- Data ----------
-    train_loader, val_loader = get_train_val_dataloader(
-        config=config.data, modelling_approach=config.modelling_approach, seed=seed
-    )
+    train_loader, val_loader = get_train_val_dataloader(config=config.data, modelling_approach=config.modelling_approach, seed=seed)
     spatial_channels, aux_dims = get_dataset_dimensions(train_loader.dataset)
     fuel_curve_len = aux_dims.get("fuel_curve", 0) if aux_dims else 0
     total_channels = spatial_channels + fuel_curve_len
     print(f"Detected Data Dimensions: Spatial={spatial_channels}, FuelCurve={fuel_curve_len}, Total={total_channels}")
 
     out_norm, target_min, target_max, target_log_mean, target_log_std = get_target_transform_params(config, args.target)
-    print(f"======= Target transform ({args.target}) ========\nout_norm={out_norm}, min={target_min}, max={target_max}, "
-          f"log_mean={target_log_mean}, log_std={target_log_std}")
+    print(
+        f"======= Target transform ({args.target}) ========\nout_norm={out_norm}, min={target_min}, max={target_max}, "
+        f"log_mean={target_log_mean}, log_std={target_log_std}"
+    )
 
     valid_mask_threshold = config.data.valid_mask_threshold
     pixels_per_patch = args.pixels_per_patch if args.pixels_per_patch > 0 else None
@@ -520,8 +601,11 @@ def main() -> None:
     # ---------- Tabularize ----------
     with timed("Tabularize", timings):
         X_train, y_train = tabularize_loader(
-            train_loader, valid_mask_threshold,
-            pixels_per_patch=pixels_per_patch, rng=rng, max_batches=args.max_train_batches,
+            train_loader,
+            valid_mask_threshold,
+            pixels_per_patch=pixels_per_patch,
+            rng=rng,
+            max_batches=args.max_train_batches,
         )
     print(f"======= Train rows ========\n{X_train.shape[0]:,} pixels, {X_train.shape[1]} channels")
 
@@ -535,14 +619,38 @@ def main() -> None:
     region_metric_functions = {k: AVAILABLE_METRICS[k] for k in config.metrics}
 
     val_metrics, val_hex_metrics, val_region_agg, val_region_per_hexel = run_split_evaluation(
-        model, val_loader, "Val", out_norm, target_min, target_max, target_log_mean, target_log_std,
-        valid_mask_threshold, config, region_metric_functions, args.target, args.max_eval_batches, timings,
+        model,
+        val_loader,
+        "Val",
+        out_norm,
+        target_min,
+        target_max,
+        target_log_mean,
+        target_log_std,
+        valid_mask_threshold,
+        config,
+        region_metric_functions,
+        args.target,
+        args.max_eval_batches,
+        timings,
     )
 
     test_loader = get_test_dataloader(config=config.data, modelling_approach=config.modelling_approach, seed=seed)
     test_metrics, test_hex_metrics, test_region_agg, test_region_per_hexel = run_split_evaluation(
-        model, test_loader, "Test", out_norm, target_min, target_max, target_log_mean, target_log_std,
-        valid_mask_threshold, config, region_metric_functions, args.target, args.max_eval_batches, timings,
+        model,
+        test_loader,
+        "Test",
+        out_norm,
+        target_min,
+        target_max,
+        target_log_mean,
+        target_log_std,
+        valid_mask_threshold,
+        config,
+        region_metric_functions,
+        args.target,
+        args.max_eval_batches,
+        timings,
     )
 
     total_time = sum(timings.values())

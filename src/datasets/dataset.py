@@ -115,7 +115,7 @@ class MultiSourceDataset(Dataset):
                 "hex_id": torch.tensor(int(patch_info["hex_id"]), dtype=torch.long),
                 "row": torch.tensor(int(patch_info["row"]), dtype=torch.long),
                 "col": torch.tensor(int(patch_info["col"]), dtype=torch.long),
-                }
+            }
         return sample
 
     def __len__(self):
