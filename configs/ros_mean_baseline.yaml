@@ -45,7 +45,7 @@ data:
   batch_size: 64
   num_workers: 2
   valid_mask_threshold: 0.01
-  include_patch_metadata: true
+  include_patch_metadata: true   # required: train_baseline.py's region-level eval reads patch_metadata["row"/"col"/"hex_id"]
   input_sources:
     - name: "grid"
       params:
@@ -57,7 +57,7 @@ data:
         transforms_list: []
         augmentation_prob: 0.0
         terrain_derivatives: ["slope", "aspect_sin", "aspect_cos"]
-        bp_nodata_as_zero: true
+        bp_nodata_as_zero: true  # no-op for target=ros; kept for schema consistency
 logger:
   enabled: true
   project_name: "nrcan05-wildfireriskmapping"
