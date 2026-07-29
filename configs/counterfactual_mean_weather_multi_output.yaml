@@ -12,11 +12,11 @@ nonfuel_ids: [100, 101, 102, 105, 106, 110]
 # shared prediction directory.
 endpoints:
   bp:
-    config_path: "configs/hazard_eval_multi_output_spatial_weather_checkpoint.yaml"
+    config_path: "configs/eval_multi_output_spatial_weather_firesize_checkpoint.yaml"
   fi:
-    config_path: "configs/hazard_eval_multi_output_spatial_weather_checkpoint.yaml"
+    config_path: "configs/eval_multi_output_spatial_weather_firesize_checkpoint.yaml"
   ros:
-    config_path: "configs/hazard_eval_multi_output_spatial_weather_checkpoint.yaml"
+    config_path: "configs/eval_multi_output_spatial_weather_firesize_checkpoint.yaml"
 
 scenarios:
   - name: "baseline"

@@ -11,41 +11,16 @@ hex_ids: ["16"]
 # shared prediction directory.
 endpoints:
   bp:
-    config_path: "configs/hazard_eval_multi_output_spatial_weather_checkpoint.yaml"
+    config_path: "configs/eval_multi_output_spatial_weather_firesize_checkpoint.yaml"
   fi:
-    config_path: "configs/hazard_eval_multi_output_spatial_weather_checkpoint.yaml"
+    config_path: "configs/eval_multi_output_spatial_weather_firesize_checkpoint.yaml"
   ros:
-    config_path: "configs/hazard_eval_multi_output_spatial_weather_checkpoint.yaml"
+    config_path: "configs/eval_multi_output_spatial_weather_firesize_checkpoint.yaml"
 
 scenarios:
   - name: "baseline"
     kind: "baseline"
     description: "Unmodified prepared fuel inputs."
-
-  - name: "remove_barriers_adjacent_modal"
-    kind: "fuel"
-    description: "Replace each connected non-fuel component with its modal adjacent burnable fuel group."
-    params:
-      mode: "nonfuel_to_burnable_local_adjacent_modal"
-      nonfuel_ids: [100, 101, 102, 105, 106, 110]
-
-  - name: "remove_barriers_fixed_c2"
-    kind: "fuel"
-    description: "Replace every non-fuel barrier pixel with C-2 boreal spruce."
-    params:
-      mode: "nonfuel_to_burnable_fixed"
-      nonfuel_ids: [100, 101, 102, 105, 106, 110]
-      replacement_fuel_id: 2
-
-  - name: "insert_random_nonfuel_10pct"
-    kind: "fuel"
-    description: "Replace area-weighted random same-fuel components covering approximately 10% of burnable area."
-    params:
-      mode: "burnable_components_to_nonfuel_random"
-      nonfuel_ids: [100, 101, 102, 105, 106, 110]
-      replacement_nonfuel_id: 101
-      target_burnable_area_fraction: 0.10
-      seed: 42
 
   - name: "c2_to_mixedwood_fixed"
     kind: "fuel"

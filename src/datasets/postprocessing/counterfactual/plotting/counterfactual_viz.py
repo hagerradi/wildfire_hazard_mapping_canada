@@ -109,6 +109,30 @@ def prediction_raster_path(prediction_dir: Path, hex_id: str, target_name: str |
     return predicted_dir / f"hexel_{int(hex_id):02d}_predicted.tif"
 
 
+def find_local_prediction_dir(experiment_dir: Path, scenario: str, hex_id: str, endpoint: str) -> Path:
+    """Locate a scenario/endpoint prediction directory by scanning the local `predictions/` tree.
+
+    Materialized runs store predictions under `predictions/<scenario>/<subdir>/predicted_hexels/`,
+    where `<subdir>` is usually the endpoint name but may instead be a shared subdir when several
+    endpoints are deduplicated onto the same multi-output checkpoint run (e.g. `bp`, `fi`, and
+    `ros` all resolving to a `predictions/<scenario>/bp/` directory). Rather than trusting
+    `scenario_prediction_index.csv` (which stores the original, possibly remote/cluster, absolute
+    paths), this scans the locally materialized `predictions/<scenario>/` subdirectories for the
+    one that actually contains this endpoint's stitched raster.
+    """
+    scenario_dir = experiment_dir / "predictions" / scenario
+    if not scenario_dir.is_dir():
+        raise FileNotFoundError(f"No predictions directory for scenario={scenario!r} under {experiment_dir}.")
+    for candidate in sorted(scenario_dir.iterdir()):
+        if not candidate.is_dir():
+            continue
+        if prediction_raster_path(candidate, hex_id, target_name=endpoint).exists():
+            return candidate
+    raise FileNotFoundError(
+        f"Could not find a {endpoint!r} prediction raster for scenario={scenario!r}, hex_id={hex_id!r} under {scenario_dir}."
+    )
+
+
 def read_prediction(path: Path) -> np.ma.MaskedArray:
     if not path.exists():
         raise FileNotFoundError(path)
