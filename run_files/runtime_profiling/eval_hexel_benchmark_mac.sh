@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-CONFIG_FILE=${1:-configs/bp_common_input_pipeline.yaml}
+CONFIG_FILE=${1:-configs/runtime_benchmarks/multi_output_hex16.yaml}
 N_REPS=${N_REPS:-5}
 EVAL_ARGS=${EVAL_ARGS:-"--fast_eval"}
 

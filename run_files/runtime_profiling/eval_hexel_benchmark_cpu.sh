@@ -23,14 +23,14 @@ set -euo pipefail
 # comparison being made here (surrogate model GPU-vs-CPU parity).
 # NOTE: --fast_eval (added in the postprocessing-optimization update)
 # already implies --metrics_only --skip_hexel_plots --no_save_predictions.
-CONFIG_FILE=${1:-configs/bp_common_input_pipeline.yaml}
-N_REPS=${N_REPS:-5}
+CONFIG_FILE=${1:-configs/runtime_benchmarks/multi_output_hex16.yaml}
+N_REPS=${N_REPS:-10}
 EVAL_ARGS=${EVAL_ARGS:-"--tif_only"}
 
 # NOTE: hardcoded rather than "cd ${SLURM_SUBMIT_DIR:-$(pwd)}" -- jobs are
 # submitted from run_files/, and SLURM_SUBMIT_DIR resolves to wherever
 # `sbatch` was invoked from, not the repo root where .venv/ actually lives.
-cd ~/CODE/nrcan_wildfireriskmapping
+cd "${SLURM_SUBMIT_DIR:-$(pwd)}"
 mkdir -p logs
 source .venv/bin/activate
 

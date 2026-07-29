@@ -9,7 +9,7 @@
 #SBATCH --time=01:59:00
 #SBATCH --mem-per-cpu=40Gb
 #SBATCH --cpus-per-task=4
-#SBATCH --gres=gpu:ls40:1
+#SBATCH --gres=gpu:l40s:1
 set -euo pipefail
 
 # ---------- Args ----------
@@ -20,14 +20,14 @@ set -euo pipefail
 # NOTE: --fast_eval (added in the postprocessing-optimization update)
 # already implies --metrics_only --skip_hexel_plots --no_save_predictions,
 # so EVAL_ARGS defaults to just that single flag now.
-CONFIG_FILE=${1:-configs/bp_common_input_pipeline.yaml}
-N_REPS=${N_REPS:-5}
+CONFIG_FILE=${1:-configs/runtime_benchmarks/multi_output_hex16.yaml}
+N_REPS=${N_REPS:-10}
 EVAL_ARGS=${EVAL_ARGS:-"--tif_only"}
 
 # NOTE: hardcoded rather than "cd ${SLURM_SUBMIT_DIR:-$(pwd)}" -- jobs are
 # submitted from run_files/, and SLURM_SUBMIT_DIR resolves to wherever
 # `sbatch` was invoked from, not the repo root where .venv/ actually lives.
-cd ~/CODE/nrcan_wildfireriskmapping
+cd "${SLURM_SUBMIT_DIR:-$(pwd)}"
 mkdir -p logs
 source .venv/bin/activate
 
