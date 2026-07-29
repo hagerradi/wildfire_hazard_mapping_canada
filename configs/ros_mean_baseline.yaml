@@ -1,29 +1,20 @@
-# configs/fi_spatial_only_xgb.yaml
-# Tabular baseline (XGBoost) on spatial-only channels + iROS fuel curve, for
-# comparison against fi_common_input_pipeline (Fire Intensity). Config structure
-# kept consistent with the U-Net configs even though optimizer/lr_scheduler/
-# training blocks are unused by train_baseline.py -- present for schema/logging
-# consistency and easy diffing.
-save_dir: "experiments/fi_spatial_only_xgb"
+# configs/ros_mean_baseline.yaml
+# Mean-training-value baseline (constant prediction = mean of training-pixel
+# ROS values in normalized space) for comparison against ros_spatial_only_xgb
+# and ros_common_input_pipeline (U-Net). Config structure kept consistent with
+# the U-Net configs even though optimizer/lr_scheduler/training blocks are
+# unused by train_baseline.py -- present for schema/logging consistency and
+# easy diffing.
+save_dir: "experiments/ros_mean_baseline"
 modelling_approach: "1"
 seed: 42
 deterministic: true
 model:
-  architecture: "xgboost"
+  architecture: "mean_baseline"
   num_classes: 1
   input_branches: ["spatial"]
   use_coordconv: false
-  params:
-    n_estimators: 500
-    max_depth: 8
-    learning_rate: 0.05
-    subsample: 0.8
-    colsample_bytree: 0.8
-    tree_method: "hist"
-    random_state: 42
-    n_jobs: 8
-# NOTE: optimizer/lr_scheduler/training are not consumed by train_baseline.py.
-# Kept here only to match the U-Net config schema for easier side-by-side diffing.
+  params: {}
 optimizer:
   name: "AdamW"
   lr: 7.0e-4
@@ -43,7 +34,7 @@ evaluation:
   best_ckpt_metrics: ["ccc"]
   best_ckpt_metrics_mode: ["max"]
   checkpoint_filename: "best.pth"
-  bp_nodata_as_zero: true  # no-op for target=fi; kept for schema consistency
+  bp_nodata_as_zero: true
   prediction_support_policy: "input"
 data:
   root_dir: "/network/projects/amlrt_internships/nrcan_05_wildfires/burnp3plus_data/data_samples_v3"
@@ -54,12 +45,12 @@ data:
   batch_size: 64
   num_workers: 2
   valid_mask_threshold: 0.01
-  include_patch_metadata: true   # required: train_baseline.py's region-level eval reads patch_metadata["row"/"col"/"hex_id"]
+  include_patch_metadata: true
   input_sources:
     - name: "grid"
       params:
         feature_names_list: ["ignition_grid_human", "ignition_grid_lightning", "fuel_grid", "elevation_grid"]
-        target_name: "fi"
+        target_name: "ros"
         out_norm: "log_standard"
         fuel_feats_encoding: "iROS"
         normalize_fuel_feats_ordinal: false
@@ -68,14 +59,14 @@ data:
         terrain_derivatives: ["slope", "aspect_sin", "aspect_cos"]
         bp_nodata_as_zero: true
 logger:
-  enabled: false
+  enabled: true
   project_name: "nrcan05-wildfireriskmapping"
   workspace: "mila-amlrt"
-  experiment_name: "fi_spatial_only_xgb"
+  experiment_name: "ros_mean_baseline"
   tags:
     - "full_data"
     - "modelling_approach=1"
-    - "target=fi"
+    - "target=ros"
     - "coordconv=none"
     - "data_samples_v3"
     - "ignition=aggregated_human_lightning"
@@ -85,12 +76,13 @@ logger:
     - "prediction_support_policy=input"
     - "input_sources=grid_only"
     - "terrain_derivatives=slope_aspect"
-    - "model=xgboost_baseline"
+    - "model=mean_baseline"
   log_every_n_step: 10
 metrics:
   - "mse"
   - "mae"
   - "normalized_mae"
+  - "normalized_bias"
   - "mae_top01"
   - "mae_top02"
   - "mae_top05"
