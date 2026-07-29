@@ -156,6 +156,8 @@ def denormalize_target(
     if out_norm == "min_max":
         return y_norm * (target_max - target_min) + target_min
     if out_norm == "log_standard":
+        if target_log_mean is None or target_log_std is None:
+            raise ValueError("target_log_mean and target_log_std are required when out_norm='log_standard'.")
         return np.clip(np.expm1(y_norm * target_log_std + target_log_mean), 0.0, None)
     raise ValueError(f"Unsupported out_norm={out_norm!r}.")
 
@@ -395,7 +397,7 @@ def evaluate_region_level(
     load_target_grid_for_mask_scope), and computes the full metric suite once per
     hexel via calculate_hexel_metrics_pytorch.
     """
-    hex_data = defaultdict(lambda: {"preds": [], "locations": [], "masks": []})
+    hex_data: dict[str, dict[str, list]] = defaultdict(lambda: {"preds": [], "locations": [], "masks": []})
     target_spec = get_target_specs(target_name)[0]
 
     for i, batch in enumerate(loader):
@@ -585,7 +587,11 @@ def main() -> None:
     # ---------- Data ----------
     train_loader, val_loader = get_train_val_dataloader(config=config.data, modelling_approach=config.modelling_approach, seed=seed)
     spatial_channels, aux_dims = get_dataset_dimensions(train_loader.dataset)
-    fuel_curve_len = aux_dims.get("fuel_curve", 0) if aux_dims else 0
+    fuel_curve_len = int(aux_dims.get("fuel_curve", 0) or 0) if aux_dims else 0
+    if spatial_channels is None:
+        raise ValueError(
+            'spatial_channels is None -- dataset has no "grid" or spatialized-tabular source; check input_sources in the config.'
+        )
     total_channels = spatial_channels + fuel_curve_len
     print(f"Detected Data Dimensions: Spatial={spatial_channels}, FuelCurve={fuel_curve_len}, Total={total_channels}")
 
