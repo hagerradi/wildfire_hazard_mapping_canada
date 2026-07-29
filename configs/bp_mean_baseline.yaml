@@ -82,6 +82,7 @@ metrics:
   - "mse"
   - "mae"
   - "normalized_mae"
+  - "normalized_bias"
   - "mae_top01"
   - "mae_top02"
   - "mae_top05"
@@ -89,7 +90,7 @@ metrics:
   - "spearman"
   - "bias"
   - "ccc"
-  - "kl_div"
+  - "kl_div"          # BP only — FI/ROS configs don't have this one, leave as-is
   - "iou_top005"
   - "iou_top01"
   - "iou_top02"

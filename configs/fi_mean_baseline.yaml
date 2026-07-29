@@ -84,6 +84,7 @@ metrics:
   - "mse"
   - "mae"
   - "normalized_mae"
+  - "normalized_bias"
   - "mae_top01"
   - "mae_top02"
   - "mae_top05"
