@@ -125,3 +125,29 @@ You can also specify a fixed range of values for map generations via the `--vmin
 Finally, to generate a map of residuals (preds - targets) on the cluster:
 
 ```python -m src.datasets.postprocessing.full_map.generate_full_hexel_diff_map --target-dir /network/projects/amlrt/nrcan_wildfires/full_data/yan_bp3/ --target-pattern hex*/outputs/*_iter_bp.tif --pred-dir experiments/unet_full_data_spatial_weather_new_config/predicted_hexels/ --pred-pattern "*_predicted.tif" --output "experiments/full_canada_map_diffs.png"```
+
+### Runtime and memory profiling
+
+Benchmarks used to produce the runtime/memory comparison against BurnP3+ (paper Table: Time and Memory Performance). Configs live in `configs/runtime_benchmarks/`, scripts in `run_files/runtime_profiling/`.
+
+Copy the checkpoint's `best.pth` to the `save_dir` referenced by the config, and make sure `data.root_dir` is reachable and contains `dataset_norm_stats.json` (without it, dataloader setup reverts from ~7s to ~70-90s).
+
+```bash
+# GPU
+sbatch --partition=long --gres=gpu:l40s:1 --cpus-per-task=4 --time=00:30:00 \
+  --export=N_REPS=10,EVAL_ARGS="--tif_only" \
+  run_files/runtime_profiling/eval_hexel_benchmark_gpu.sh configs/runtime_benchmarks/<config>.yaml
+
+# CPU
+sbatch --partition=long-cpu --nodelist=<node> --cpus-per-task=4 --time=02:00:00 \
+  --export=N_REPS=10,EVAL_ARGS="--tif_only" \
+  run_files/runtime_profiling/eval_hexel_benchmark_cpu.sh configs/runtime_benchmarks/<config>.yaml
+
+# MacBook (MPS), run locally
+caffeinate -i env PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.0 N_REPS=10 EVAL_ARGS="--tif_only" \
+  ./run_files/runtime_profiling/eval_hexel_benchmark_mac.sh configs/runtime_benchmarks/<config>_mac.yaml
+```
+
+`--tif_only` writes predicted rasters and skips metrics; use it for runtime comparisons since it matches BurnP3+'s actual output. `--fast_eval` computes metrics instead of writing rasters — check the resulting `hex16/bp_ccc` etc. against the checkpoint directory's `test_metrics.csv` before trusting timing from that mode.
+
+Memory is reported differently per platform: `Peak GPU Reserved` for CUDA (allocator-reserved, the provisioning number), `Peak MPS Driver Allocated` for MPS (this is unified memory and already includes host RAM — don't add process RSS to it), `Peak Host RSS` for CPU.
