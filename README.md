@@ -151,3 +151,19 @@ caffeinate -i env PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.0 N_REPS=10 EVAL_ARGS="--ti
 `--tif_only` writes predicted rasters and skips metrics; use it for runtime comparisons since it matches BurnP3+'s actual output. `--fast_eval` computes metrics instead of writing rasters — check the resulting `hex16/bp_ccc` etc. against the checkpoint directory's `test_metrics.csv` before trusting timing from that mode.
 
 Memory is reported differently per platform: `Peak GPU Reserved` for CUDA (allocator-reserved, the provisioning number), `Peak MPS Driver Allocated` for MPS (this is unified memory and already includes host RAM — don't add process RSS to it), `Peak Host RSS` for CPU.
+### Baselines
+
+Tabular and reference baselines (XGBoost, mean-value) share the entrypoint `src/train_tabular_baseline.py`, with configs in `configs/baselines/` and run scripts in `run_files/baselines/`.
+
+```bash
+sbatch run_files/baselines/mean_baseline.sh configs/baselines/bp_mean_baseline.yaml
+sbatch run_files/baselines/train_baseline.sh configs/baselines/bp_spatial_only_xgb.yaml
+```
+
+For multi-seed XGBoost runs (array job, seeds 0-2 by default):
+
+```bash
+sbatch run_files/baselines/train_baseline_multi_run.sh configs/baselines/bp_spatial_only_xgb.yaml
+```
+
+Swap `bp_` for `fi_`/`ros_` to target fire intensity or rate of spread. Mean-value baseline is deterministic and only needs a single seed.
