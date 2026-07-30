@@ -534,10 +534,11 @@ def calculate_hexel_metrics_pytorch(
     gt_clean = np.nan_to_num(gt_grid, nan=0.0)
     pred_clean = np.nan_to_num(pred_grid, nan=0.0)
 
-    t_targets = torch.from_numpy(gt_clean).to(device=device, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
-    t_preds = torch.from_numpy(pred_clean).to(device=device, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
-    t_mask = torch.from_numpy(valid_mask_np).to(device=device, dtype=torch.bool).unsqueeze(0).unsqueeze(0)
+    compute_device = "cpu" if torch.device(device).type == "mps" else device
 
+    t_targets = torch.from_numpy(gt_clean).to(device=compute_device, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
+    t_preds = torch.from_numpy(pred_clean).to(device=compute_device, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
+    t_mask = torch.from_numpy(valid_mask_np).to(device=compute_device, dtype=torch.bool).unsqueeze(0).unsqueeze(0)
     results = {}
     # compute metrics requested in config.
     with torch.no_grad():
