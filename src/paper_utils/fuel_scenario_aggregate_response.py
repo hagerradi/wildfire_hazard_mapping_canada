@@ -30,13 +30,15 @@ written by `evaluate_counterfactual.py` for every fuel-edit scenario), and:
      panels (RdBu_r, zero-centered), matching the style of
      `counterfactual_response_maps.py::plot_response_maps`'s delta panel.
 
+Used to generate: Figure 3 and Table 4.
+
 Usage:
-    python -m src.datasets.postprocessing.counterfactual.plotting.fuel_scenario_aggregate_response \
+    python -m src.paper_utils.fuel_scenario_aggregate_response \
         --experiment_dir final_results/counterfactual_fuel_multi_output_hex16 \
         --config configs/counterfactual_fuel_multi_output.yaml \
-        --scenario remove_barriers_fixed_c2 \
+        --scenario c2_to_mixedwood_fixed \
         --hex_ids 16 \
-        --out_path final_results/counterfactual_fuel_multi_output_hex16/remove_barriers_fixed_c2_aggregate_response.png
+        --out_path final_results/counterfactual_fuel_multi_output_hex16/c2_to_mixedwood_fixed.png
 """
 
 from __future__ import annotations
@@ -293,7 +295,7 @@ def parse_args() -> argparse.Namespace:
         help=f"Non-fuel IDs to exclude from burnable support. Defaults to {DEFAULT_NONFUEL_IDS} (or --config's value for --scenario).",
     )
     parser.add_argument("--out_path", type=Path, default=None, help="Optional output image path for the 1x4 aggregate response figure.")
-    parser.add_argument("--downsample", type=int, default=1, help="Stride factor to downsample rasters before plotting (for speed/size).")
+    parser.add_argument("--downsample", type=int, default=0, help="Stride factor to downsample rasters before plotting (for speed/size).")
     parser.add_argument(
         "--gt_dir",
         type=Path,
@@ -304,7 +306,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--panel_title",
         type=str,
-        default=None,
+        default="C-2 \u2192 M-1",
         help="Short title suffix for the fuel-intervention panel, e.g. 'C-2 \u2192 M-1' "
         "(rendered as 'Fuel intervention: <panel_title>'). Defaults to the scenario's --label/description.",
     )

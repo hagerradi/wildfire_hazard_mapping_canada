@@ -333,7 +333,7 @@ class Config(BaseModel):
 
 
 #: Fixed pool of seeds used to derive a run-specific seed from `run_id`.
-SEEDS: list[int] = [42, 1337, 2024, 3407, 12345]
+SEEDS: list[int] = [42, 1337, 2024]
 
 
 def apply_run_id_overrides(config: "Config", run_id: int) -> int:

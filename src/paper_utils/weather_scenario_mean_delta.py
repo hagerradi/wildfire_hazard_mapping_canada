@@ -29,8 +29,10 @@ It is additionally clipped to the actual-fire-occurrence footprint for that hex
 -- the same pattern `load_target_grid_for_mask_scope` uses in
 `src/datasets/postprocessing/utils.py` for the default "actual" mask scope.
 
+Used to generate: Figure 4 and Table 4.
+
 Usage:
-    python -m src.datasets.postprocessing.counterfactual.plotting.weather_scenario_mean_delta \
+    python -m src.paper_utils.weather_scenario_mean_delta \
         --experiment_dir final_results/counterfactual_mean_weather_multi_output_hex16 \
         --scenario bc_mean_weather_transplant \
         --hex_ids 16
@@ -48,6 +50,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import rasterio
+from matplotlib.ticker import MaxNLocator, ScalarFormatter
 
 from data_preparation.spatial.utils import load_spatial_raster
 from src.datasets.postprocessing.counterfactual.plotting.counterfactual_viz import (
@@ -180,6 +183,13 @@ def plot_response_figure(
         ax.axis("off")
         cbar = fig.colorbar(image, ax=ax, orientation="horizontal", fraction=0.05, pad=0.04)
         cbar.set_label(PANEL_CBAR_LABELS[endpoint])
+        # Fewer ticks + scientific-notation offset text (e.g. "1e-3") instead of many
+        # long fixed-decimal labels, which overlap for these small delta magnitudes.
+        cbar.locator = MaxNLocator(nbins=5)
+        formatter = ScalarFormatter(useMathText=True)
+        formatter.set_powerlimits((-2, 2))
+        cbar.formatter = formatter
+        cbar.update_ticks()
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_path, dpi=150, bbox_inches="tight")
