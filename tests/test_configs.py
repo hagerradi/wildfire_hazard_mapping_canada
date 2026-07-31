@@ -19,12 +19,12 @@ from src.config import (
 from src.datasets.postprocessing.hazard import DEFAULT_FI_CAP, DEFAULT_SCALE_TO
 from src.utils import AVAILABLE_METRICS, build_single_loss
 
-BP_CONFIG = Path("configs/bp_common_input_pipeline.yaml")
-FI_CONFIG = Path("configs/fi_common_input_pipeline.yaml")
-ROS_CONFIG = Path("configs/ros_common_input_pipeline.yaml")
-MULTI_OUTPUT_CONFIG = Path("configs/multi_output_common_input_pipeline.yaml")
-HAZARD_EVAL_CONFIG = Path("configs/hazard_eval_common_input_pipeline.yaml")
-HAZARD_MODEL_CONFIG = Path("configs/eval_multi_output_spatial_weather_firesize_checkpoint.yaml")
+BP_CONFIG = Path("configs/bp_spatial_weather.yaml")
+FI_CONFIG = Path("configs/fi_spatial_weather.yaml")
+ROS_CONFIG = Path("configs/ros_spatial_weather.yaml")
+MULTI_OUTPUT_CONFIG = Path("configs/multi_output_spatial_weather.yaml")
+HAZARD_EVAL_CONFIG = Path("configs/hazard_eval_spatial_weather.yaml")
+HAZARD_MODEL_CONFIG = Path("configs/multi_output_spatial_weather.yaml")
 COMMON_INPUT_PIPELINE_CONFIGS = [BP_CONFIG, FI_CONFIG, ROS_CONFIG]
 
 WEATHER_FEATURES = {
@@ -68,12 +68,10 @@ def test_common_input_pipeline_configs_share_unified_input_pipeline():
         assert sources["grid"].feature_names_list[:2] == ["ignition_grid_human", "ignition_grid_lightning"]
         assert sources["grid"].terrain_derivatives == ["slope", "aspect_sin", "aspect_cos"]
 
-        # Spatialized weather + fire-size. The weather LUT covers every firezone, so its
+        # Spatialized weather. The weather LUT covers every firezone, so its
         # missing-firezone mask is dropped; the fire-size table lacks some zones, so it is kept.
         assert isinstance(sources["spatialized_weather"], SpatializedTabularParams)
-        assert isinstance(sources["spatialized_fire_size"], SpatializedTabularParams)
         assert sources["spatialized_weather"].include_missing_firezone_mask is False
-        assert sources["spatialized_fire_size"].include_missing_firezone_mask is False
 
         # Wind is expressed as Cartesian components only; WindSpeed is dropped.
         weather_features = set(sources["spatialized_weather"].feature_names_list)

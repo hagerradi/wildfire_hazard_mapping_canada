@@ -22,10 +22,10 @@ from src.evaluate_hazard import (
     row_normalized_confusion_percentages,
 )
 
-BP_CONFIG = Path("configs/bp_common_input_pipeline.yaml")
-MULTI_OUTPUT_CONFIG = Path("configs/multi_output_common_input_pipeline.yaml")
-HAZARD_MODEL_CONFIG = Path("configs/eval_multi_output_spatial_weather_firesize_checkpoint.yaml")
-HAZARD_EVAL_CONFIG = Path("configs/hazard_eval_common_input_pipeline.yaml")
+BP_CONFIG = Path("configs/bp_spatial_weather.yaml")
+MULTI_OUTPUT_CONFIG = Path("configs/multi_output_spatial_weather.yaml")
+HAZARD_MODEL_CONFIG = Path("configs/multi_output_spatial_weather.yaml")
+HAZARD_EVAL_CONFIG = Path("configs/hazard_eval_spatial_weather.yaml")
 
 
 def _profile(height=2, width=2):
