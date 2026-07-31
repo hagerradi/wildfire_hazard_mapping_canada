@@ -25,7 +25,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--config",
         type=str,
-        default="configs/bp_common_input_pipeline.yaml",
+        default="configs/multi_output_spatial_weather.yaml",
         help="Path to YAML config file.",
     )
     # logging is enabled by default, unless you pass --no_log_test_predicted_hexels
