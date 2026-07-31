@@ -178,24 +178,23 @@ def main() -> None:
 
         val_hexel_metrics = {}
 
-        if args.log_test_predicted_hexels:
-            source_map = {s.name: s for s in config.data.input_sources}
-            grid_source = source_map.get("grid") if "grid" in source_map else None
-            out_norm = "min_max"  # default fallback, prevent mypy crash
-            if grid_source and isinstance(grid_source.params, GridParams):
-                out_norm = grid_source.params.out_norm
+        source_map = {s.name: s for s in config.data.input_sources}
+        grid_source = source_map.get("grid") if "grid" in source_map else None
+        out_norm = "min_max"  # default fallback, prevent mypy crash
+        if grid_source and isinstance(grid_source.params, GridParams):
+            out_norm = grid_source.params.out_norm
 
-            if isinstance(val_predictions, np.ndarray):  # for mypy
-                val_hexel_metrics = evaluate_and_visualize_hexels(
-                    test_predictions=val_predictions,
-                    config=config,
-                    out_norm=out_norm,
-                    device=trainer.device,
-                    experiment_logger=trainer.logger,
-                    metric_functions=trainer.metric_functions,
-                    split_csv=config.data.val_split,
-                    save_dir_suffix="val",
-                )
+        if isinstance(val_predictions, np.ndarray):  # for mypy
+            val_hexel_metrics = evaluate_and_visualize_hexels(
+                test_predictions=val_predictions,
+                config=config,
+                out_norm=out_norm,
+                device=trainer.device,
+                experiment_logger=trainer.logger,
+                metric_functions=trainer.metric_functions,
+                split_csv=config.data.val_split,
+                save_dir_suffix="val",
+            )
 
         print_and_log_eval_metrics(
             test_metrics=val_metrics,

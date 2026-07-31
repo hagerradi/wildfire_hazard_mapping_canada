@@ -1,4 +1,4 @@
-# BP model on the common input pipeline.
+# FI model on the common input pipeline.
 # Common input pipeline (shared by BP/FI/ROS):
 #   - dataset: data_samples_v2 (aggregated 2-channel ignition: human + lightning)
 #   - grid: fuel (one-hot) + elevation + terrain derivatives (slope, aspect_sin, aspect_cos)
@@ -104,7 +104,7 @@ logger:
   tags:
     - "full_data"
     - "modelling_approach=1"
-    - "target=bp"
+    - "target=fi"
     - "coordconv=patch_local"
     - "data_samples_v4"
     - "ignition=aggregated_human_lightning"
@@ -113,11 +113,9 @@ logger:
     - "loss=kl_ccc_hexpairrank"
     - "hex_loss_weight_total=0.10"
     - "out_norm=min_max"
-    - "fi_nodata_as_zero=true"
     - "prediction_support_policy=input"
     - "tabular_fusion=spatialized"
-    - "spatialized_sources=weather_fire_size"
-    - "missing_masks=fire_size"
+    - "spatialized_sources=weather"
     - "terrain_derivatives=slope_aspect"
     - "wind=vector_components"
   log_every_n_step: 10
