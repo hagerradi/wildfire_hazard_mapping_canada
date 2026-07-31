@@ -1,0 +1,41 @@
+name: Run Check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v5
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.9.10"
+          python-version-file: "pyproject.toml"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Cache pre-commit
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
+          restore-keys: |
+            pre-commit-${{ runner.os }}-
+
+      - name: Install the project
+        run: uv sync --locked --all-extras --dev
+
+      # ruff linting is now done in pre-commit
+      - name: Run pre-commit hooks
+        run: uv run pre-commit run --all-files --color=always
+
+      - name: Run unit tests
+        run: uv run python -m pytest tests

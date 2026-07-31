@@ -1,0 +1,49 @@
+# --- Python ---
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pkl
+*.egg-info/
+*.egg
+
+#--- model checkpoints ---
+experiments/
+logs/
+*.log
+# --- UV ---
+.venv/
+.uv/
+
+# --- Build ---
+build/
+dist/
+
+# --- Test caches ---
+.cache/
+pytest_cache/
+
+# --- Jupyter ---
+.ipynb_checkpoints/
+
+# --- IDE ---
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# --- OS junk ---
+.DS_Store
+Thumbs.db
+
+# --- Data ---
+data/
+*.asc
+*.tif
+*.csv
+*.zip
+
+# --- Environment files ---
+.python-version
+.env
+.env.*

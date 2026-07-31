@@ -1,0 +1,24 @@
+raw_data_dir: "raw_data"
+save_dir: "experiments/counterfactual_mean_weather_hex16"
+hex_ids: ["16"]
+nonfuel_ids: [100, 101, 102, 105, 106, 110]
+
+endpoints:
+  bp:
+    config_path: "configs/bp_common_input_pipeline.yaml"
+  fi:
+    config_path: "configs/fi_common_input_pipeline.yaml"
+  ros:
+    config_path: "configs/ros_common_input_pipeline.yaml"
+
+scenarios:
+  - name: "baseline"
+    kind: "baseline"
+    description: "Unmodified prepared weather inputs."
+
+  - name: "bc_mean_weather_transplant"
+    kind: "weather"
+    description: "Assign every hex16 weather zone the exact mean processed-weather vector across all hex17 rows, without dilution from other hexels sharing those zones."
+    params:
+      mode: "external_mean_zone_transplant"
+      donor_hex_ids: ["17"]
